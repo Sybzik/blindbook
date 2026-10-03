@@ -39,7 +39,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **2. Positions** | Who holds what? | **Chaumian e-cash.** Balance and positions are blind-signed bearer tokens (*slips*), built on Cashu's BDHKE + DLEQ primitives. The mint signs without seeing, so no action links to any other. |
 | **3. Payout** | Where did the money go? | Shielded payout to a fresh address, fixed transaction shape, **discarded outgoing viewing key**, destination sealed to the signer and forgotten. |
 | **4. Network** | Who is online, and from where? | Static app from hosts that aren't ours. **Every API call goes through the Nym mixnet**: one tunnel for browsing and betting, a **separate mixnet identity** for top-ups and withdrawals, and a fresh connection for every write. One identical data bundle for everyone. |
-| **5. Device** | What's on your phone? | the vault opens with **Face ID on phones** (a passkey via WebAuthn PRF) and with a **passphrase on computers** (Touch ID / Windows Hello only as an opt-in setting); a 12-word phrase is the real backup (required before real money; deferred for the testnet playground); deterministic secrets; **zero-query restore**. **Everything personal** (slips, proofs, notes, stamps, scores, P600 records) lives in the vault; only cosmetic preferences sit in plain storage. |
+| **5. Device** | What's on your phone? | the vault opens with **Face ID on phones** (a passkey via WebAuthn PRF) and with a **passphrase on computers**; a 12-word phrase is the real backup (required before real money; deferred for the testnet playground); deterministic secrets; **zero-query restore**. **Everything personal** (slips, proofs, notes, stamps, scores, P600 records) lives in the vault; only cosmetic preferences sit in plain storage. |
 
 ## Components
 
@@ -112,7 +112,7 @@ Polymarket keeps your balance under a public wallet address; a typical custodial
 
 ### Unlock: Face ID on phones, passphrase on computers
 
-- **Phones (default):** Face ID. **Computers (default):** a passphrase; Touch ID / Windows Hello can be switched on in settings, but are never pushed, because desktop biometrics are uneven.
+- **Phones (default):** Face ID. **Computers:** a passphrase only (no desktop biometrics).
 
 - **Creating the vault on a phone** also creates a passkey for the Blindbook domain: user name `Blindbook vault`, random user handle, no email or identity.
 - **Opening the vault on a phone** asks for Face ID. The WebAuthn **PRF** extension returns a 32-byte secret only after that check. HKDF turns it into the key that unwraps the vault key, and AES-GCM decrypts the vault.
@@ -262,7 +262,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked |
 | Network privacy | `@nymproject/mix-fetch` 2.x: one tunnel per page, so top-ups and withdrawals run in a separate same-origin frame with its own tunnel; `Connection: close` on writes and no TLS session resumption at the proxy; own Nym exit if needed; Tor onion as an explicit fallback |
 | Web | Vite, React 19, TypeScript, Tailwind v4, three.js / React Three Fiber, constant-URL navigation, PWA, strict CSP |
-| Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones; opt-in Touch ID / Windows Hello on computers), Argon2id via `hash-wasm` for the passphrase (default on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
+| Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones), Argon2id via `hash-wasm` for the passphrase (the only unlock on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | `zcash_address` 0.13 (Rust → WASM) to parse unified addresses and require an Orchard-protocol receiver, never regex |
 | Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |
 | Video | Remotion + Playwright capture + iPhone screen recording |
@@ -283,4 +283,4 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | D10 | one mixnet tunnel for browsing and betting with a fresh connection per write (server closes connections, no TLS resumption); a separate tunnel in its own frame for top-ups and withdrawals, plus a random delay | decided (latency measured in Spike A) |
 | D11 | "Called it" receipts (tag per trade, reveal by choice) as the signature feature | decided |
 | D12 | Blind duels | stretch |
-| D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase (biometrics opt-in); the 12-word phrase is the backup | decided (core) |
+| D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase only; the 12-word phrase is the backup | decided (core) |

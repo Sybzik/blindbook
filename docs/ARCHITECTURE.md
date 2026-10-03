@@ -272,7 +272,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | # | Decision | Status |
 |---|---|---|
 | D1 | LMSR anchored to Polymarket's live mid (30 s median) + depth-aware guard + exposure buffer on buys **and sells**, 2-second batches | decided |
-| D2 | testnet is the judge playground; mainnet is a micro-stakes proof of the same build | decided |
+| D2 | testnet is the judge playground (TAZ self-mined or from faucets); mainnet is a micro-stakes proof of the same build; if the organizers require a mainnet demo, the budget rises and vouchers move to mainnet | decided; organizers asked (Oct 3) |
 | D3 | one isolated signer holding all secrets; FROST 2-of-3 as stretch | decided |
 | D4 | private deposit viewing key, public reserve viewing key, discarded-OVK payouts padded with throwaway outputs | decided |
 | D5 | no NEAR Intents on-ramp (Zcash support is transparent-only, a leak) | decided |

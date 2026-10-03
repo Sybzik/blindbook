@@ -27,6 +27,8 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **Slips you can pass under the table** | positions are bearer e-cash; hand one to anyone as a QR code or link, with no chain transaction and no record of who held it | private OTC transfer of a position, which no on-chain market can offer |
 | **"Called it" receipts** | every trade carries a secret tag in the anchored public log; reveal the secret to prove "I bought YES at 18¢ at block N", to whoever you choose, whenever you choose | reputation without identity: prove you were right without exposing anything else. This is Zcash's selective disclosure, applied to forecasting |
 | **Verify in your browser** | the browser replays the whole market and checks solvency against the public reserve | don't trust us; check us |
+| **What we know about you** | page P600 shows the literal record our server stored for your last request, and the fields it doesn't have (IP, account, balance, other bets) | privacy you can see, not just read about |
+| **Paper slips** | print a position as a thermal-style slip with a QR; scanning it imports it and immediately re-issues it | a bearer bet you can hold in your hand, gift or hide |
 | *Blind duels (stretch)* | challenge anyone with a link; the other side takes it anonymously; it's matched as a complete set and settled by Polymarket's result | peer-to-peer and zero house risk; spreads by link |
 
 ## The five layers
@@ -247,7 +249,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Reference prices | Polymarket CLOB WebSocket market channel + REST fallback |
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked |
 | Network privacy | `@nymproject/mix-fetch` 2.x with a pool of single-use connections; own Nym exit if needed; Tor onion as an explicit fallback |
-| Web | Vite, React 19, TypeScript, Tailwind v4, three.js / React Three Fiber, hash routing, PWA, strict CSP |
+| Web | Vite, React 19, TypeScript, Tailwind v4, three.js / React Three Fiber, constant-URL navigation, PWA, strict CSP |
 | Vault | `@scure/bip39`, Argon2id (WASM), AES-GCM, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | `zcash_address` (Rust → WASM) to parse unified addresses and require an Orchard-protocol receiver, never regex |
 | Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |

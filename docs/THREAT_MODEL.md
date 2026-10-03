@@ -77,7 +77,7 @@
 |---|---|---|---|
 | N1 | IP ↔ order, slip or withdrawal | A2, A3 | **every API call goes through the Nym mixnet**; TLS terminates inside WASM, so the exit sees ciphertext |
 | N2 | Timing: "online at T, bet at T+30s" | A2, A3 | the API never sees IPs; mixnet delay plus cover traffic; 2-second batches |
-| N3 | URL path reveals the market being viewed | A2, A3 | hash routing (`/#/m/…`) |
+| N3 | URL path reveals which market a visitor opened | A2, A3 | in-app navigation with a **constant URL**: nothing about the page you're on ever leaves the browser |
 | N4 | Per-market requests reveal interest | A2, A3 | one identical bundle sequence for everyone, thumbnails included |
 | N5 | The browser contacts Polymarket, CDNs or font hosts | A6 | zero third-party requests; CSP `connect-src 'self' wss:`, where `wss:` carries only the mixnet gateway sockets, and every other byte arrives inside the mixnet |
 | N6 | The mixnet is down and the app quietly goes direct | A2, A3 | **never silent**: actions are blocked; the user can explicitly switch to the .onion mirror in Tor Browser or Onion Browser |
@@ -95,6 +95,9 @@
 | D2 | iOS Safari wipes storage after 7 days without use, and bearer slips are lost | user funds | 12-word phrase confirmed before the first bet; zero-query restore; PWA prompt |
 | D3 | A malicious frontend steals the vault | A2 | reproducible build, published hashes, SRI, strict CSP, independent mirrors |
 | D4 | Sharing a slip QR code in a chat app | that app | a slip is as private as the channel it's sent over; the UI says so before export |
+| D5 | Browser history, tab titles and screen sharing reveal which markets you looked at | A7, anyone watching your screen | constant URL (navigation never touches history); the tab title is always `Blindbook`; proof links are replaced in the address bar as soon as they're opened |
+| D6 | A paper slip is photographed, or a network printer keeps a copy | A7, print infrastructure | paper slips are bearer cash: a warning before printing ("whoever scans this owns it"); importing swaps the slip at once, so the paper is void; the UI recommends a local printer |
+| D7 | Two shared NOBODY PASS images link the same person | public | the pixel face is random per save, not derived from the vault; stamps are generic; no amounts, markets or dates on the card |
 
 ### Integrity, custody, availability
 

@@ -63,6 +63,7 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 - **Deterministic secrets:** `x` and `r` come from the BIP 39 seed per NUT-13 (keyset id + counter).
 - **Zero-query restore (normative client behaviour):** derive `B_` for counters 0..n per keyset, find them in the public issuance log, unblind, and check `Y` against the public spent set. **No restore request is ever sent.**
 - **Transfer format:** `bbslip1:` + base64url(CBOR [keyset_id, amount, x, C]…), also as a QR code. The recipient swaps it immediately so the sender can't spend it twice.
+- **Paper slips:** the same `bbslip1:` payload printed as a QR on a receipt-width page (black on white). The app can then delete the slip locally. Importing a paper slip **swaps it at once** (new secrets, new signatures), so the paper is void after import, and a photographed copy is worthless once imported.
 
 ## 4. Requests (browser → API, always over the mixnet)
 
@@ -83,6 +84,7 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount_units`, `address_sealed` (X25519 sealed box of `{address, salt}`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{withdraw_id}`; status shown in the bundle |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
 | `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
+| `GET /v1/known/{request_id}` | | | **P600 "what we know"**: the exact stored record for that request (batch, tag, market, side, size, price, height), served as-is from the database. The request id is random, and the record holds nothing secret |
 
 - Output counts are capped at 32 per keyset per request.
 - **API-side validation:** PoW, schema, unspent and valid inputs.

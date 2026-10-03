@@ -213,7 +213,7 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 | `GET /v1/head` | `{height, seq, root, pow_bits}` | poll ~3 s |
 | `GET /v1/live` | current prices (ours and the Polymarket reference) for all markets, plus the last 2 minutes of batch results | poll ~3 s |
 | `GET /v1/snapshot/{seq}.json.gz` | full state: markets (labels, rules text, WebP thumbnails ≤ 4 KB), keyset ids, issuance log, spent set, house balance | first load, then cached |
-| `GET /v1/delta/{seq}.json.gz` | one block's worth of batches: inputs (with tags), reference snapshots, results, issued `B_`/`C_`/DLEQ (shuffled), spent `Y`s, payouts, resolutions, anchors, `prev_root` | per block |
+| `GET /v1/delta/{seq}.json.gz` | one block's worth of batches: inputs (with tags), reference snapshots, results, issued `B_`/`C_`/DLEQ (shuffled), spent `Y`s, payouts, resolutions, anchors, public chain stats for the block (shielded action count, for Block Radio), `prev_root` | per block |
 
 - `root = SHA256(prev_root ‖ SHA256(delta))`: a hash chain, anchored on-chain.
 - Your own results arrive in the **response** within seconds. The bundle is for the public record, restore, proofs and verification.

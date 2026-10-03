@@ -97,6 +97,7 @@
 | D4 | Sharing a slip QR code in a chat app | that app | a slip is as private as the channel it's sent over; the UI says so before export |
 | D5 | Browser history, tab titles and screen sharing reveal which markets you looked at | A7, anyone watching your screen | constant URL (navigation never touches history); the tab title is always `Blindbook`; proof links are replaced in the address bar as soon as they're opened |
 | D6 | A paper slip is photographed, or a network printer keeps a copy | A7, print infrastructure | paper slips are bearer cash: a warning before printing ("whoever scans this owns it"); importing swaps the slip at once, so the paper is void; the UI recommends a local printer |
+| D8 | Back-room apps leak activity (scores, notes, listening) | A2, A3, A6 | all apps run locally with no network requests (Block Radio reads only the public bundle already downloaded); scores stay in local storage; Dead drop notes are encrypted inside the vault and never synced |
 | D7 | Two shared NOBODY PASS images link the same person | public | the pixel face is random per save, not derived from the vault; stamps are generic; no amounts, markets or dates on the card |
 
 ### Integrity, custody, availability

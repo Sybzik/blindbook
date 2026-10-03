@@ -77,7 +77,8 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
   - **mix-fetch allows one tunnel per page** (`setupMixTunnel` once; `disconnectMixTunnel` needs a page reload). The main page's tunnel carries browsing, reads and trades.
   - **Writes never share a connection:** the API answers every POST with `Connection: close`, and the TLS terminator disables session tickets and resumption, so each write rides a new TCP+TLS connection inside the tunnel.
   - **Top-ups and withdrawals use a separate mixnet identity:** they run in a hidden same-origin frame that sets up **its own tunnel** (a different mixnet client), destroyed afterwards. Withdrawals add a random 0–60 s delay. Fallback, if a frame can't hold its own tunnel: reload into "cage mode" with a fresh tunnel.
-  - **Spike A verifies:** a frame gets an independent tunnel; `Connection: close` is honoured; the end-to-end bet latency (target p50 ≤ 4 s).
+  - **One mixnet identity per tunnel, never reused (normative):** mix-fetch keeps its client identity (keys, gateway registration) in IndexedDB under `clientId` (default `smolmix-wasm`), and a same-origin frame shares that storage. So every tunnel is set up with a random `clientId` and a random `storagePassphrase`: the main tunnel gets a new one on every page load, the cage frame a new one for every top-up or withdrawal. A tunnel's database is deleted when it ends, and leftovers are deleted at boot. Two tunnels never load the same identity, and no identity outlives its session.
+  - **Spike A verifies:** a frame gets an independent tunnel with its own identity (its own IndexedDB database); `Connection: close` is honoured; the end-to-end bet latency (target p50 ≤ 4 s).
   - **If a fresh connection per write is too slow:** bets within one session may share a keep-alive connection (linkable only to each other, never to top-ups or withdrawals; residual N11).
 
 | Endpoint | Body | Executes | Returns |
@@ -92,6 +93,10 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
 
 - Output counts are capped at 32 per keyset per request.
+- **Blank outputs for trades (normative):** the client can't know in advance how a trade fills, so `/v1/trade` carries blinded outputs **without amounts** for both possible results (as in Cashu NUT-08); the signer picks each used output's denomination and returns it with the signature and DLEQ.
+  - **buy:** `outputs[]` in the outcome's position keyset (shares bought), `change_outputs[]` in CREDIT (refunds: limit, halt, the part shrunk by the invariant);
+  - **sell:** `outputs[]` in CREDIT (proceeds), `change_outputs[]` in the **same position keyset** (shares that didn't sell: limit, halt, the part shrunk by the invariant).
+  - Each list always holds **31** blank outputs, enough for any amount below 2³¹ units, so every trade request has the same shape. Unused outputs are never signed, and zero-query restore skips them (gap limit 64 counters).
 - **P600 transparency:** every write response includes `stored_record`, the exact row the server stored for that request (batch, tag, market, outcome, side, size, price, height). The app keeps these in the vault and shows them on P600, with no extra request.
 - **API-side validation:** PoW, schema, unspent and valid inputs.
 - **The API never signs.** It hands batches to the signer over the signer's outbound stream (§9) and relays the signatures back.
@@ -121,7 +126,7 @@ A market is halted for a batch if any of:
 - either outcome's ask ≥ 0.98;
 - reference older than 10 s.
 
-Halted requests are refunded in full as CREDIT.
+Halted requests are refunded in full: a buy as CREDIT, a sell as its own shares (new position slips from `change_outputs[]`).
 
 ### 5.3 The exposure invariant (holds after every batch)
 
@@ -154,8 +159,8 @@ u ← u + issued ;  c ← c + Σ amounts kept
 ```
 aggregate shares per side S_s
 proceeds_s = min( C(q) − C(q − S_s·e_s),  S_s · bid_s )            // guard: never above Polymarket's bid
-min-price check with the same drop-and-repeat loop
-if W after the batch > L: shrink the sells pro-rata until W = L; unsold shares come back as new slips
+min-price check with the same drop-and-repeat loop; a dropped sell gets all its shares back as new slips
+if W after the batch > L: shrink the sells pro-rata until W = L; unsold shares come back as new slips (from change_outputs[])
 apply the 1% fee, allocate pro-rata as CREDIT
 u ← u − S ;  c ← c − proceeds
 ```

@@ -86,6 +86,7 @@
 | N9 | iOS suspends the page while the user is in the wallet; the mixnet link drops | user | re-links visibly on return; never falls back to direct |
 | N10 | Your **wallet** reveals your IP to its lightwalletd when broadcasting | A3, A6 | outside our app; the guide recommends wallets with Nym or Tor (Zingo!, Zkool) |
 | N11 | **Session linking:** a reused TLS connection (or TLS session resumption) ties a user's top-up, bets and withdrawal together | A2 | writes never share a connection (`Connection: close`, no TLS resumption); top-ups and withdrawals use a **separate mixnet tunnel** in their own frame plus a random delay; reads share the main tunnel. Residual: within one session the main tunnel's timing can hint that bets come from the same client. That links anonymous bets to each other, never to a person or a payout (see P6) |
+| N12 | **A persisted mixnet identity** links visits at the entry gateway, or the main tunnel and the cage frame load the same identity (mix-fetch stores it in IndexedDB, which same-origin frames share) | A6 (Nym gateway), A2 | every tunnel gets a random `clientId` and `storagePassphrase`; its database is deleted when the tunnel ends and leftovers at boot; so no two tunnels and no two sessions share a mixnet identity (verified in Spike A) |
 
 ### Layer 5: device
 

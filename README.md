@@ -63,7 +63,7 @@ flowchart LR
 | **Positions** | Who holds what? | Chaumian e-cash: blind-signed bearer slips, so even we can't link a top-up, a bet and a payout |
 | **Payout** | Where did the money go? | fixed-shape shielded batches with a discarded outgoing viewing key; destinations sealed to an isolated signer |
 | **Network** | Who is online? | every request through the Nym mixnet, so no IP ever reaches us; money in and out on a separate mixnet identity; one identical data bundle for everyone; zero third-party requests |
-| **Device** | What's on your phone? | 12-word phrase, encrypted vault, restore without asking the server anything |
+| **Device** | What's on your phone? | encrypted vault opened with Face ID (passkey), a 12-word phrase as backup, restore without asking the server anything |
 
 | Public | Never public |
 |---|---|

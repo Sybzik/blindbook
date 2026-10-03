@@ -61,6 +61,11 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 ```
 
 - **Deterministic secrets:** `x` and `r` come from the BIP 39 seed per NUT-13 (keyset id + counter).
+- **Vault at rest (client):** a random 256-bit vault key encrypts the vault (AES-GCM). The vault key is wrapped twice:
+  - by `HKDF(PRF output, "bb-vault-v1")` from a passkey (`navigator.credentials.get` with the `prf` extension, evaluated locally, with no server challenge involved);
+  - by Argon2id(passphrase) as the fallback.
+
+  The BIP 39 seed inside the vault is the root of every secret.
 - **Zero-query restore (normative client behaviour):** derive `B_` for counters 0..n per keyset, find them in the public issuance log, unblind, and check `Y` against the public spent set. **No restore request is ever sent.**
 - **Transfer format:** `bbslip1:` + base64url(CBOR [keyset_id, amount, x, C]…), also as a QR code. The recipient swaps it immediately so the sender can't spend it twice.
 - **Paper slips:** the same `bbslip1:` payload printed as a QR on a receipt-width page (black on white). The app can then delete the slip locally. Importing a paper slip **swaps it at once** (new secrets, new signatures), so the paper is void after import, and a photographed copy is worthless once imported.

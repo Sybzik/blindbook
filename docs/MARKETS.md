@@ -131,8 +131,8 @@ Gamma shows outcome prices of `["1","0"]` on closed markets while `umaResolution
 - **Chart (both outcomes, like Polymarket):**
   - outcome A's line in green and outcome B's in amber, each labelled at its right end ("LEGACY 45%", "PARIVISION 56%");
   - a 0–100% axis;
-  - Polymarket's reference as a thin violet dashed trace for the selected outcome, which can be toggled.
+  - Polymarket's reference **off by default** (shown as `ref 44¢` on the price cards); the REF toggle adds labelled dashed reference lines for both outcomes.
 - **Prices:** ours per outcome in ¢ and %, with Polymarket's reference beside them.
 - **Bet panel:** outcome toggle, amount, max price, payout preview, one BUY key, and the one-line conditions under it.
-- **Recent fills:** `▮▮▮▮ 0.010 ZEC → LEGACY @ 0.45 · blk 3,514,220`.
+- **Recent fills**, written as sentences with the name blacked out: `████████ bought LEGACY · 0.010 ZEC @ 45¢ · blk 3,514,220`.
 - **RULES** panel (above), and a **CALLED IT** hint after your own fills.

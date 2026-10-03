@@ -91,7 +91,7 @@
 
 | # | Leak | Seen by | Mitigation |
 |---|---|---|---|
-| D1 | A stolen device reveals slips | A7 | vault encrypted with AES-GCM; opening it needs **Face ID** (passkey PRF) or the passphrase; auto-lock |
+| D1 | A stolen device reveals slips | A7 | vault encrypted with AES-GCM; opening it needs **Face ID** on a phone (passkey PRF) or the passphrase on a computer; auto-lock |
 | D1b | The passkey itself reveals usage: a "Blindbook" entry sits in the user's keychain | A7 | the entry holds no balances or history and syncs only end-to-end encrypted; users who want no trace choose the passphrase instead; losing the passkey loses nothing (the 12-word phrase restores everything) |
 | D2 | iOS Safari wipes storage after 7 days without use, and bearer slips are lost | user funds | 12-word phrase confirmed before the first bet; zero-query restore; PWA prompt |
 | D3 | A malicious frontend steals the vault | A2 | reproducible build, published hashes, SRI, strict CSP, independent mirrors |

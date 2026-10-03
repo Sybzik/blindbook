@@ -40,7 +40,7 @@ Prediction markets need public prices, not public participants. Zcash is the one
 | [PROTOCOL.md](docs/PROTOCOL.md) | units, keysets, slips, API, anchored-LMSR batch clearing with worked examples, bundle, signer |
 | [MARKETS.md](docs/MARKETS.md) | what we take from Polymarket, listing rules, the guard, on-chain settlement, edge cases |
 | [THREAT_MODEL.md](docs/THREAT_MODEL.md) | adversaries, who-can-learn-what matrix, every leak and its fix, residual risks |
-| [DESIGN_BRIEF.md](docs/DESIGN_BRIEF.md) | "the Blind Booth": identity, 3D landing, terminal, mobile pager, console, easter eggs |
+| [DESIGN_BRIEF.md](docs/DESIGN_BRIEF.md) | "the Blind Booth": identity, clarity rules, usability criteria, 3D landing, terminal, mobile pager, console, easter eggs |
 | [ROADMAP.md](docs/ROADMAP.md) | day-by-day plan, gates, fallbacks, cut list, budget |
 | [RISKS.md](docs/RISKS.md) | project risk register |
 | [SUBMISSION.md](docs/SUBMISSION.md) | rules compliance, judging criteria, description draft, judge quickstart |

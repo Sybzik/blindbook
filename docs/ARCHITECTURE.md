@@ -29,7 +29,7 @@ Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.
 | **2. Positions** | Who holds what? | **Chaumian e-cash.** Balance and positions are blind-signed bearer tokens (*slips*), built on Cashu's BDHKE + DLEQ primitives. The mint signs without seeing, so no action links to any other. |
 | **3. Payout** | Where did the money go? | Shielded payout to a fresh address, fixed transaction shape, **discarded outgoing viewing key**, destination sealed to the signer and forgotten. |
 | **4. Network** | Who is online, and from where? | Static app from hosts that aren't ours. **Every API call goes through the Nym mixnet**, with a **fresh connection per action**. One identical data bundle for everyone. |
-| **5. Device** | What's on your phone? | 12-word phrase, vault encrypted at rest, deterministic secrets, **zero-query restore**. |
+| **5. Device** | What's on your phone? | 12-word phrase (required before real money; deferred for the testnet playground), vault encrypted at rest (passphrase, or a passkey via WebAuthn PRF where available), deterministic secrets, **zero-query restore**. |
 
 ## Components
 

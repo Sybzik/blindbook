@@ -79,7 +79,7 @@ Every trade carries a secret tag in the public log, which is anchored on-chain. 
 
 ## Design
 
-**The Blind Booth.** You step into a booth, the curtain closes, and a green-phosphor CRT terminal from an alternate 1986 boots up: teletext pages, split-flap digits, an oscilloscope for prices, keycaps set into the bezel, thermal receipts and paper betting slips. Wherever an exchange would show a person, there's a black redaction bar. On a phone it becomes a handheld pager. Behind the booth there's a **back room** (F6) with local-only toys: Nullifier Snake (touch your own tail and it's a double-spend), an odds calculator, Redact-a-Tracker and Block Radio, which turns every new Zcash block into a chord.
+**The Blind Booth.** You step into a booth, the curtain closes, and a green-phosphor CRT terminal from an alternate 1986 boots up: teletext pages, split-flap digits, an oscilloscope for prices, a retro desktop with pixel shortcuts and a taskbar, thermal receipts and paper betting slips. Wherever an exchange would show a person, there's a black redaction bar. On a phone it becomes a handheld pager. Behind the booth there's a **back room** (F6) with local-only toys: Nullifier Snake (touch your own tail and it's a double-spend), an odds calculator, Redact-a-Tracker and Block Radio, which turns every new Zcash block into a chord.
 
 <p align="center">
   <img src="design/reference/calm-terminal.png" alt="Desktop: the market page in the terminal" width="68%">

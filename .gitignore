@@ -43,3 +43,6 @@ desktop.ini
 !.vscode/extensions.json
 
 # --- local tooling ---
+
+# the design tool exports: attached inputs (third-party screenshots, brief copies) stay local
+design/*/uploads/

@@ -27,7 +27,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **Slips you can pass under the table** | positions are bearer e-cash; hand one to anyone as a QR code or link, with no chain transaction and no record of who held it | private OTC transfer of a position, which no on-chain market can offer |
 | **"Called it" receipts** | every trade carries a secret tag in the anchored public log; reveal the secret to prove "I bought YES at 18¢ at block N", to whoever you choose, whenever you choose | reputation without identity: prove you were right without exposing anything else. This is Zcash's selective disclosure, applied to forecasting |
 | **Verify in your browser** | the browser replays the whole market and checks solvency against the public reserve | don't trust us; check us |
-| **What we know about you** | page P600 shows the literal record our server stored for your last request, and the fields it doesn't have (IP, account, balance, other bets) | privacy you can see, not just read about |
+| **What we know about you** | page P600 shows the exact record our server stored for each of your requests (every write response returns it; the app keeps them in your vault) next to the fields it doesn't have (IP, account, balance, other bets) | privacy you can see, not just read about |
 | **Paper slips** | print a position as a thermal-style slip with a QR; scanning it imports it and immediately re-issues it | a bearer bet you can hold in your hand, gift or hide |
 | *Blind duels (stretch)* | challenge anyone with a link; the other side takes it anonymously; it's matched as a complete set and settled by Polymarket's result | peer-to-peer and zero house risk; spreads by link |
 
@@ -38,8 +38,8 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **1. Funding** | Who paid? | Ironwood shielded **top-up** to a **one-time diversified address** that is never published. Standard denominations. |
 | **2. Positions** | Who holds what? | **Chaumian e-cash.** Balance and positions are blind-signed bearer tokens (*slips*), built on Cashu's BDHKE + DLEQ primitives. The mint signs without seeing, so no action links to any other. |
 | **3. Payout** | Where did the money go? | Shielded payout to a fresh address, fixed transaction shape, **discarded outgoing viewing key**, destination sealed to the signer and forgotten. |
-| **4. Network** | Who is online, and from where? | Static app from hosts that aren't ours. **Every API call goes through the Nym mixnet**, on **single-use connections** from a pre-warmed pool. One identical data bundle for everyone. |
-| **5. Device** | What's on your phone? | 12-word phrase (required before real money; deferred for the testnet playground), vault encrypted at rest (passphrase, or a passkey via WebAuthn PRF where available), deterministic secrets, **zero-query restore**. |
+| **4. Network** | Who is online, and from where? | Static app from hosts that aren't ours. **Every API call goes through the Nym mixnet**: one tunnel for browsing and betting, a **separate mixnet identity** for top-ups and withdrawals, and a fresh connection for every write. One identical data bundle for everyone. |
+| **5. Device** | What's on your phone? | 12-word phrase (required before real money; deferred for the testnet playground), vault encrypted at rest (passphrase, or a passkey via WebAuthn PRF on iOS 18+), deterministic secrets, **zero-query restore**. **Everything personal** (slips, proofs, notes, stamps, scores, P600 records) lives in the vault; only cosmetic preferences sit in plain storage. |
 
 ## Components
 
@@ -50,7 +50,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 │ ZIP 321 deep link (phone) or QR (desktop) · privacy preflight · proof-of-work              │
 │ "called it" proof builder and checker                                                     │
 └──────────────────────────────────────────▲─────────────────────────────────────────────────┘
-                                           │ Nym mixnet (mixFetch), TLS inside WASM, single-use connections
+                                           │ Nym mixnet (mixFetch), TLS inside WASM, fresh connection per write
 ┌──────────────────────────────────────────┴─────────────────────────────────────────────────┐
 │ blindbook-api   SECRETLESS · top-up desk · 2-second trade batches · bundle publisher       │
 │ blindbook-indexer  untargeted chain sync, mempool watch, one-time address bookkeeping     │
@@ -113,7 +113,7 @@ Polymarket keeps your balance under a public wallet address; a typical custodial
 ## Flow 2: bet (instant, off-chain)
 
 1. **Pick and set the bet.** Choose a market and an outcome (outcomes carry Polymarket's labels: `Yes / No`, or team names such as `Legacy / PARIVISION`), type any amount from your balance, and set a max price (prefilled with sensible slippage).
-2. **The browser sends one request.** It spends CREDIT slips and attaches new blinded outputs for the position and the change, plus a fresh "called it" tag. It goes out on a **single-use connection** taken from a pre-warmed pool, so there's no handshake wait and no reused session.
+2. **The browser sends one request.** It spends CREDIT slips and attaches new blinded outputs for the position and the change, plus a fresh "called it" tag. The API closes the connection after every write and TLS session resumption is off, so no two writes share a connection.
 3. **The API batches.** It collects every request that arrives within a **2-second window** and clears them together at one price per side, priced off Polymarket's live book plus our users' net flow (below).
 4. **The signer checks and signs.** It holds its own replica of the state, verifies the batch and blind-signs in milliseconds. The response carries the signatures.
 5. **About 2–5 seconds after tapping BUY, the position slip is in your vault.** No chain transaction, no wallet switch.
@@ -123,7 +123,7 @@ Sell, swap, transfer and redeem work the same way and take seconds.
 ## Flow 3: withdraw
 
 - **Spend and seal.** Spend CREDIT slips and give a fresh unified address with an Ironwood receiver. The browser **seals the address to the signer's key**, so the API never sees it.
-- **A fresh session for the withdrawal.** Before sending, the browser **opens a brand-new mixnet session** and waits a random 0–60 s, so the operator can't link the withdrawal to the session you traded in.
+- **A separate mixnet identity for the withdrawal.** The withdrawal runs in a hidden same-origin frame with **its own mixnet tunnel** (a different mixnet client than the one you traded on), after a random 0–60 s delay, so the operator can't link it to your trading session. Top-ups use the same separation.
 - **Fixed-shape payouts.** Payouts go out every block when the queue isn't empty, in fixed-shape transactions:
   - 8 Ironwood actions, padded with zero-value outputs to throwaway addresses, so they look exactly like real recipients;
   - discarded outgoing viewing key;
@@ -136,7 +136,7 @@ Sell, swap, transfer and redeem work the same way and take seconds.
 
 1. With every trade the browser attaches `tag = SHA256("bb-called-it" ‖ s)`, where `s` is a per-trade secret derived from the vault seed.
 2. The batch result publishes `tag`, the market, the outcome, the size, the average price and the block height. It's part of the public log that is anchored on-chain every hour.
-3. **To prove a call later,** reveal `s`, for example as a link `…/#/proof/<s>` or a printable "CALLED IT" receipt card. Anyone's browser recomputes the tag, finds it in the anchored log and shows: *"bought Legacy at 44¢ at block 3,514,220 · verified ✓"*.
+3. **To prove a call later,** reveal `s`, for example as a link that carries the secret after `#` (never sent to any server or link-preview bot) or as a printable "CALLED IT" receipt card. Anyone's browser recomputes the tag, finds it in the anchored log and shows: *"bought Legacy at 44¢ at block 3,514,220 · verified ✓"*.
 4. **What gets revealed:** that one trade, and only to the people you hand the secret to. Nothing links it to your other trades, your balance or your payout.
 5. **Bonus:** the same proof settles disputes ("I did place this trade") without the operator ever learning anything new.
 
@@ -202,13 +202,13 @@ From Polymarket we take three things:
 
 | Action | Typical |
 |---|---|
-| App start: mixnet link + connection pool | 5–15 s, hidden in the boot animation |
+| App start: mixnet link | 5–15 s, hidden in the boot animation |
 | **Top up within the 0-conf cap** (wallet send → balance) | **~15–40 s** |
 | Top up above the cap | ~1–2.5 min (1 confirmation) |
-| **Bet / sell / buy more** | **~2–5 s** (pre-warmed connection + ≤ 2 s batch window + signing) |
+| **Bet / sell / buy more** | **~3–6 s** (fresh TCP+TLS connection inside the tunnel + ≤ 2 s batch window + signing); measured in Spike A |
 | Swap / transfer a slip | ~1–3 s |
 | Redeem after resolution | ~2–5 s |
-| Withdraw → in your wallet | ~2–4 min, plus a fresh mixnet session (5–15 s) and a 0–60 s privacy delay |
+| Withdraw → in your wallet | ~2–4 min, plus a separate mixnet tunnel (5–15 s) and a 0–60 s privacy delay |
 
 For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. Spike A measures the real numbers before we commit to them in the UI.
 
@@ -244,14 +244,14 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 |---|---|
 | Core | Rust 1.95 (edition 2024), tokio, axum, SQLite; engine crate is pure, deterministic, compiles to WASM; backend built and run in Linux containers |
 | Zcash | librustzcash: `zcash_client_backend` 0.24, `zcash_client_sqlite` 0.22, `zcash_keys` 0.16, `zcash_protocol` 0.10, `orchard` 0.15, `pczt`; dependency versions pinned to a known-good set taken from `zcash-devtool`'s lockfile |
-| Chain access | lightwalletd gRPC (`testnet.zec.rocks:443`), untargeted; option: self-hosted Zebra 6.3 + Zaino 0.8 |
-| E-cash | `cashu` crate from CDK (BDHKE, NUT-12 DLEQ); `@cashu/cashu-ts` primitives in the browser; our own multi-keyset mint |
-| Reference prices | Polymarket CLOB WebSocket market channel + REST fallback |
+| Chain access | local and self-hosted nodes via **ZcashFoundation/z3** (Docker Compose: Zebra + Zaino with a lightwalletd-compatible gRPC; regtest, testnet, mainnet); public `testnet.zec.rocks:443` as fallback; always untargeted |
+| E-cash | `cashu` crate 0.18 from CDK (`dhke` module, NUT-12 DLEQ, NUT-13) on the signer; `@cashu/crypto` 0.3 (basic Cashu crypto) in the browser; our own multi-keyset mint |
+| Reference prices | Polymarket CLOB WebSocket `wss://ws-subscriptions-clob.polymarket.com/ws/market` (no auth, PING every 10 s, optional `best_bid_ask` and `market_resolved` events) + REST fallback |
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked |
-| Network privacy | `@nymproject/mix-fetch` 2.x with a pool of single-use connections; own Nym exit if needed; Tor onion as an explicit fallback |
+| Network privacy | `@nymproject/mix-fetch` 2.x: one tunnel per page, so top-ups and withdrawals run in a separate same-origin frame with its own tunnel; `Connection: close` on writes and no TLS session resumption at the proxy; own Nym exit if needed; Tor onion as an explicit fallback |
 | Web | Vite, React 19, TypeScript, Tailwind v4, three.js / React Three Fiber, constant-URL navigation, PWA, strict CSP |
-| Vault | `@scure/bip39`, Argon2id (WASM), AES-GCM, X25519 sealed boxes (`@noble/curves`) |
-| Addresses | `zcash_address` (Rust → WASM) to parse unified addresses and require an Orchard-protocol receiver, never regex |
+| Vault | `@scure/bip39`, Argon2id via `hash-wasm`, WebCrypto AES-GCM, X25519 sealed boxes (`@noble/curves`), optional passkey unlock (WebAuthn PRF) |
+| Addresses | `zcash_address` 0.13 (Rust → WASM) to parse unified addresses and require an Orchard-protocol receiver, never regex |
 | Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |
 | Video | Remotion + Playwright capture + iPhone screen recording |
 
@@ -268,6 +268,6 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | D7 | top-up denominations: testnet 0.01 / 0.05 / 0.1 / 0.5 TAZ; mainnet 0.001 / 0.005 / 0.01 ZEC; bets in any amount from the balance | decided |
 | D8 | 0-conf credit caps: testnet 0.1 / 0.3 TAZ; mainnet 0.005 / 0.01 ZEC | decided |
 | D9 | judge vouchers on testnet; the mainnet proof shown in the video with tx evidence | decided |
-| D10 | single-use mixnet connections from a pre-warmed pool; a fresh mixnet session + random delay for withdrawals | decided |
+| D10 | one mixnet tunnel for browsing and betting with a fresh connection per write (server closes connections, no TLS resumption); a separate tunnel in its own frame for top-ups and withdrawals, plus a random delay | decided (latency measured in Spike A) |
 | D11 | "Called it" receipts (tag per trade, reveal by choice) as the signature feature | decided |
 | D12 | Blind duels | stretch |

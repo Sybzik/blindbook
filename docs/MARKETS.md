@@ -53,7 +53,7 @@ At listing the admin tool:
 
 ## Live reference, anchor and guard
 
-- The server keeps a live WebSocket subscription to Polymarket's order book for every listed outcome token.
+- The server keeps a live WebSocket subscription to Polymarket's order book for every listed outcome token (`wss://ws-subscriptions-clob.polymarket.com/ws/market`, no auth, PING every 10 s). Its `market_resolved` event wakes our resolver early, but settlement still waits for the on-chain payout.
 - **Each 2-second batch records the reference** (30 s median mid, depth-aware bid and ask, timestamp) in the public log. That snapshot is the batch's **anchor**.
 - **Buys never price below Polymarket's ask, and sells never above its bid.** With the moving anchor there's no stale price to arbitrage.
 - **Spoofing doesn't pay:** the median and the depth-aware quotes mean one fake order on a thin book can't swing our price.

@@ -58,7 +58,7 @@
 | P4 | Unique slip amounts link split and merge operations | A2 | power-of-two denominations |
 | P5 | Reusing one long-lived key across bets | A2, A4 | no long-lived keys; every slip is independent |
 | P7 | A request reveals a user's whole balance (spending every slip at once) | A2 | the wallet keeps standard denominations, spends only what is needed plus change, and re-splits in the background over separate connections; **the server never stores balances at all** |
-| P8 | A "called it" proof reveals more than the one trade | anyone shown the proof | each trade's tag uses an independent secret; a proof reveals exactly one fill (market, side, size, price, height) to whoever the user chooses, and nothing about other trades, balance or payouts. Publishing a proof under your own name links your name to that one trade, which is the user's explicit choice |
+| P8 | A "called it" proof reveals more than the one trade | anyone shown the proof | each trade's tag uses an independent secret; a proof reveals exactly one fill (market, side, size, price, height) to whoever the user chooses, and nothing about other trades, balance or payouts. Publishing a proof under your own name links your name to that one trade, which is the user's explicit choice. Proof links keep the secret after `#`, so servers and link-preview bots never see it |
 | P6 | Operator guesses that a top-up and bets placed seconds later belong to the same (anonymous) person | A2 | both sides are anonymous, so no identity is revealed; blind slips and a fresh connection per request leave only timing; the UI offers a "mix delay" option; documented as low-impact residual |
 
 ### Layer 3: payout
@@ -85,7 +85,7 @@
 | N8 | The indexer's **targeted** lightwalletd queries (by txid) reveal which transactions are deposits | A6 | **untargeted only**: all compact blocks, full mempool, every full tx of every block; option: self-hosted Zebra + Zaino |
 | N9 | iOS suspends the page while the user is in the wallet; the mixnet link drops | user | re-links visibly on return; never falls back to direct |
 | N10 | Your **wallet** reveals your IP to its lightwalletd when broadcasting | A3, A6 | outside our app; the guide recommends wallets with Nym or Tor (Zingo!, Zkool) |
-| N11 | **Session linking:** one reused TLS connection (or TLS session resumption) ties a user's top-up, bets and withdrawal together | A2 | **single-use connections** from a pool of 3 opened at random moments (no handshake wait at click time, no reuse, no TLS resumption); withdrawals use a brand-new mixnet session plus a random 0–60 s delay; reads use a separate connection. Residual: at very low traffic, connection timing can still hint that requests share a client. That links anonymous actions to each other, never to a person (see P6) |
+| N11 | **Session linking:** a reused TLS connection (or TLS session resumption) ties a user's top-up, bets and withdrawal together | A2 | writes never share a connection (`Connection: close`, no TLS resumption); top-ups and withdrawals use a **separate mixnet tunnel** in their own frame plus a random delay; reads share the main tunnel. Residual: within one session the main tunnel's timing can hint that bets come from the same client. That links anonymous bets to each other, never to a person or a payout (see P6) |
 
 ### Layer 5: device
 
@@ -97,7 +97,7 @@
 | D4 | Sharing a slip QR code in a chat app | that app | a slip is as private as the channel it's sent over; the UI says so before export |
 | D5 | Browser history, tab titles and screen sharing reveal which markets you looked at | A7, anyone watching your screen | constant URL (navigation never touches history); the tab title is always `Blindbook`; proof links are replaced in the address bar as soon as they're opened |
 | D6 | A paper slip is photographed, or a network printer keeps a copy | A7, print infrastructure | paper slips are bearer cash: a warning before printing ("whoever scans this owns it"); importing swaps the slip at once, so the paper is void; the UI recommends a local printer |
-| D8 | Back-room apps leak activity (scores, notes, listening) | A2, A3, A6 | all apps run locally with no network requests (Block Radio reads only the public bundle already downloaded); scores stay in local storage; Dead drop notes are encrypted inside the vault and never synced |
+| D8 | Back-room apps or settings leak activity | A2, A3, A6, A7 | all apps run locally with no network requests (Block Radio reads only the public bundle already downloaded); **everything personal** (slips, proofs, notes, stamps, scores, P600 records) lives in the encrypted vault; only cosmetic preferences (CLEAN SIGNAL, sound) are in plain storage |
 | D7 | Two shared NOBODY PASS images link the same person | public | the pixel face is random per save, not derived from the vault; stamps are generic; no amounts, markets or dates on the card |
 
 ### Integrity, custody, availability

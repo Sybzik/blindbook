@@ -23,11 +23,11 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | max trade size | per market: `L_m` × 4 of notional | keeps single trades small relative to the buffer |
 | withdrawal fee | 20,000 zatoshi | |
 | payout batch | every block while the queue is non-empty | fixed 8-action shape |
-| withdrawal privacy delay | uniform random 0–60 s, client-side | before sending, on a fresh mixnet session |
+| withdrawal privacy delay | uniform random 0–60 s, client-side | before sending, from the separate top-up/withdrawal tunnel |
 | sweep | every 48 blocks (~1 h), only if there are deposits | |
 | anchor tx | testnet every 48 blocks; mainnet once a day + at each resolution | each costs 0.0001 ZEC |
 | PoW difficulty | top-up, voucher, withdraw: 22 bits; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast |
-| connection pool | 3 pre-warmed single-use connections, refilled at random intervals | see §4 |
+| connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off) | see §4 |
 | LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
 | exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market; funded at listing |
 | listing band | Polymarket mid ∈ [0.10, 0.90] at listing | |
@@ -68,11 +68,12 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 ## 4. Requests (browser → API, always over the mixnet)
 
 - **Proof-of-work:** every POST carries `pow = {nonce}`. `SHA256("bb-pow-v1" ‖ SHA256(canonical_body) ‖ nonce)` must have at least D leading zero bits (D per endpoint, §1). Canonical body = RFC 8785 JSON.
-- **Connection discipline (normative client behaviour):**
-  - **one mixnet client per session**, linked during the boot animation;
-  - **writes use single-use connections** from a pool of 3 that were opened at random moments in the background: one connection carries exactly one request and is then closed, with no TLS session resumption. This gives unlinkable requests without paying a handshake at click time;
-  - **withdrawals use a brand-new mixnet client session** (a 5–15 s link) plus a random 0–60 s delay;
-  - **read polling** uses its own long-lived connection, separate from writes.
+- **Connection discipline (normative):**
+  - **mix-fetch allows one tunnel per page** (`setupMixTunnel` once; `disconnectMixTunnel` needs a page reload). The main page's tunnel carries browsing, reads and trades.
+  - **Writes never share a connection:** the API answers every POST with `Connection: close`, and the TLS terminator disables session tickets and resumption, so each write rides a new TCP+TLS connection inside the tunnel.
+  - **Top-ups and withdrawals use a separate mixnet identity:** they run in a hidden same-origin frame that sets up **its own tunnel** (a different mixnet client), destroyed afterwards. Withdrawals add a random 0–60 s delay. Fallback, if a frame can't hold its own tunnel: reload into "cage mode" with a fresh tunnel.
+  - **Spike A verifies:** a frame gets an independent tunnel; `Connection: close` is honoured; the end-to-end bet latency (target p50 ≤ 4 s).
+  - **If a fresh connection per write is too slow:** bets within one session may share a keep-alive connection (linkable only to each other, never to top-ups or withdrawals; residual N11).
 
 | Endpoint | Body | Executes | Returns |
 |---|---|---|---|
@@ -84,9 +85,9 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount_units`, `address_sealed` (X25519 sealed box of `{address, salt}`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{withdraw_id}`; status shown in the bundle |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
 | `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
-| `GET /v1/known/{request_id}` | | | **P600 "what we know"**: the exact stored record for that request (batch, tag, market, side, size, price, height), served as-is from the database. The request id is random, and the record holds nothing secret |
 
 - Output counts are capped at 32 per keyset per request.
+- **P600 transparency:** every write response includes `stored_record`, the exact row the server stored for that request (batch, tag, market, outcome, side, size, price, height). The app keeps these in the vault and shows them on P600, with no extra request.
 - **API-side validation:** PoW, schema, unspent and valid inputs.
 - **The API never signs.** It hands batches to the signer over the signer's outbound stream (§9) and relays the signatures back.
 
@@ -191,7 +192,7 @@ Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete
 
 1. For trade request i, the client derives a secret `s_i` from the vault seed (NUT-13 style path, separate counter) and sends `tag_i = SHA256("bb-called-it" ‖ s_i)`.
 2. The batch result in the public log lists `(tag_i, market_id, outcome, side, filled_units, avg_price_bp, height, batch_id)`. It's anchored on-chain with the bundle root.
-3. **Proof** = `s_i`, optionally packed as `bbproof1:` + base64url(CBOR [s_i, height]) or a link `/#/proof/<…>`.
+3. **Proof** = `s_i`, optionally packed as `bbproof1:` + base64url(CBOR [s_i, height]) or a link that carries the proof after `#` (`https://…/#p=<…>`), so neither our servers nor link-preview bots ever receive it.
 4. **Verification** happens in any browser (or the CLI): compute `SHA256("bb-called-it" ‖ s_i)`, find it in the log at `height`, check the bundle root against the on-chain anchor, show the fill.
 5. **Revealing one proof says nothing about other trades:** every tag uses an independent secret.
 

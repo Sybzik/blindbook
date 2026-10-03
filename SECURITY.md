@@ -24,7 +24,7 @@ Out of scope: Zcash, Nym and Polymarket themselves, and denial of service agains
 
 - **The internet-facing API holds no secrets.** It can't sign slips or move funds. All keys live on a separate signer with no inbound ports, which replays the state itself before signing anything.
 - **No per-user state.** There are no accounts, emails, cookies or balances on the server; balances are blind-signed bearer slips held only on the user's device.
-- **No IPs.** Clients reach the API only through the Nym mixnet, on single-use connections. Services refuse to boot if access logging is enabled or if CORS/CSP would allow a third party.
+- **No IPs.** Clients reach the API only through the Nym mixnet. Top-ups and withdrawals use a separate mixnet identity; the API closes the connection after every write and disables TLS session resumption. Services refuse to boot if access logging is enabled or if CORS/CSP would allow a third party.
 - **No targeted queries.** Clients download one identical bundle; the indexer fetches whole blocks, never a single transaction.
 - **Verifiable custody.** The reserve viewing key is public. `blindbook-verify` (CLI or in the browser) replays the log and checks solvency and the exposure invariant `max(u_A, u_B) − c ≤ L` for every market.
 - **Known residual risks** are listed honestly at the end of the threat model.

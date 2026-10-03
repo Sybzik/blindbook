@@ -45,7 +45,7 @@ A prediction market needs **public prices**, not **public participants**. Zcash 
 ```mermaid
 flowchart LR
     W["Your Zcash wallet"] -->|"shielded top-up, one-time address"| D[("Deposit account: viewing key private")]
-    B["Your browser: vault + slips"] <-->|"Nym mixnet, single-use connections"| A["API: holds no secrets"]
+    B["Your browser: vault + slips"] <-->|"Nym mixnet, no IPs"| A["API: holds no secrets"]
     A <-->|"2-second batches"| S["Signer: no inbound ports"]
     P["Polymarket: catalog + live price"] --> A
     C["Polygon CTF: final result"] --> A
@@ -62,7 +62,7 @@ flowchart LR
 | **Funding** | Who paid? | Ironwood shielded top-up to a one-time address nobody can recognize as ours |
 | **Positions** | Who holds what? | Chaumian e-cash: blind-signed bearer slips, so even we can't link a top-up, a bet and a payout |
 | **Payout** | Where did the money go? | fixed-shape shielded batches with a discarded outgoing viewing key; destinations sealed to an isolated signer |
-| **Network** | Who is online? | every request through the Nym mixnet on single-use connections; one identical data bundle for everyone; zero third-party requests |
+| **Network** | Who is online? | every request through the Nym mixnet, so no IP ever reaches us; money in and out on a separate mixnet identity; one identical data bundle for everyone; zero third-party requests |
 | **Device** | What's on your phone? | 12-word phrase, encrypted vault, restore without asking the server anything |
 
 | Public | Never public |
@@ -82,7 +82,9 @@ Every trade carries a secret tag in the public log, which is anchored on-chain. 
 **The Blind Booth.** You step into a booth, the curtain closes, and a green-phosphor CRT terminal from an alternate 1986 boots up: teletext pages, split-flap digits, an oscilloscope for prices, keycaps set into the bezel, thermal receipts and paper betting slips. Wherever an exchange would show a person, there's a black redaction bar. On a phone it becomes a handheld pager. Behind the booth there's a **back room** (F6) with local-only toys: Nullifier Snake (touch your own tail and it's a double-spend), an odds calculator, Redact-a-Tracker and Block Radio, which turns every new Zcash block into a chord.
 
 <p align="center">
-  <img src="design/reference/calm-terminal.png" alt="Density reference for the market page" width="85%"><br>
+  <img src="design/reference/calm-terminal.png" alt="Desktop: the market page in the terminal" width="68%">
+  &nbsp;
+  <img src="design/reference/calm-pager.png" alt="Phone: the same market on the pager" width="22%"><br>
 </p>
 
 ## Docs

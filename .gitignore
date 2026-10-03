@@ -1,0 +1,43 @@
+# --- secrets: never commit keys, seeds or wallet databases ---
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*seed*
+*.mnemonic
+secrets/
+keys/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+wallet-data/
+
+# --- rust ---
+target/
+**/*.rs.bk
+
+# --- node / web ---
+node_modules/
+dist/
+.vite/
+.turbo/
+coverage/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# --- video ---
+video/out/
+*.mp4
+*.mov
+
+# --- os / editors ---
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/extensions.json

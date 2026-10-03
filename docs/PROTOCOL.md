@@ -11,8 +11,8 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | **unit** | 1,000 zatoshi = 10⁻⁵ ZEC | atomic unit of every slip; 1 ZEC = 100,000 units |
 | share | pays 100,000 units (1 ZEC) if its outcome wins | |
 | slip denominations | 2ᵏ units, k = 0..30 | power-of-two, like cash |
-| top-up denominations | 0.01 / 0.05 / 0.1 / 0.5 ZEC | ZEC ≈ $1,300 on Oct 2 |
-| 0-conf credit | ≤ 0.1 ZEC per top-up, ≤ 0.3 ZEC unconfirmed in total | above that: after 1 confirmation |
+| top-up denominations | testnet: 0.01 / 0.05 / 0.1 / 0.5 TAZ · mainnet: 0.001 / 0.005 / 0.01 ZEC | ZEC ≈ $1,300 on Oct 2; mainnet is a micro-stakes proof |
+| 0-conf credit | testnet ≤ 0.1 / 0.3 TAZ · mainnet ≤ 0.005 / 0.01 ZEC (per top-up / total unconfirmed) | above that: after 1 confirmation |
 | top-up address lifetime | 120 blocks (~2.5 h) | later payments are still credited |
 | **trade batch window** | **2 s** | all trade requests in a window clear together |
 | reference staleness limit | 10 s | Polymarket live book (WebSocket, REST fallback) |
@@ -20,10 +20,11 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | withdrawal fee | 20,000 zatoshi | |
 | payout batch | every block while the queue is non-empty | fixed 8-action shape |
 | withdrawal privacy delay | uniform random 0–60 s, client-side | before sending, on a fresh mixnet session |
-| sweep / anchor | every 48 blocks (~1 h); anchor also at each resolution | |
+| sweep | every 48 blocks (~1 h), only if there are deposits | |
+| anchor | testnet every 48 blocks; **mainnet once a day + at each resolution** | each anchor costs 0.0001 ZEC, so mainnet anchors are rationed |
 | PoW difficulty | 22 bits (published in `head`, adjustable) | ~0.3–1 s in WASM on a phone |
-| LMSR `b` | per market, default 0.2 ZEC | how strongly our users' flow moves our price |
-| exposure buffer `L_m` | per market, default 0.05 ZEC (mainnet) | the house's maximum loss in that market; funded at listing |
+| LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
+| exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market; funded at listing; when it's used up, the market accepts only risk-reducing trades |
 | listing band | Polymarket mid ∈ [0.10, 0.90] at listing | |
 
 Rounding (normative): share and credit amounts round **down** to whole units. Every remainder goes to the house balance and is logged.

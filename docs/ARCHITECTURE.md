@@ -74,15 +74,28 @@ Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.
 
 ## Flow 1: top up (once, on-chain)
 
-1. Pick a top-up amount: 0.01 / 0.05 / 0.1 / 0.5 ZEC.
+1. Pick a standard top-up amount (testnet 0.01–0.5 TAZ; mainnet proof 0.001–0.01 ZEC).
 2. The browser derives blinded CREDIT outputs from the vault seed and registers the top-up over the mixnet (with proof-of-work). It gets back a **one-time unified address** (Orchard-protocol receiver only).
 3. **Privacy preflight**, then:
    - **phone:** *Pay in wallet* opens `zcash:<address>?amount=0.05` in Zodl, prefilled;
    - **desktop:** a QR code generated locally.
 4. Our indexer and the signer's independent indexer both see the payment **in the mempool** within seconds.
-   - **Top-ups up to 0.1 ZEC are credited at once (0-conf)**, within house-insured limits;
+   - **small top-ups are credited at once (0-conf)**, within house-insured caps (testnet ≤ 0.1 TAZ, mainnet ≤ 0.005 ZEC);
    - bigger ones are credited after 1 confirmation (~1–2.5 min).
 5. The signer blind-signs the CREDIT outputs, and the browser unblinds them. You now hold a **private balance**: bearer CREDIT slips that only your device knows about.
+
+## Where your balance lives (and why it isn't an account)
+
+**There is no balance on our server.** No table has a row for you, because there is no "you" to attach it to.
+
+- Your balance **is** a set of e-cash tokens (CREDIT slips). Each slip is a random 32-byte secret plus the mint's blind signature on it. Slips come in power-of-two amounts, like banknotes.
+- **They exist only on your device:** in IndexedDB, encrypted with a key derived from your passphrase (Argon2id → AES-GCM). The 12-word phrase can regenerate every secret.
+- **What the server knows:** the **total** issued per keyset and the list of spent slips (`Y = hash_to_curve(secret)`). It can't see anyone's balance, can't tell which slips belong together, and can't freeze one person's funds, because it can't tell whose slips are whose.
+- **Spending (a bet, a sell, a withdrawal):** you hand over some slips and receive freshly blinded new ones (the position plus change). The mint sees "valid slips worth X were spent, and new ones were issued". Blinding makes the new slips unlinkable to the old ones, even for the mint.
+- **Amount privacy:** the wallet keeps slips in standard denominations and spends only what a request needs (with change), so a request never reveals your whole balance. It quietly re-splits in the background over separate connections.
+- **Lost phone or cleared browser:** type the 12 words on any device. The browser derives your blinded messages, finds them in the public issuance log and unblinds them. **It never asks the server "what's mine?"**
+
+Compare: Polymarket keeps your balance under a public wallet address; a typical custodial app keeps it under an account ID. Both link everything you do. Here the most the server could hand over is aggregate totals. This is Chaum's e-cash (1982), the same idea as Cashu and Fedimint, applied to a market.
 
 ## Flow 2: bet (instant, off-chain)
 
@@ -158,8 +171,8 @@ From Polymarket we take three things:
 | Action | Typical | Was (v2) |
 |---|---|---|
 | App start: mixnet link | 5–15 s, hidden in the boot animation | same |
-| **Top up ≤ 0.1 ZEC** (wallet send → balance) | **~15–40 s** | 2.5–5 min |
-| Top up > 0.1 ZEC | ~1–2.5 min (1 confirmation) | 2.5–5 min |
+| **Top up within the 0-conf cap** (wallet send → balance) | **~15–40 s** | 2.5–5 min |
+| Top up above the cap | ~1–2.5 min (1 confirmation) | 2.5–5 min |
 | **Bet / sell / buy more** | **~2–5 s** | 1.5–5 min |
 | Swap / transfer a slip | ~1–3 s | same |
 | Redeem after resolution | ~2–5 s | ~2–5 s |
@@ -170,7 +183,7 @@ For comparison, a Polymarket trade takes ~1–2 s. We pay 1–3 seconds for priv
 ### What 0-conf credit costs us and why it's safe
 
 - A Zcash node rejects a second transaction that spends the same note, and Zcash has no replace-by-fee. Double-spending an unconfirmed top-up therefore takes a miner's collusion.
-- We cap it: **≤ 0.1 ZEC per top-up and ≤ 0.3 ZEC of unconfirmed credit at any moment**. Above the cap, credit waits for one confirmation.
+- We cap it (testnet ≤ 0.1 / 0.3 TAZ; mainnet ≤ 0.005 / 0.01 ZEC, per top-up / total unconfirmed). Above the cap, credit waits for one confirmation.
 - The worst case (a successful double-spend) is a loss the house covers from fees. Users are never affected.
 
 ## Tech stack
@@ -194,12 +207,12 @@ For comparison, a Polymarket trade takes ~1–2 s. We pay 1–3 seconds for priv
 | # | Decision | Status |
 |---|---|---|
 | D1 | LMSR **anchored to Polymarket's live mid** + guard + exposure buffer, 2-second batches | decided (v3) |
-| D2 | testnet for development, mainnet with small stakes for the demo | decided |
+| D2 | **testnet is the playground** (full experience for judges, free); **mainnet is the proof** (same build, micro stakes, ≤ $30 of ZEC) | decided (v3, $50 budget) |
 | D3 | one isolated signer holding all secrets; FROST 2-of-3 as stretch | proposed |
 | D4 | private deposit viewing key, public reserve viewing key, discarded-OVK payouts | decided |
 | D5 | no NEAR Intents on-ramp (transparent ZEC only, a leak) | proposed |
 | D6 | curated 8–12 binary markets, including single markets from negRisk events | proposed |
-| D7 | top-up denominations 0.01 / 0.05 / 0.1 / 0.5 ZEC; bets in any amount from the balance | decided (v3) |
-| D8 | 0-conf credit up to 0.1 ZEC per top-up, 0.3 ZEC total unconfirmed | proposed |
-| D9 | judge vouchers: pre-funded CREDIT in the submission | proposed |
+| D7 | top-up denominations: testnet 0.01 / 0.05 / 0.1 / 0.5 TAZ; mainnet 0.001 / 0.005 / 0.01 ZEC; bets in any amount from the balance | decided (v3) |
+| D8 | 0-conf credit: testnet 0.1 / 0.3 TAZ; mainnet 0.005 / 0.01 ZEC (per top-up / total unconfirmed) | proposed |
+| D9 | judge vouchers on **testnet** (free); the mainnet proof is shown in the video with tx evidence | proposed |
 | D10 | fresh mixnet connection per write; fresh mixnet session + random delay for withdrawals | decided (v3) |

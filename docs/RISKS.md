@@ -9,8 +9,8 @@ Privacy threats are in [THREAT_MODEL.md](THREAT_MODEL.md). This file covers what
 | R3 | librustzcash Ironwood APIs still moving (crates finalized Aug 19) | medium | high | pin exact versions; `zcash-devtool` as reference; subprocess or zallet RPC fallback | Oct 4 |
 | R4 | Blind-signature implementations disagree across Rust and TS | low | high | one implementation compiled to WASM for both sides | Oct 5 |
 | R5 | Scope too big for 26 days | **high** | **high** | gates, cut list, feature freeze Oct 24; core never cut | daily |
-| R6 | Judges can't or won't spend mainnet ZEC | high | high | **judge vouchers** (credit slips, no wallet needed) | Oct 23 |
-| R7 | Mainnet bug loses funds | low | medium | small stakes, solvency checks, supply guard, halt switch | Oct 23 |
+| R6 | Judges can't or won't spend ZEC | high | high | **testnet judge vouchers** (credit slips, no wallet needed); mainnet proof in the video | Oct 23 |
+| R7 | Mainnet bug loses funds | low | low | micro stakes (≤ 0.02 ZEC in total), solvency checks, supply guard, halt switch | Oct 23 |
 | R8 | House drained by informed traders | low | low | price anchored to Polymarket's live mid, guard, halts, per-market buffer `L_m` caps the loss | Oct 7 |
 | R9 | Polymarket API changes or rate-limits us | low | medium | server cache, halts on staleness, settlement doesn't depend on the API (Polygon) | ongoing |
 | R10 | No market resolves in time for the video | low | medium | list short-dated markets on Oct 23; fallback to an earlier resolution | Oct 25 |
@@ -23,3 +23,5 @@ Privacy threats are in [THREAT_MODEL.md](THREAT_MODEL.md). This file covers what
 | R17 | Single developer machine fails | low | high | push to GitHub daily | daily |
 | R18 | 0-conf top-up double-spent | low | low | caps (0.1 ZEC per top-up, 0.3 ZEC total); the house absorbs it | Oct 11 |
 | R19 | mixFetch can't force a fresh connection per request | medium | medium | recreate the mixFetch client for withdrawals (costs a re-link, and withdrawals are rare); reuse for reads only | Oct 3 |
+| R20 | Budget ($50) too small for mainnet liquidity | certain | medium | testnet is the full playground; mainnet runs only as a micro-stakes proof; buffers halt markets safely when used up | Oct 3 |
+| R21 | Not enough testnet TAZ | medium | medium | claim from three faucets daily from Oct 4; ask the community; keep testnet buffers modest | Oct 4 |

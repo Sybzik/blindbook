@@ -27,7 +27,7 @@ Prediction markets need public prices, not public participants. Zcash is the one
 
 ## How a bet works
 
-1. **Top up once:** pay a one-time address from any shielded Zcash wallet (one tap on iPhone via Zodl; QR code on desktop). Up to 0.1 ZEC is credited within seconds as a private balance only your device knows about.
+1. **Top up once:** pay a one-time address from any shielded Zcash wallet (one tap on iPhone via Zodl; QR code on desktop). Small top-ups are credited within seconds as a private balance only your device knows about.
 2. **Bet instantly (2–5 s):** pick a market and an outcome. Your bet clears in a 2-second batch at Polymarket's live price, shifted by our users' net flow, and never cheaper than Polymarket's book.
 3. **Hold bearer slips:** sell them, hand them to someone, or redeem when Polymarket's result is final on Polygon.
 4. **Withdraw** to a fresh shielded address. Nobody, including us, can tie that payout to your bets.

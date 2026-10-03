@@ -8,8 +8,8 @@ The video is the judges' first impression. Every second shows something **real**
 |---|---|---|---|
 | 0:00–0:08 | Typographic cold open (our design system) | a public ledger scrolls: wallet → bet → size → time, names circled in red | "On a public prediction market, every bet is a dossier." |
 | 0:08–0:16 | 3D booth, lamp flickers, curtain closes, CRT boots | `THE PRICE IS PUBLIC. YOU ARE NOT.` | "Blindbook. A private prediction market on Zcash." |
-| 0:16–0:30 | **iPhone screen recording, top-up:** cage → 0.05 ZEC → preflight ticks → PAY IN WALLET → Zodl prefilled → send → back → SEEN stamp → CREDITED (seconds) | real mainnet | "Top up once. One tap. No account." |
-| 0:30–0:46 | **Instant bet:** market page → BUY YES 0.01 → ~3 s → slip tears off, tape shows a redacted line | real mainnet | "Then bet in seconds, from a balance only your phone knows." |
+| 0:16–0:30 | **iPhone screen recording, top-up (mainnet proof, 0.005 ZEC):** cage → 0.005 ZEC → preflight ticks → PAY IN WALLET → Zodl prefilled → send → back → SEEN stamp → CREDITED (seconds) | real mainnet | "Top up once. One tap. No account." |
+| 0:30–0:46 | **Instant bet:** market page → BUY YES 0.002 → ~3 s → slip tears off, tape shows a redacted line | real mainnet | "Then bet in seconds, from a balance only your phone knows." |
 | 0:46–1:06 | **What everyone else sees** (split screen): block explorer (a shielded tx, nothing readable) · our public tape (redacted line) · our own server log (no IP, unlinkable token) | | "The chain can't see you. The network can't. We can't." |
 | 1:06–1:24 | Five-layer diagram builds up, one layer per beat | funding · positions · payout · network · device | "Five independent layers. Breaking one doesn't break the rest." |
 | 1:24–1:42 | Resolution: tally board flips `RESOLVED · YES` (Polygon tx shown) → redeem → withdraw → Zodl receives | | "Settled from Polymarket's on-chain result. Paid out unlinkably." |

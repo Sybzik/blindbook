@@ -57,6 +57,7 @@
 | P3 | Restore requests link all of one user's orders | A2 | **zero-query restore** from the public issuance log |
 | P4 | Unique slip amounts link split and merge operations | A2 | power-of-two denominations |
 | P5 | Reusing one long-lived key across bets | A2, A4 | no long-lived keys; every slip is independent |
+| P7 | A request reveals a user's whole balance (spending every slip at once) | A2 | the wallet keeps standard denominations, spends only what is needed plus change, and re-splits in the background over separate connections; **the server never stores balances at all** |
 | P6 | Operator guesses that a top-up and bets placed seconds later belong to the same (anonymous) person | A2 | both sides are anonymous, so no identity is revealed; blind slips and a fresh connection per request leave only timing; the UI offers a "mix delay" option; documented as low-impact residual |
 
 ### Layer 3: payout

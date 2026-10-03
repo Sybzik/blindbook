@@ -44,13 +44,13 @@ A prediction market needs **public prices**, not **public participants**. Zcash 
 
 ```mermaid
 flowchart LR
-    W["Your Zcash wallet"] -- "shielded top-up<br/>one-time address" --> D[("Deposit account<br/>viewing key private")]
-    B["Your browser<br/>vault + slips"] <-- "Nym mixnet<br/>single-use connections" --> A["API<br/>holds no secrets"]
-    A <-- "2-second batches" --> S["Signer<br/>no inbound ports"]
-    P["Polymarket<br/>catalog + live price"] --> A
-    C["Polygon CTF<br/>final result"] --> A
-    D -- "hourly sweep" --> R[("Reserve<br/>viewing key public")]
-    R -- "fixed-shape payout<br/>discarded OVK" --> F["Your fresh address"]
+    W["Your Zcash wallet"] -->|"shielded top-up, one-time address"| D[("Deposit account: viewing key private")]
+    B["Your browser: vault + slips"] <-->|"Nym mixnet, single-use connections"| A["API: holds no secrets"]
+    A <-->|"2-second batches"| S["Signer: no inbound ports"]
+    P["Polymarket: catalog + live price"] --> A
+    C["Polygon CTF: final result"] --> A
+    D -->|"hourly sweep"| R[("Reserve: viewing key public")]
+    R -->|"fixed-shape payout, discarded OVK"| F["Your fresh address"]
     classDef bb fill:#0A1A11,stroke:#3FCB7E,color:#C6FFDD
     class W,D,B,A,S,P,C,R,F bb
 ```

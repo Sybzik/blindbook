@@ -24,7 +24,7 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | anchor | testnet every 48 blocks; **mainnet once a day + at each resolution** | each anchor costs 0.0001 ZEC, so mainnet anchors are rationed |
 | PoW difficulty | 22 bits (published in `head`, adjustable) | ~0.3–1 s in WASM on a phone |
 | LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
-| exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market; funded at listing; when it's used up, the market accepts only risk-reducing trades |
+| exposure buffer `L_m` | per market: testnet 0.02 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market; funded at listing; when it's used up, the market accepts only risk-reducing trades |
 | listing band | Polymarket mid ∈ [0.10, 0.90] at listing | |
 
 Rounding (normative): share and credit amounts round **down** to whole units. Every remainder goes to the house balance and is logged.

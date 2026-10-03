@@ -117,3 +117,4 @@
 3. **Custody is verifiable, not trustless.** Zcash has no smart contracts. Theft would be visible immediately; deanonymization isn't possible at all.
 4. **Nym dependency** for network privacy. If it's unavailable we stop rather than leak.
 5. **First load of the app.** A static host (not us) sees an IP opening a web app. Use the .onion mirror for zero exposure.
+6. **Hackathon deployment:** with a $50 budget the signer runs in an isolated container on the same VPS as the API. Root access to that VPS would put the micro-stakes funds at risk, never privacy. In production the signer is a separate machine (FROST 2-of-3).

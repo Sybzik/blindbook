@@ -186,6 +186,18 @@ For comparison, a Polymarket trade takes ~1–2 s. We pay 1–3 seconds for priv
 - We cap it (testnet ≤ 0.1 / 0.3 TAZ; mainnet ≤ 0.005 / 0.01 ZEC, per top-up / total unconfirmed). Above the cap, credit waits for one confirmation.
 - The worst case (a successful double-spend) is a loss the house covers from fees. Users are never affected.
 
+## Networks and deployment
+
+| Network | Purpose | Coins |
+|---|---|---|
+| **Regtest** (local Zebra with the internal miner + lightwalletd/Zaino) | all development, CI, end-to-end tests | unlimited, mined locally, $0 |
+| **Testnet** | the public **judge playground**: real Polymarket markets and prices, test money | ~0.7 TAZ total |
+| **Mainnet** | the **proof**: the same build with micro stakes, recorded in the video | ≤ 0.02 ZEC |
+
+Polymarket data and Polygon settlement are always the real mainnet ones; only the Zcash network differs.
+
+**Hackathon topology ($50 budget):** one small VPS runs the API, the indexer and the signer, with the signer in a **separate container with no inbound ports and its own volume**. The static app lives on separate free hosting. In production the signer moves to its own machine, ideally FROST 2-of-3. The threat model lists this as a residual risk: root on the VPS would put the micro-stakes funds at risk, but **not privacy**, because nothing on the server can link people to bets.
+
 ## Tech stack
 
 | Layer | Choice |

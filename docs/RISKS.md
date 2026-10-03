@@ -24,4 +24,8 @@ Privacy threats are in [THREAT_MODEL.md](THREAT_MODEL.md). This file covers what
 | R18 | 0-conf top-up double-spent | low | low | caps (0.1 ZEC per top-up, 0.3 ZEC total); the house absorbs it | Oct 11 |
 | R19 | mixFetch can't force a fresh connection per request | medium | medium | recreate the mixFetch client for withdrawals (costs a re-link, and withdrawals are rare); reuse for reads only | Oct 3 |
 | R20 | Budget ($50) too small for mainnet liquidity | certain | medium | testnet is the full playground; mainnet runs only as a micro-stakes proof; buffers halt markets safely when used up | Oct 3 |
-| R21 | Not enough testnet TAZ | medium | medium | claim from three faucets daily from Oct 4; ask the community; keep testnet buffers modest | Oct 4 |
+| R21 | Not enough testnet TAZ | low | medium | development needs none (Regtest); judge playground needs ~0.7 TAZ: one request to organizers + forum post, a single faucet round, optional testnet mining | Oct 6 |
+| R22 | Polymarket terms restrict reuse of its data | low | medium | public read-only data, attribution, no logos, link back, settle from the public Polygon chain; read polymarket.com/tos manually before deploy | Oct 8 |
+| R23 | Public testnet infrastructure (`testnet.zec.rocks`) down during judging | medium | high | a second public endpoint as fallback; health alarms; worst case: run our own testnet Zebra + Zaino if the VPS disk allows | Oct 20 |
+| R24 | Public Nym exits refuse our API host | medium | high | Spike A; ask the Nym team (they offer to allowlist services); own exit as last resort | Oct 3 |
+| R25 | Signer co-located with the API on one VPS (budget) | certain | low (micro stakes) | isolated container, no inbound ports, separate volume; documented; privacy unaffected | Oct 20 |

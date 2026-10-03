@@ -5,7 +5,7 @@ Privacy threats are in [THREAT_MODEL.md](THREAT_MODEL.md). This file covers what
 | # | Risk | Likelihood | Impact | Mitigation / fallback | Owner date |
 |---|---|---|---|---|---|
 | R1 | Nym exit policy blocks our API domain, or mixFetch is unusable on iOS Safari | medium | high | Spike A on day 2; run our own exit (IPR); Tor for mobile with an explicit warning | Oct 3 |
-| R2 | No iPhone wallet does testnet Ironwood with ZIP 321 | medium | medium | desktop testnet wallets; iPhone tested on mainnet with 0.005 ZEC | Oct 4 |
+| R2 | No iPhone wallet does testnet | **happened** (Zingo! iOS: mainnet only, Oct 3) | medium | testnet runs from PC tools (zingo-cli / zcash-devtool) and judge vouchers; the iPhone flow (deep link, re-link) is tested on mainnet with ~0.001 ZEC | Oct 3 |
 | R3 | librustzcash Ironwood APIs still moving (crates finalized Aug 19) | medium | high | pin exact versions; `zcash-devtool` as reference; subprocess or zallet RPC fallback | Oct 4 |
 | R4 | Blind-signature implementations disagree across Rust and TS | low | high | one implementation compiled to WASM for both sides | Oct 5 |
 | R5 | Scope too big for 26 days | **high** | **high** | gates, cut list, feature freeze Oct 24; core never cut | daily |
@@ -28,4 +28,4 @@ Privacy threats are in [THREAT_MODEL.md](THREAT_MODEL.md). This file covers what
 | R22 | Polymarket terms restrict reuse of its data | low | medium | public read-only data, attribution, no logos, link back, settle from the public Polygon chain; no API-specific terms found (help center: "open source and free to use"); re-check before any production use | done Oct 3 |
 | R23 | Public testnet infrastructure (`testnet.zec.rocks`) down during judging | medium | high | a second public endpoint as fallback; health alarms; worst case: run our own testnet Zebra + Zaino if the VPS disk allows | Oct 20 |
 | R24 | Public Nym exits refuse our API host | medium | high | Spike A; ask the Nym team (they offer to allowlist services); own exit as last resort | Oct 3 |
-| R25 | Signer co-located with the API on one VPS (budget) | certain | low (micro stakes) | isolated container, no inbound ports, separate volume; documented; privacy unaffected | Oct 20 |
+| R25 | Signer compromise | low | medium (micro stakes) | **resolved by topology:** signer on its own VPS (no inbound ports, ideally another provider); FROST later | Oct 20 |

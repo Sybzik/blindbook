@@ -196,7 +196,15 @@ For comparison, a Polymarket trade takes ~1–2 s. We pay 1–3 seconds for priv
 
 Polymarket data and Polygon settlement are always the real mainnet ones; only the Zcash network differs.
 
-**Hackathon topology ($50 budget):** one small VPS runs the API, the indexer and the signer, with the signer in a **separate container with no inbound ports and its own volume**. The static app lives on separate free hosting. In production the signer moves to its own machine, ideally FROST 2-of-3. The threat model lists this as a residual risk: root on the VPS would put the micro-stakes funds at risk, but **not privacy**, because nothing on the server can link people to bets.
+**Hackathon topology:**
+
+| Host | Runs | Exposure |
+|---|---|---|
+| **VPS-1 (public)** | API, indexer, Polymarket reference feed, Tor onion for the API | HTTPS in; holds **no secrets** |
+| **VPS-2 (private)**, ideally another provider and jurisdiction | signer: its own indexer and engine replica, mint keys, spending keys | **no inbound ports** (firewall drops everything; SSH by key only, ideally over Tor); dials out to VPS-1 |
+| Free static hosting (Cloudflare Pages / IPFS) | the web app | sees app loads, never orders (N7) |
+
+So compromising the public server, or even its hosting provider, gives an attacker neither keys nor funds. Next production step: FROST 2-of-3 across independent signers.
 
 ## Tech stack
 

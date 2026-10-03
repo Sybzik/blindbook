@@ -1,4 +1,4 @@
-# Threat model (v3)
+# Threat model
 
 > Zecathon rule: *"Leaks are disqualifying, not deductions."*
 > Every leak we know of, who could see it and what closes it. A leak that isn't listed is a bug. See [SECURITY.md](../SECURITY.md) to report one.
@@ -58,6 +58,7 @@
 | P4 | Unique slip amounts link split and merge operations | A2 | power-of-two denominations |
 | P5 | Reusing one long-lived key across bets | A2, A4 | no long-lived keys; every slip is independent |
 | P7 | A request reveals a user's whole balance (spending every slip at once) | A2 | the wallet keeps standard denominations, spends only what is needed plus change, and re-splits in the background over separate connections; **the server never stores balances at all** |
+| P8 | A "called it" proof reveals more than the one trade | anyone shown the proof | each trade's tag uses an independent secret; a proof reveals exactly one fill (market, side, size, price, height) to whoever the user chooses, and nothing about other trades, balance or payouts. Publishing a proof under your own name links your name to that one trade, which is the user's explicit choice |
 | P6 | Operator guesses that a top-up and bets placed seconds later belong to the same (anonymous) person | A2 | both sides are anonymous, so no identity is revealed; blind slips and a fresh connection per request leave only timing; the UI offers a "mix delay" option; documented as low-impact residual |
 
 ### Layer 3: payout
@@ -66,7 +67,7 @@
 |---|---|---|---|
 | X1 | Destination visible to viewing-key holders | A4 | recipient outputs use `OvkPolicy::Discard` |
 | X2 | The API stores payout addresses | A2 | addresses are **sealed to the signer** in the browser; the API stores ciphertext plus a commitment; the signer forgets them after broadcast |
-| X3 | Transaction shape reveals the number of recipients | A1, A4 | fixed shape: always 8 actions, padded |
+| X3 | Transaction shape reveals the number of recipients | A1, A4 | fixed shape: always 8 actions; padding outputs are zero-value notes to throwaway addresses with a discarded OVK, so viewing-key holders can't tell them from real recipients (padding to our own address would be decryptable and would leak the count) |
 | X4 | Payout to transparent or Sapling-only addresses (amount published by pool crossing) | A1 | rejected; Ironwood receivers only |
 | X5 | Timing between a withdraw request and the payout | A2 | fixed batch schedule; requests arrive through the mixnet and are unlinkable to bets anyway |
 
@@ -84,7 +85,7 @@
 | N8 | The indexer's **targeted** lightwalletd queries (by txid) reveal which transactions are deposits | A6 | **untargeted only**: all compact blocks, full mempool, every full tx of every block; option: self-hosted Zebra + Zaino |
 | N9 | iOS suspends the page while the user is in the wallet; the mixnet link drops | user | re-links visibly on return; never falls back to direct |
 | N10 | Your **wallet** reveals your IP to its lightwalletd when broadcasting | A3, A6 | outside our app; the guide recommends wallets with Nym or Tor (Zingo!, Zkool) |
-| N11 | **Session linking:** one reused TLS connection (or TLS session resumption) ties a user's top-up, bets and withdrawal together | A2 | **fresh connection per write, no TLS resumption**; withdrawals use a brand-new mixnet session plus a random 0–60 s delay; reads use a separate connection |
+| N11 | **Session linking:** one reused TLS connection (or TLS session resumption) ties a user's top-up, bets and withdrawal together | A2 | **single-use connections** from a pool of 3 opened at random moments (no handshake wait at click time, no reuse, no TLS resumption); withdrawals use a brand-new mixnet session plus a random 0–60 s delay; reads use a separate connection. Residual: at very low traffic, connection timing can still hint that requests share a client. That links anonymous actions to each other, never to a person (see P6) |
 
 ### Layer 5: device
 
@@ -104,7 +105,10 @@
 | I3 | Pool drained | spending keys only on the signer, which replays before signing; continuous public solvency check; FROST 2-of-3 as stretch |
 | I4 | History rewritten | hash-chained bundle, root anchored on-chain hourly |
 | I5 | Replay differs across platforms (floating point) | `libm` crate, fixed rounding rules, CI test that native and WASM give byte-identical results |
-| I6 | Stale-price arbitrage drains the house | price **anchored to Polymarket's live mid** (never stale); guard against Polymarket's bid/ask; halts at 0.98, at the end date and when the reference is older than 10 s; worst-case loss capped by the per-market buffer `L_m` |
+| I6 | Stale-price arbitrage drains the house | price **anchored to Polymarket's live mid** (30 s median, never stale); depth-aware guard against Polymarket's bid/ask; halts at 0.98, at the end date and when the reference is older than 10 s; worst-case loss capped by the per-market buffer `L_m` |
+| I6b | Reference manipulation: spoofing a thin Polymarket book to move our anchor | median over 30 s, depth-aware quotes for our max trade size, listing requires a deep book, `L_m` caps any damage |
+| I6c | Live-event latency: someone watching a match reacts faster than Polymarket's price | **trading halts at event start** (`gameStartTime`, or a scheduled time set at listing) |
+| I6d | **Sells drain the buffer:** selling removes cash while the other side's shares stay outstanding (found in external review) | the exposure invariant `max(u_A, u_B) − c ≤ L` is enforced on **sells as well as buys**; excess sells are partially filled and unsold shares come back as slips ([PROTOCOL §5.5](PROTOCOL.md)) |
 | I7 | Censorship or delay | everything is in the public log; the user can disclose their own payment |
 | I8 | Spam without IPs to rate-limit | proof-of-work on every request; unpaid top-up addresses expire |
 | I9 | 0-conf top-up double-spent, or a reorg removes it, after credit was issued | caps: ≤ 0.1 ZEC per top-up, ≤ 0.3 ZEC unconfirmed in total; Zcash nodes reject conflicting nullifiers and there's no replace-by-fee; any loss is absorbed by the house from fees, never by users |

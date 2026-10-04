@@ -224,6 +224,14 @@ From Polymarket we take three things:
 
 For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. Spike A measures the real numbers before we commit to them in the UI.
 
+### Speed under load (many markets, many trades)
+
+- **One feed, whatever the number of users.** The API holds one Polymarket WebSocket subscription for every listed market and recomputes our prices. Every client polls the same `GET /v1/live` (~3 s), delta-encoded against the public `seq` and kept under ~20 KB for 200 markets. Clients never ask per market, so privacy and speed point the same way.
+- **Many trades.** A 2-second batch clears all orders at once. The LMSR math touches only the markets in the batch; a blind signature with its DLEQ proof costs about 0.3 ms on one core, so 1,000 bets sign in about a second, spread across cores. The 16-bit PoW takes the client ~0.1 s with a WASM SHA-256.
+- **Client rendering.** Live data lands in a Web Worker that diffs it; the UI repaints only visible rows, at most 4 times a second. The market list is virtualized, each chart is one canvas, and digits are tabular so numbers never shift the layout. Split-flap animation is used only for the big price and the block height.
+- **Cheap effects.** Scanlines and noise are static pre-rendered textures (no runtime SVG turbulence filters), animations touch only `transform` and `opacity`, glow sits on a few headlines, and the app switches itself to CLEAN SIGNAL when frames drop.
+- **Budgets.** Interaction to next paint ≤ 100 ms; 60 fps scrolling on an iPhone 12 or newer; app shell ≤ 300 KB gzip; one live poll ≤ 20 KB.
+
 ### What 0-conf credit costs us and why it's safe
 
 - A Zcash node rejects a second transaction that spends the same note, and Zcash has no replace-by-fee. Double-spending an unconfirmed top-up therefore takes a miner's collusion.

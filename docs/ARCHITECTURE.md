@@ -122,6 +122,17 @@ Polymarket keeps your balance under a public wallet address; a typical custodial
   - the 12-word phrase if the passkey is lost.
 - **Domain-bound:** a passkey works only on the domain it was created for, so it's set up on the final domain (testnet playground and mainnet proof each get their own).
 
+### On phones: an installable web app, no app stores
+
+There is no App Store or Google Play app. The same static app runs in the phone's browser and can be added to the home screen as an app icon.
+
+- **Install:** iPhone: Safari → Share → *Add to Home Screen* (iOS shows no install prompt, so the app offers a pager-style instruction card); Android: Chrome's install prompt. Everything also works in the browser without installing.
+- **Installed,** it opens full-screen with its own icon and a splash screen, and the service worker serves the app from its cache, so later starts send no request for the app itself (N7).
+- **iPhone details we design for:**
+  - a home-screen app has **its own storage, separate from Safari**: a vault created in Safari doesn't appear in the installed app. The app suggests installing before the first top-up; otherwise the 12 words restore everything (zero-query restore);
+  - Safari can delete a site's data after 7 days without a visit, but WebKit counts days of use separately for each home-screen app, so an installed app you use keeps its data. Installing is the recommended protection for bearer slips (D2 in the threat model);
+  - the `zcash:` deep link to Zodl and Face ID (passkey PRF) must work from the installed app as well as from Safari; both are tested on a real iPhone at Gate 2.
+
 ## Flow 2: bet (instant, off-chain)
 
 1. **Pick and set the bet.** Choose a market and an outcome (outcomes carry Polymarket's labels: `Yes / No`, or team names such as `Legacy / PARIVISION`), type any amount from your balance, and set a max price (prefilled with sensible slippage).
@@ -280,7 +291,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | # | Decision | Status |
 |---|---|---|
 | D1 | LMSR anchored to Polymarket's live mid (30 s median) + depth-aware guard + exposure buffer on buys **and sells**, 2-second batches | decided |
-| D2 | testnet is the judge playground (TAZ self-mined or from faucets); mainnet is a micro-stakes proof of the same build; if the organizers require a mainnet demo, the budget rises and vouchers move to mainnet | decided; organizers asked (Oct 3) |
+| D2 | testnet is the judge playground (TAZ from faucets); mainnet is a micro-stakes proof of the same build, shown in the video as a bonus; a hosted Regtest chain, reproducible from the repo's Docker Compose, is the fallback | decided; confirmed by the organizers (Oct 4): testnet preferred, Regtest acceptable on those conditions, mainnet welcome but not required |
 | D3 | one isolated signer holding all secrets; FROST 2-of-3 as stretch | decided |
 | D4 | private deposit viewing key, public reserve viewing key, discarded-OVK payouts padded with throwaway outputs | decided |
 | D5 | no NEAR Intents on-ramp (Zcash support is transparent-only, a leak) | decided |

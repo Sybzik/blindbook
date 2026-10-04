@@ -8,6 +8,8 @@
 *.mnemonic
 secrets/
 keys/
+# ...except the design system's KeyButton component folder
+!design/*/components/keys/
 *.sqlite
 *.sqlite3
 *.db

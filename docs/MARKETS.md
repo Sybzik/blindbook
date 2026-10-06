@@ -31,7 +31,7 @@ Run by the operator with `blindbook-admin list <slug>`.
 | Binary markets only (Yes/No or two named outcomes). Single markets inside negRisk events (one candidate, one Fed outcome) are fine | simple settlement; verified on-chain (below) |
 | Polymarket price ∈ [0.10, 0.90] at listing | avoids near-certain markets where a buffer buys little liquidity |
 | Polymarket book deep enough to fill our max trade within 2¢ | a reliable, hard-to-spoof reference |
-| Not `restricted`; clear resolution source | avoid ambiguous settlement |
+| Clear resolution source; `acceptingOrders` true and the end date still ahead (Polymarket now flags every market `restricted`, so that flag isn't a filter) | avoid ambiguous settlement |
 | Public events only, nothing about private individuals | ethics |
 | A known **event start** (`gameStartTime`, or a scheduled time entered at listing) | trading halts when the event begins, so nobody trades on live information faster than the reference |
 | End date before judging ends (Nov 22), with **at least one short-dated market** (e.g. a match the same day) | judges can watch a full cycle: bet → resolve → redeem → withdraw |
@@ -46,14 +46,14 @@ At listing the admin tool:
 
 | Market | Why |
 |---|---|
-| Fed decision, October 2026 (single outcome markets) | resolves Oct 28–29, right at the deadline |
-| Brazil presidential runoff, if there is one (Oct 25) | resolves during recording week |
-| 2–3 same-day esports or sports matches (named outcomes) | resolve within hours; a reliable full-cycle demo |
+| Fed decision, October 2026 (single outcome markets; on Oct 6 "no change" 82.5%, "+25 bps" 16.5%) | resolves Oct 28–29, right at the deadline |
+| Brazil presidential runoff, Oct 25 (Lula vs. Flávio Bolsonaro; winner and second-round side markets end Oct 26) | resolves during recording week |
+| 2–3 same-day esports or sports matches (named outcomes; CS2 matches with `gameStartTime` run every day) | resolve within hours; a reliable full-cycle demo |
 | 3–5 longer markets resolving during judging | judges can trade live |
 
 ## Live reference, anchor and guard
 
-- The server keeps a live WebSocket subscription to Polymarket's order book for every listed outcome token (`wss://ws-subscriptions-clob.polymarket.com/ws/market`, no auth, PING every 10 s). Its `market_resolved` event wakes our resolver early, but settlement still waits for the on-chain payout.
+- The server keeps a live WebSocket subscription to Polymarket's order book for every listed outcome token (`wss://ws-subscriptions-clob.polymarket.com/ws/market`, no auth, PING every 10 s), split over several connections because Polymarket drops a slow consumer (200 markets produce ~1 MB/s), and keeps a local book per token built from `book` + `price_change` events. Its `market_resolved` event wakes our resolver early, but settlement still waits for the on-chain payout.
 - **Each 2-second batch records the reference** (30 s median mid, depth-aware bid and ask, timestamp) in the public log. That snapshot is the batch's **anchor**.
 - **Buys never price below Polymarket's ask, and sells never above its bid.** With the moving anchor there's no stale price to arbitrage.
 - **Spoofing doesn't pay:** the median and the depth-aware quotes mean one fake order on a thin book can't swing our price.
@@ -66,7 +66,7 @@ A market halts automatically when:
 - Polymarket stops accepting orders or closes the market;
 - either outcome is ≥ 0.98 (the result is effectively known);
 - the end date passes;
-- the reference is stale (> 10 s).
+- the reference feed is unhealthy for more than 10 s (connection down, heartbeat missed, book sequence gap). A market whose price simply hasn't moved is not stale.
 
 While halted, nothing can be bought or sold. Slips keep their value, and redemption opens at resolution.
 
@@ -91,7 +91,7 @@ The bet panel repeats the key conditions in one line under the BUY key: `Fills i
 
 **The source of truth is the Polygon chain, not Polymarket's website or API.**
 
-1. After the end date, the resolver polls `payoutDenominator(conditionId)` (selector `0xdd34de67`) every 5 minutes on two independent Polygon RPC providers.
+1. After the end date, the resolver polls `payoutDenominator(conditionId)` (selector `0xdd34de67`) every 5 minutes on two independent Polygon RPC providers (verified Oct 6: `polygon-bor-rpc.publicnode.com` and `polygon.drpc.org` agree; `polygon-rpc.com` and Ankr now require keys).
 2. Once it's greater than 0, it reads `payoutNumerators(conditionId, 0..1)` (selector `0x0504c814`).
 3. Numerators, the Polygon block and the resolution tx hash go into the public delta, and the market becomes **RESOLVED**.
 4. Holders redeem: each winning share pays `num_i / den` ZEC as CREDIT, which can be withdrawn or reused.

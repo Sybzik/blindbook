@@ -7,7 +7,7 @@ Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.
 
 ## Principles
 
-1. **No identity anywhere.** No accounts, no wallet-connect, no cookies, no analytics, no third-party requests.
+1. **No identity anywhere.** No accounts, no wallet-connect, no cookies, no analytics, no third-party requests (the one exception is the mixnet client's own bootstrap: Nym's directory and an entry gateway see that an IP uses Nym, nothing more; THREAT_MODEL N5).
 2. **Five independent privacy layers.** Each closes one question on its own.
 3. **Never degrade silently.** If a privacy layer is down, the UI says so and stops.
 4. **Publish everything except people.** Prices, volumes, issuance, reserves and payout totals are public. Addresses, transactions and identities are not.
@@ -38,7 +38,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **1. Funding** | Who paid? | Ironwood shielded **top-up** to a **one-time diversified address** that is never published. Standard denominations. |
 | **2. Positions** | Who holds what? | **Chaumian e-cash.** Balance and positions are blind-signed bearer tokens (*slips*), built on Cashu's BDHKE + DLEQ primitives. The mint signs without seeing, so no action links to any other. |
 | **3. Payout** | Where did the money go? | Shielded payout to a fresh address, fixed transaction shape, **discarded outgoing viewing key**, destination sealed to the signer and forgotten. |
-| **4. Network** | Who is online, and from where? | Static app from hosts that aren't ours. **Every API call goes through the Nym mixnet**: one tunnel for browsing and betting, a **separate mixnet identity** for top-ups and withdrawals, and a fresh connection for every write. One identical data bundle for everyone. |
+| **4. Network** | Who is online, and from where? | Static app from hosts that aren't ours. **Every API call goes through the Nym mixnet**: one tunnel for browsing and betting, a **separate mixnet identity** for top-ups and withdrawals, and a fresh connection for every write. Each tunnel lives in a disposable frame, so a dead route is replaced, never bypassed. One identical data bundle for everyone. |
 | **5. Device** | What's on your phone? | the vault opens with **Face ID on phones** (a passkey via WebAuthn PRF) and with a **passphrase on computers**; a 12-word phrase is the real backup (required before real money; deferred for the testnet playground); deterministic secrets; **zero-query restore**. **Everything personal** (slips, proofs, notes, stamps, scores, P600 records) lives in the vault; only cosmetic preferences sit in plain storage. |
 
 ## Components
@@ -90,7 +90,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 3. **Privacy preflight**, then:
    - **phone:** *Pay in wallet* opens `zcash:<address>?amount=0.05` in Zodl, prefilled;
    - **desktop:** a QR code generated locally.
-4. Our indexer and the signer's independent indexer both see the payment **in the mempool** within seconds.
+4. Our indexer and the signer's independent indexer both see the payment **in the mempool** within seconds (about 1 s after the wallet broadcasts, measured on testnet).
    - Small top-ups are credited at once (0-conf), within house-insured caps.
    - Bigger ones are credited after 1 confirmation (~1–2.5 min).
 5. The signer blind-signs the CREDIT outputs, and the browser unblinds them. You now hold a **private balance**: bearer CREDIT slips that only your device knows about.
@@ -175,7 +175,7 @@ price_A = σ( logit(polymarket_mid_A) + (users_A_shares − users_B_shares) / b 
 - **When our users buy outcome A,** our A price rises above Polymarket's: that's our own price discovery, and it's public.
 - **When Polymarket moves,** our price moves with it, so it's never stale and there's no free arbitrage.
 - **Buying a quantity** integrates along this curve (the LMSR cost function with a moving anchor; the closed form is unchanged).
-- **Robust anchor:** the anchor is the **median mid over the last 30 s**, and the guard uses **depth-aware** bid/ask (the price to fill our maximum trade size, not just the top of the book), so a spoofed or thin Polymarket book can't swing our price.
+- **Robust anchor:** the anchor is the **lower median of the mid over the last 30 s**, and the guard uses **depth-aware** bid/ask (the volume-weighted price to fill a fixed USDC notional recorded at listing, $1,000 by default, not just the top of the book), so a spoofed or thin Polymarket book can't swing our price.
 - **Guard:** a buy is never cheaper than Polymarket's ask, and a sell never pays more than its bid.
 - **Exposure buffer, for buys and sells:** after every batch the house's worst-case loss in a market must stay within its funded buffer `L_m`. Trades that would break this, in either direction, are partially filled and the rest is returned. This invariant keeps the public solvency check green at all times.
 - **Batches:** all requests in a 2-second window clear together. Opposing flow is matched as complete sets (A + B = 1 ZEC), only the imbalance moves the curve, and everyone on a side gets the same price. Ordering inside the window doesn't matter, and nobody sees an order before it clears.
@@ -184,7 +184,7 @@ price_A = σ( logit(polymarket_mid_A) + (users_A_shares − users_B_shares) / b 
   - **the event starts** (`gameStartTime` for sports; a scheduled time set at listing for announcements);
   - either outcome is ≥ 0.98;
   - the end date passes;
-  - the live reference is older than 10 s.
+  - the reference feed is unhealthy for more than 10 s (connection down, heartbeat missed, book sequence gap).
 - **Determinism:** pure-Rust `libm`, fixed rounding; the verifier is the same code (also WASM).
 
 **Why not start at 50/50?** If Polymarket says 90% and we show 50%, the first trader buys a share worth ~0.90 for ~0.50 and takes ~0.40 ZEC per share from the house. Starting from (and staying tied to) Polymarket's price is both correct and safe.
@@ -225,23 +225,24 @@ From Polymarket we take three things:
 
 | Action | Typical |
 |---|---|
-| App start: mixnet link | 5–15 s, hidden in the boot animation |
-| **Top up within the 0-conf cap** (wallet send → balance) | **~15–40 s** |
+| App start: mixnet link | 10–14 s typical, hidden in the boot animation; up to ~35 s when the first routes are dead and get replaced (two tunnels race at boot) |
+| **Top up within the 0-conf cap** (wallet send → balance) | **~15–40 s**, almost all of it the wallet building and proving its transaction; SEEN arrives ~1 s after its broadcast |
 | Top up above the cap | ~1–2.5 min (1 confirmation) |
-| **Bet / sell / buy more** | **~3–6 s** (fresh TCP+TLS connection inside the tunnel + ≤ 2 s batch window + signing); measured in Spike A |
+| **Bet / sell / buy more** | **~2–3 s** with the connection the last poll opened (≈ 0.9 s request + ≤ 2 s batch window + signing in ms); **4–6 s** when a write has to open a fresh TCP+TLS connection inside the tunnel (≈ +2 s) |
 | Swap / transfer a slip | ~1–3 s |
 | Redeem after resolution | ~2–5 s |
-| Withdraw → in your wallet | ~2–4 min, plus a separate mixnet tunnel (5–15 s) and a 0–60 s privacy delay |
+| Withdraw → in your wallet | ~2–4 min, plus a separate mixnet tunnel (10–14 s) and a 0–60 s privacy delay |
 
-For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. Spike A measures the real numbers before we commit to them in the UI.
+For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. The numbers above come from the Gate 1 spikes (`spikes/`); the bet path is re-measured against our own API before the UI promises it.
 
 ### Speed under load (many markets, many trades)
 
-- **One feed, whatever the number of users.** The API holds one Polymarket WebSocket subscription for every listed market and recomputes our prices. Every client polls the same `GET /v1/live` (~3 s), delta-encoded against the public `seq` and kept under ~20 KB for 200 markets. Clients never ask per market, so privacy and speed point the same way.
+- **One feed, whatever the number of users.** The API keeps Polymarket's market WebSocket for every listed token, split over several connections (one connection with ~400 tokens carries ~1,500 messages and ~1 MB per second and gets dropped as a slow consumer), maintains a local book per token and recomputes our prices once per 2-second batch. Every client polls the same `GET /v1/live` (~3 s), delta-encoded against the public `seq` and kept under ~20 KB for 200 markets. Clients never ask per market, so privacy and speed point the same way. Polymarket's raw feed never reaches a client.
+- **Reference health, not quietness.** A market halts when the feed is unhealthy (connection down, heartbeat missed, book sequence gap) for 10 s, not when its price simply hasn't moved: many markets go minutes without a change.
 - **Many trades.** A 2-second batch clears all orders at once. The LMSR math touches only the markets in the batch; a blind signature with its DLEQ proof costs about 0.3 ms on one core, so 1,000 bets sign in about a second, spread across cores. The 16-bit PoW takes the client ~0.1 s with a WASM SHA-256.
 - **Client rendering.** Live data lands in a Web Worker that diffs it; the UI repaints only visible rows, at most 4 times a second. The market list is virtualized, each chart is one canvas, and digits are tabular so numbers never shift the layout. Split-flap animation is used only for the big price and the block height.
 - **Cheap effects.** Scanlines and noise are static pre-rendered textures (no runtime SVG turbulence filters), animations touch only `transform` and `opacity`, glow sits on a few headlines, and the app switches itself to CLEAN SIGNAL when frames drop.
-- **Budgets.** Interaction to next paint ≤ 100 ms; 60 fps scrolling on an iPhone 12 or newer; app shell ≤ 300 KB gzip; one live poll ≤ 20 KB.
+- **Budgets.** Interaction to next paint ≤ 100 ms; 60 fps scrolling on an iPhone 12 or newer; app shell ≤ 300 KB gzip; one live poll ≤ 20 KB. The mixnet module is separate: mix-fetch inlines its worker and WASM into one 5.9 MB gzip chunk, loaded in parallel with the boot animation and cached by the service worker. Through the mixnet bulk data moves at ~30 KB/s, so the first bundle stays small (the 200-market catalog with full rules is 93 KB gzip).
 
 ### What 0-conf credit costs us and why it's safe
 
@@ -253,8 +254,8 @@ For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for priv
 
 | Network | Purpose | Coins |
 |---|---|---|
-| **Regtest** (local Zebra with the internal miner + lightwalletd/Zaino) | all development, CI, end-to-end tests | unlimited, mined locally |
-| **Testnet** | the public **judge playground**: real Polymarket markets and prices, test money | ~1 TAZ total |
+| **Regtest** (local Zebra + Zaino via ZcashFoundation/z3; NU6.3 active, like mainnet) | development, CI, end-to-end tests; the fallback judge playground (accepted by the organizers if hosted and reproducible) | unlimited, mined locally |
+| **Testnet** (NU7 active since Oct 5 2026, height 4,465,026) | the public **judge playground**: real Polymarket markets and prices, test money | 2 TAZ in hand |
 | **Mainnet** | the **proof**: the same build with micro stakes, recorded in the video | ≤ 0.02 ZEC |
 
 Polymarket data and Polygon settlement are always the real mainnet ones; only the Zcash network differs.
@@ -274,14 +275,14 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Layer | Choice |
 |---|---|
 | Core | Rust 1.95 (edition 2024), tokio, axum, SQLite; engine crate is pure, deterministic, compiles to WASM; backend built and run in Linux containers |
-| Zcash | librustzcash: `zcash_client_backend` 0.24, `zcash_client_sqlite` 0.22, `zcash_keys` 0.16, `zcash_protocol` 0.10, `orchard` 0.15, `pczt`; dependency versions pinned to a known-good set taken from `zcash-devtool`'s lockfile |
+| Zcash | librustzcash **NU7 pre-release set**, pinned exactly: `zcash_client_backend` 0.25.0-pre.0, `zcash_client_sqlite` 0.23.0-pre.0, `zcash_keys` 0.17.0-pre.0, `zcash_primitives` 0.31.0-pre.0, `zcash_protocol` 0.11.0-pre.0, `zcash_address` 0.14.0-pre.0, `orchard` 0.16.0, `pczt` 0.10.0-pre.0. Testnet activated NU7 on Oct 5 and the 0.24 line can no longer build valid testnet transactions; the same crates serve mainnet (no NU7 there yet). Move to the final releases when they ship |
 | Chain access | local and self-hosted nodes via **ZcashFoundation/z3** (Docker Compose: Zebra + Zaino with a lightwalletd-compatible gRPC; regtest, testnet, mainnet); public `testnet.zec.rocks:443` as fallback; always untargeted |
-| E-cash | `cashu` crate 0.18 from CDK (`dhke` module, NUT-12 DLEQ, NUT-13) on the signer; `@cashu/crypto` 0.3 (basic Cashu crypto) in the browser; our own multi-keyset mint |
+| E-cash | `cashu` crate 0.18 from CDK (`dhke` module, NUT-12 DLEQ, NUT-13) on the signer; `@cashu/cashu-ts` 4.11 in the browser (byte-identical, `spikes/d-blind`), DLEQ checks with `@noble/curves` in a worker; NUT-02 v01 keyset ids; our own multi-keyset mint |
 | Reference prices | Polymarket CLOB WebSocket `wss://ws-subscriptions-clob.polymarket.com/ws/market` (no auth, PING every 10 s, optional `best_bid_ask` and `market_resolved` events) + REST fallback |
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked |
-| Network privacy | `@nymproject/mix-fetch` 2.x: one tunnel per page, so top-ups and withdrawals run in a separate same-origin frame with its own tunnel; `Connection: close` on writes and no TLS session resumption at the proxy; own Nym exit if needed; Tor onion as an explicit fallback |
+| Network privacy | `@nymproject/mix-fetch` 2.1: one tunnel per JavaScript realm, so every tunnel runs in its own disposable same-origin frame (main and cage); two race at boot; app-level request deadlines; `Connection: close` on writes and no TLS session resumption at the proxy; CSP `connect-src 'self' wss: https://validator.nymtech.net`, `worker-src blob:`, `script-src 'wasm-unsafe-eval'`; own Nym exit (IPR) if public exits stay unreliable; Tor onion as an explicit fallback |
 | Web | Vite, React 19, TypeScript, Tailwind v4, three.js / React Three Fiber, constant-URL navigation, PWA, strict CSP |
-| Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones), Argon2id via `hash-wasm` for the passphrase (the only unlock on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
+| Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones), Argon2id via `hash-wasm` for the passphrase (m = 64 MiB, t = 3, p = 1: ~0.13 s on a desktop; the only unlock on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | `zcash_address` 0.13 (Rust → WASM) to parse unified addresses and require an Orchard-protocol receiver, never regex |
 | Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |
 | Video | Remotion + Playwright capture + iPhone screen recording |
@@ -299,7 +300,10 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | D7 | top-up denominations: testnet 0.01 / 0.05 / 0.1 / 0.5 TAZ; mainnet 0.001 / 0.005 / 0.01 ZEC; bets in any amount from the balance | decided |
 | D8 | 0-conf credit caps: testnet 0.1 / 0.3 TAZ; mainnet 0.005 / 0.01 ZEC | decided |
 | D9 | judge vouchers on testnet; the mainnet proof shown in the video with tx evidence | decided |
-| D10 | one mixnet tunnel for browsing and betting with a fresh connection per write (server closes connections, no TLS resumption); a separate tunnel in its own frame for top-ups and withdrawals, plus a random delay | decided (latency measured in Spike A) |
+| D10 | one mixnet tunnel for browsing and betting with a fresh connection per write (server closes connections, no TLS resumption); a separate tunnel in its own frame for top-ups and withdrawals, plus a random delay | decided; Spike A (Oct 6): frames hold independent tunnels and identities; a fresh connection costs ~2 s, so the poll pre-opens the next write's connection |
 | D11 | "Called it" receipts (tag per trade, reveal by choice) as the signature feature | decided |
 | D12 | Blind duels | stretch |
 | D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase only; the 12-word phrase is the backup | decided (core) |
+| D14 | Zcash crates: the NU7 pre-release set, pinned exactly (testnet activated NU7 on Oct 5) | decided (Oct 6, `spikes/c-deposits`) |
+| D15 | Every mixnet tunnel lives in a disposable frame; two race at boot; dead routes are replaced, never bypassed | decided (Oct 6, `spikes/a-mixnet`) |
+| D16 | The signer builds, proves and signs payouts itself (no PCZT round trip); deposit addresses shown as ZIP 316 Revision 0 | decided (Oct 6, `spikes/g-payout`) |

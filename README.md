@@ -62,7 +62,7 @@ flowchart LR
 | **Funding** | Who paid? | Ironwood shielded top-up to a one-time address nobody can recognize as ours |
 | **Positions** | Who holds what? | Chaumian e-cash: blind-signed bearer slips, so even we can't link a top-up, a bet and a payout |
 | **Payout** | Where did the money go? | fixed-shape shielded batches with a discarded outgoing viewing key; destinations sealed to an isolated signer |
-| **Network** | Who is online? | every request through the Nym mixnet, so no IP ever reaches us; money in and out on a separate mixnet identity; one identical data bundle for everyone; zero third-party requests |
+| **Network** | Who is online? | every request through the Nym mixnet, so no IP ever reaches us; money in and out on a separate mixnet identity; one identical data bundle for everyone; no CDN, analytics or Polymarket calls from the browser (only the mixnet's own directory and entry gateway see that an IP uses Nym) |
 | **Device** | What's on your phone? | encrypted vault opened with Face ID on phones (a passphrase on computers), a 12-word phrase as backup, restore without asking the server anything |
 
 | Public | Never public |
@@ -105,10 +105,10 @@ Every trade carries a secret tag in the public log, which is anchored on-chain. 
 
 ## Status
 
-Design is complete; the build has started. Development runs on a local Regtest chain, the judge playground runs on **testnet**, and a **mainnet** proof runs the same build with micro stakes.
+Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); the build has started. Development runs on a local Regtest chain, the judge playground runs on **testnet**, and a **mainnet** proof runs the same build with micro stakes.
 
 - [x] Research, architecture, protocol, threat model, design brief
-- [ ] Spikes: Nym mixFetch · Regtest + librustzcash · blind signatures Rust ↔ browser
+- [x] Spikes ([`spikes/`](spikes/)): Nym mixnet in the browser · one-time deposit addresses on testnet · blind signatures Rust ↔ browser · Polymarket + Polygon · engine · fixed-shape payouts
 - [ ] Engine, signer, API, indexer
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof

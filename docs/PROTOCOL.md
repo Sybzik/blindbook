@@ -14,11 +14,11 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | slip denominations | 2ᵏ units, k = 0..30 | power-of-two, like cash |
 | top-up denominations | testnet: 0.01 / 0.05 / 0.1 / 0.5 TAZ · mainnet: 0.001 / 0.005 / 0.01 ZEC | mainnet is a micro-stakes proof |
 | 0-conf credit | testnet ≤ 0.1 / 0.3 TAZ · mainnet ≤ 0.005 / 0.01 ZEC (per top-up / total unconfirmed) | above that: after 1 confirmation |
-| top-up address lifetime | 120 blocks (~2.5 h) | later payments are still credited |
+| top-up address lifetime | 120 blocks (~2.5 h) | later payments are still credited. Shown as a ZIP 316 Revision 0 unified address (`u1…`, testnet `utest1…`) with only an Orchard-protocol receiver, because wallets that predate Revision 2 (`zu1…`) may refuse the newer form |
 | **trade batch window** | **2 s** | all trade requests in a window clear together |
-| anchor | median Polymarket mid over the last **30 s** | spoof-resistant |
-| guard depth | bid/ask needed to fill **our max trade size** on Polymarket's book | not just top of book |
-| reference staleness limit | 10 s | Polymarket live book (WebSocket, REST fallback) |
+| anchor | **lower median** of the Polymarket mid samples of the last **30 s** | spoof-resistant; lower median so the verifier reproduces it exactly |
+| guard depth | volume-weighted bid/ask to fill a **fixed USDC notional per market, recorded at listing** (default **$1,000**) on Polymarket's book | ignores dust orders; on liquid markets within 0.7¢ of top of book (`spikes/e-polymarket`) |
+| reference staleness limit | the feed is **unhealthy for more than 10 s**: connection down, heartbeat missed, or a gap in the book sequence | a quiet market is not stale: many markets go minutes without a price change (`spikes/e-polymarket`) |
 | trade fee | 100 bp of buy amount; 100 bp of sell proceeds | goes to the house balance (published) |
 | max trade size | per market: `L_m` × 4 of notional | keeps single trades small relative to the buffer |
 | withdrawal fee | 20,000 zatoshi | |
@@ -26,8 +26,8 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | withdrawal privacy delay | uniform random 0–60 s, client-side | before sending, from the separate top-up/withdrawal tunnel |
 | sweep | every 48 blocks (~1 h), only if there are deposits | |
 | anchor tx | testnet every 48 blocks; mainnet once a day + at each resolution | each costs 0.0001 ZEC |
-| PoW difficulty | top-up, voucher, withdraw: 22 bits; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast |
-| connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off) | see §4 |
+| PoW difficulty | top-up, voucher, withdraw: **20 bits**; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast. Measured with a WASM SHA-256 on one desktop thread: 16 bits ≈ 35 ms median, 20 bits ≈ 0.5 s (2.1 s p95); the client solves in 2–4 workers |
+| connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off); the next poll opens the connection the next write uses | see §4 |
 | LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
 | exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market; funded at listing |
 | listing band | Polymarket mid ∈ [0.10, 0.90] at listing | |
@@ -44,7 +44,8 @@ Rounding (normative): share and credit amounts round **down** to whole units. Ev
   secret = m + t        (signer only)
   public = M + t·G      (anyone)
   ```
-  `market_id` = 32-byte Polymarket `conditionId`; CREDIT uses 32 zero bytes. Keyset ids follow Cashu's format so `cashu-ts` NUT-13 derivation works unchanged.
+  `market_id` = 32-byte Polymarket `conditionId`; CREDIT uses 32 zero bytes. **Byte encoding (normative):** `M` as a 33-byte compressed point, `market_id` 32 bytes, `outcome_index` 1 byte (CREDIT: 0), `k` 1 byte.
+- **Keyset ids** are Cashu NUT-02 **v01** ids (`01` + 32 bytes), so `cashu-ts` NUT-13 derivation (the HMAC variant) works unchanged and restore is 5× faster than with v00 ids. The derivation, the ids and signatures made with `m + t` are byte-identical between the signer (`cashu` crate) and the browser (`cashu-ts`), verified in `spikes/d-blind`.
 - **Signer encryption key:** X25519, public half pinned in the build; withdrawal addresses are sealed to it.
 - **No equivocation:** a client never accepts a key it didn't derive from `M`, and every signature carries a NUT-12 DLEQ proof.
 
@@ -74,11 +75,13 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 
 - **Proof-of-work:** every POST carries `pow = {nonce}`. `SHA256("bb-pow-v1" ‖ SHA256(canonical_body) ‖ nonce)` must have at least D leading zero bits (D per endpoint, §1). Canonical body = RFC 8785 JSON.
 - **Connection discipline (normative):**
-  - **mix-fetch allows one tunnel per page** (`setupMixTunnel` once; `disconnectMixTunnel` needs a page reload). The main page's tunnel carries browsing, reads and trades.
-  - **Writes never share a connection:** the API answers every POST with `Connection: close`, and the TLS terminator disables session tickets and resumption, so each write rides a new TCP+TLS connection inside the tunnel.
+  - **mix-fetch allows one tunnel per JavaScript realm** (`setupMixTunnel` once; after `disconnectMixTunnel` that realm can't open another). So **every tunnel lives in its own hidden same-origin frame**, the main one included: the main tunnel carries browsing, reads and trades; a stuck tunnel is replaced by a new frame, with no page reload.
+  - **Boot races two tunnel frames** and keeps the first that answers `GET /v1/head` within 8 s; the other is destroyed. About a third of randomly chosen mixnet routes come up "ready" and never answer (`spikes/a-mixnet`), and mix-fetch has no request timeout, so **every request carries an app-level deadline** and a failing tunnel is replaced while the lamp shows RELINKING.
+  - **Writes never share a connection:** the API answers every POST with `Connection: close`, and the TLS terminator disables session tickets and resumption, so each write rides a new TCP+TLS connection inside the tunnel. The regular `/v1/live` poll then opens the next connection, which the next write reuses, so the handshake (about 2 s inside the mixnet) stays off the bet's path.
   - **Top-ups and withdrawals use a separate mixnet identity:** they run in a hidden same-origin frame that sets up **its own tunnel** (a different mixnet client), destroyed afterwards. Withdrawals add a random 0–60 s delay. Fallback, if a frame can't hold its own tunnel: reload into "cage mode" with a fresh tunnel.
-  - **One mixnet identity per tunnel, never reused (normative):** mix-fetch keeps its client identity (keys, gateway registration) in IndexedDB under `clientId` (default `smolmix-wasm`), and a same-origin frame shares that storage. So every tunnel is set up with a random `clientId` and a random `storagePassphrase`: the main tunnel gets a new one on every page load, the cage frame a new one for every top-up or withdrawal. A tunnel's database is deleted when it ends, and leftovers are deleted at boot. Two tunnels never load the same identity, and no identity outlives its session.
-  - **Spike A verifies:** a frame gets an independent tunnel with its own identity (its own IndexedDB database); `Connection: close` is honoured; the end-to-end bet latency (target p50 ≤ 4 s).
+  - **One mixnet identity per tunnel, never reused (normative):** mix-fetch keeps its client identity (keys, gateway registration) in an IndexedDB database named `wasm-client-storage-<clientId>`, and a same-origin frame shares that storage. So every tunnel is set up with a random `clientId` and a random `storagePassphrase`: the main tunnel gets a new one on every page load (and on every replacement), the cage frame a new one for every top-up or withdrawal. `disconnectMixTunnel` leaves the database behind, so the app deletes it explicitly when the tunnel ends, and deletes leftovers at boot. Two tunnels never load the same identity, and no identity outlives its session.
+  - **No HTTP compression through the tunnel:** mix-fetch requests `Accept-Encoding: identity` (its WASM has no decompressor). Bundle files are served as `.gz` files and decompressed by the app (`DecompressionStream`).
+  - **Verified in `spikes/a-mixnet` (Oct 6):** a frame gets an independent tunnel with its own identity and exit IP, also while another tunnel runs; tunnel setup 10–14 s; a warm request ≈ 0.9 s, a fresh TCP+TLS request ≈ 3 s. Still to measure against our own API: the poll-then-write pattern (target bet p50 ≤ 3 s).
   - **If a fresh connection per write is too slow:** bets within one session may share a keep-alive connection (linkable only to each other, never to top-ups or withdrawals; residual N11).
 
 | Endpoint | Body | Executes | Returns |
@@ -88,7 +91,7 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market_id, side (buy/sell), outcome (0/1), limit_bp, outputs[], change_outputs[], tag` | next 2 s batch | `{avg_price_bp, filled, refunded, signatures[]}` |
 | `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[]}` |
 | `POST /v1/redeem` | `inputs[]` (winning keyset), `credit_outputs[]` | immediately after resolution | `{signatures[]}` |
-| `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount_units`, `address_sealed` (X25519 sealed box of `{address, salt}`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{withdraw_id}`; status shown in the bundle |
+| `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount_units` (a standard denomination, THREAT_MODEL X6), `address_sealed` (X25519 sealed box of `{address, salt}`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{withdraw_id}`; status shown in the bundle |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
 | `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
 
@@ -124,7 +127,7 @@ A market is halted for a batch if any of:
 - **event start reached:** `gameStartTime` for sports, or a scheduled moment set at listing (e.g. a central-bank announcement);
 - past our end time;
 - either outcome's ask ≥ 0.98;
-- reference older than 10 s.
+- the reference feed unhealthy for more than 10 s (connection down, heartbeat missed, or a gap in the book sequence; not "no price change").
 
 Halted requests are refunded in full: a buy as CREDIT, a sell as its own shares (new position slips from `change_outputs[]`).
 
@@ -149,9 +152,10 @@ loop:
   shares_s = min(curve_s, X_s / ask_s)                             // guard: never cheaper than Polymarket
   if W after the batch > L: shrink the residual side pro-rata until W = L; the shrunk part is refunded
   avg_s = X_s / shares_s
-  drop orders with avg_side > limit_i (refund in full); if any were dropped → loop
+  drop the violators with the worst limit on each side (refund in full); if any were dropped → loop
+    (an order is refunded only if it would still violate after every worse-limited order on its side is gone)
 allocate: order i gets floor(net_i / avg_s) share-units; dust → house
-u ← u + issued ;  c ← c + Σ amounts kept
+u ← u + issued ;  c ← c + Σ net amounts kept                     // fees and rounding dust go to the house ledger
 ```
 
 ### 5.5 Sells in a batch (after buys)
@@ -168,8 +172,10 @@ u ← u − S ;  c ← c − proceeds
 **Why sells need the invariant too** (found in external review): selling removes cash `c` while the other side's shares stay outstanding.
 
 Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete sets, W = 0). Polymarket jumps and someone sells 0.10 A at 0.85.
-- **Without the check:** `u_A = 0`, `u_B = 0.10`, `c = 0.015`, so W = 0.085 > L.
-- **With the check:** only 0.0235 A sells (0.85 · S ≤ 0.02); the rest comes back as slips.
+- **Without the check:** the curve pays 0.0814 (below 0.10 · 0.85, so the curve binds, not the bid), leaving `u_A = 0`, `u_B = 0.10`, `c = 0.0186`, so W = 0.0814 > L.
+- **With the check:** only 0.02375 A sells (W ends exactly at L); the rest comes back as slips.
+
+(Recomputed with the reference engine in `spikes/f-engine`.)
 
 ### 5.6 Determinism
 
@@ -189,7 +195,9 @@ Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete
 | A 0.05 and B 0.01 in one batch (mid 0.60) | 0.024750 complete sets matched at 0.60; residual A moves the curve. A side average **0.6222**, B side **0.4000**, price after **0.6636**. Cost = paid = 0.059400 ✓ |
 | Starting at 50/50 instead, while Polymarket says 0.90 | the first trader buys a ~0.90 share for ~0.50 and takes ~0.40 per share from the house. **This is why we never start at 50/50.** |
 
-**Price impact versus `b`** (one buy, price 0.50 before):
+Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with a real 0.59 / 0.61 book B's guard binds, B pays 0.41 and the price after is 0.6643. Share counts are exact values; in whole units they round down (0.07678). All values recomputed in `spikes/f-engine`.
+
+**Price impact versus `b`** (one buy before the 1% fee, price 0.50 before):
 
 | b | buy 0.005 | buy 0.01 | buy 0.05 |
 |---|---|---|---|
@@ -234,14 +242,14 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 - **No inbound ports.** The signer opens a persistent outbound stream (WebSocket over TLS) to the API.
 - **Independent verification.** It runs its own indexer and engine replica and **verifies every batch before signing**, including the exposure invariant. Signing takes milliseconds.
 - **Supply guard:** if redemptions of any keyset would exceed what the signer itself issued, it halts all withdrawals and raises an alarm.
-- **Scheduled work:** it builds sweeps, payouts and anchors as PCZTs, then proves, signs and broadcasts them.
+- **Scheduled work:** it builds, proves, signs and broadcasts sweeps, payouts and anchors itself: it holds the keys and runs its own indexer, so no PCZT round trip is needed (PCZT stays the path for a future FROST setup).
 
 ## 10. Chain transactions
 
 | Tx | From → to | Shape | Memo |
 |---|---|---|---|
 | Sweep | deposit account → reserve | matured top-up notes in, one note out | none |
-| Payout | reserve → users (+ change) | always **8 Ironwood actions**: ≤ 7 recipients + change, padded with **zero-value outputs to throwaway addresses** (indistinguishable from real ones); recipient and padding outputs use `OvkPolicy::Discard` | none |
+| Payout | reserve → users (+ change) | always **8 Ironwood actions**: ≤ 7 recipients + change, padded with **zero-value outputs to freshly generated throwaway addresses** (indistinguishable from real ones); recipient and padding outputs use `OvkPolicy::Discard`; ZIP 317 fee 0.0004 ZEC. Verified on testnet (`spikes/g-payout`): 8 actions, and the sender's full viewing key sees only the change | none |
 | Anchor | reserve → reserve (internal) | 2 actions | `bb1:anchor:<height>:<root-hex>` |
 | Buffer funding | operator → reserve | | `bb1:buffer:<market_id>` |
 
@@ -250,9 +258,10 @@ Payouts go only to unified addresses with an Orchard-protocol receiver, checked 
 ## 11. Indexer rules
 
 - Sync every compact block with the deposit viewing key.
-- Watch the **full** mempool stream; trial-decrypt everything for SEEN.
-- To classify a top-up (transparent inputs → EXPOSED; Sapling spends → AMOUNT VISIBLE), fetch **every** full transaction of every block, never only ours.
+- Watch the **full** mempool stream (`GetMempoolStream` returns full transactions); trial-decrypt everything for SEEN. On testnet a payment was SEEN 0.9 s after the wallet's broadcast (`spikes/c-deposits`).
+- Request compact blocks with **all pool types**: they carry transparent inputs and Sapling spends, so a top-up is classified (transparent inputs → EXPOSED; Sapling spends → AMOUNT VISIBLE) without fetching any single transaction. Verified: classification from compact data matched full transactions for 162/162 testnet transactions, at 40 KB per 100 blocks instead of 333 KB.
 - Never request a single txid from third-party infrastructure.
+- The API needs only the deposit account's incoming viewing key (UIVK) for detection; the full viewing key stays with the signer.
 - The signer runs its own indexer the same way.
 - Mainnet option: self-hosted Zebra + Zaino.
 

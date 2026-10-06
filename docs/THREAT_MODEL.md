@@ -114,7 +114,7 @@
 | I4 | History rewritten | hash-chained bundle, root anchored on-chain hourly |
 | I5 | Replay differs across platforms (floating point) | `libm` crate, fixed rounding rules, CI test that native and WASM give byte-identical results |
 | I6 | Stale-price arbitrage drains the house | price **anchored to Polymarket's live mid** (30 s median, never stale); depth-aware guard against Polymarket's bid/ask; halts at 0.98, at the end date and when the reference feed is unhealthy for 10 s; worst-case loss capped by the per-market buffer `L_m` |
-| I6b | Reference manipulation: spoofing a thin Polymarket book to move our anchor | lower median over 30 s, depth-aware quotes for a fixed USDC notional ($1,000 by default), listing requires a deep book, `L_m` caps any damage |
+| I6b | Reference manipulation: spoofing a thin Polymarket book to move our anchor | lower median over 30 s (a fake mid held for under 15 s can't move it), depth-aware quotes for a fixed share count (500 by default; a fake low ask only loosens the guard, the curve still sets the price), listing requires a deep book, `L_m` caps any damage |
 | I6c | Live-event latency: someone watching a match reacts faster than Polymarket's price | **trading halts at event start** (`gameStartTime`, or a scheduled time set at listing) |
 | I6d | **Sells drain the buffer:** selling removes cash while the other side's shares stay outstanding (found in external review) | the exposure invariant `max(u_A, u_B) − c ≤ L` is enforced on **sells as well as buys**; excess sells are partially filled and unsold shares come back as slips ([PROTOCOL §5.5](PROTOCOL.md)) |
 | I7 | Censorship or delay | everything is in the public log; the user can disclose their own payment |

@@ -17,8 +17,8 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | top-up address lifetime | 120 blocks (~2.5 h) | later payments are still credited. Shown as a ZIP 316 Revision 0 unified address (`u1…`, testnet `utest1…`) with only an Orchard-protocol receiver, because wallets that predate Revision 2 (`zu1…`) may refuse the newer form |
 | **trade batch window** | **2 s** | all trade requests in a window clear together |
 | anchor | **lower median** of the Polymarket mid samples of the last **30 s** | spoof-resistant; lower median so the verifier reproduces it exactly |
-| guard depth | volume-weighted bid/ask to fill a **fixed USDC notional per market, recorded at listing** (default **$1,000**) on Polymarket's book | ignores dust orders; on liquid markets within 0.7¢ of top of book (`spikes/e-polymarket`) |
-| reference staleness limit | the feed is **unhealthy for more than 10 s**: connection down, heartbeat missed, or a gap in the book sequence | a quiet market is not stale: many markets go minutes without a price change (`spikes/e-polymarket`) |
+| guard depth | the average price to **buy / sell a fixed number of shares `Q`** of each outcome on Polymarket's book, recorded per market at listing (default **500 shares**); whatever the book can't fill is priced at 1.00 (buy) or 0.00 (sell) | ignores dust orders; deterministic and exactly mirrored between the two outcomes (ask_A = 1 − bid_B); a thin book makes the guard stricter, never undefined. On Oct 7, across 49 open pre-match markets in the listing band, the 500-share price was at the top of the book in the median case and within 0.94¢ of it for 90% of them |
+| reference staleness limit | the feed is **unhealthy for more than 10 s**: connection down or silent for 6 s (PING every 3 s), no `book` snapshot since connecting, or a local book that disagrees with the best prices Polymarket attaches to each change (or is crossed) | a quiet market is not stale: many markets go minutes without a price change (`spikes/e-polymarket`) |
 | trade fee | 100 bp of buy amount; 100 bp of sell proceeds | goes to the house balance (published) |
 | max trade size | per market: `L_m` × 4 of notional | keeps single trades small relative to the buffer |
 | withdrawal fee | 20,000 zatoshi | |
@@ -33,6 +33,20 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | listing band | Polymarket mid ∈ [0.10, 0.90] at listing | |
 
 Rounding (normative): share and credit amounts round **down** to whole units. Every remainder goes to the house balance and is logged.
+
+**Reference snapshot (normative).** Each batch records, for every market with orders, the reference it priced from (`RefSnapshot` in `crates/blindbook-polymarket`):
+
+| Field | Meaning |
+|---|---|
+| `at_ms` | Unix ms of the snapshot |
+| `mid_samples` | outcome A's top-of-book mid `⌊(best bid + best ask) / 2⌋` in ppm, sampled once a second over the last 30 s while the feed was healthy, oldest first |
+| `mid_ppm` | the anchor: lower median of `mid_samples` (0 if there are none, which halts the market) |
+| `ask_ppm[2]`, `bid_ppm[2]` | the guard: average price to buy / sell `guard_micro` shares of each outcome, rounded up / down to ppm |
+| `guard_micro` | `Q` in micro-shares |
+| `best_bid_ppm[2]`, `best_ask_ppm[2]`, `server_ts_ms[2]` | top of book and Polymarket's timestamp of the last book event, for auditors comparing with Polymarket's price history |
+| `unhealthy_ms` | how long the feed has been unhealthy (0 = healthy); above 10,000 the market halts |
+
+Prices are parsed exactly from Polymarket's decimal strings (no floats), so the verifier recomputes `mid_ppm` from `mid_samples` bit for bit.
 
 ## 2. Keys and keysets
 
@@ -127,7 +141,7 @@ A market is halted for a batch if any of:
 - **event start reached:** `gameStartTime` for sports, or a scheduled moment set at listing (e.g. a central-bank announcement);
 - past our end time;
 - either outcome's ask ≥ 0.98;
-- the reference feed unhealthy for more than 10 s (connection down, heartbeat missed, or a gap in the book sequence; not "no price change").
+- the reference feed unhealthy for more than 10 s (connection down or silent, no snapshot, or a local book that disagrees with Polymarket's own best prices; not "no price change").
 
 Halted requests are refunded in full: a buy as CREDIT, a sell as its own shares (new position slips from `change_outputs[]`).
 

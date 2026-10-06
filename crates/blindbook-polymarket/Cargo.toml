@@ -1,0 +1,25 @@
+[package]
+name = "blindbook-polymarket"
+description = "Blindbook's Polymarket mirror: catalog (Gamma), live order books (CLOB WebSocket), the 30 s anchor, depth-aware guard quotes, feed health, and settlement from Polygon (MARKETS.md, PROTOCOL sections 1 and 5)"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+blindbook-engine = { path = "../blindbook-engine" }
+futures-util.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tokio-tungstenite.workspace = true
+tracing.workspace = true
+webpki-roots.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

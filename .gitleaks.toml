@@ -14,6 +14,7 @@ paths = [
   '''spikes/c-deposits/results/.*''',
   # Polymarket condition ids and token ids (public)
   '''spikes/e-polymarket/data/.*\.json''',
+  '''crates/blindbook-polymarket/tests/data/.*''',
   # the lockfile diff of the local zcash-devtool fork (crate checksums)
   '''spikes/g-payout/zcash-devtool-nu7\.patch''',
   '''Cargo\.lock''',

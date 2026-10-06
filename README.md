@@ -109,7 +109,8 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 
 - [x] Research, architecture, protocol, threat model, design brief
 - [x] Spikes ([`spikes/`](spikes/)): Nym mixnet in the browser · one-time deposit addresses on testnet · blind signatures Rust ↔ browser · Polymarket + Polygon · engine · fixed-shape payouts
-- [ ] Engine, signer, API, indexer
+- [x] Engine (native = WASM), mint keysets and blind signatures, Polymarket mirror and Polygon resolver
+- [ ] Ledger, signer, API, indexer
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof
 - [ ] Demo video
@@ -118,7 +119,10 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 
 ```
 crates/
-  blindbook-engine/   anchored LMSR, 2-second batches, exposure invariant, issuance, roots (pure, deterministic, also WASM)
+  blindbook-engine/   anchored LMSR, 2-second batches, exposure invariant (pure, deterministic, also WASM)
+  blindbook-engine-wasm/  the engine as a wasm32 module (the browser verifier, the determinism check)
+  blindbook-mint/     keysets derived from the pinned master key, blind signatures with DLEQ proofs
+  blindbook-polymarket/  Polymarket mirror: catalog, live books, anchor, guard, feed health; Polygon resolver
   blindbook-indexer/  untargeted chain sync, one-time diversified addresses (librustzcash)
   blindbook-api/      secretless: top-up desk, trade batches, bundle and live feed (axum)
   blindbook-signer/   holds all keys; replays before signing; blind signatures, sweeps, payouts, anchors

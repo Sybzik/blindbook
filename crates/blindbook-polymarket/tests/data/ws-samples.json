@@ -1,0 +1,150 @@
+{
+ "book": {
+  "market": "0x5c79dfde05559b79a9cb9f7c4187e4d49632dd042572ae676952f812732591cc",
+  "asset_id": "48727431314333088243693016929623363710488980152833544156961659445129455301311",
+  "timestamp": "1791272078414",
+  "hash": "2a969f3f38b8511fccadc9e5bc8ffe99a5ed5a62",
+  "bids": [
+   {
+    "price": "0.79",
+    "size": "46133.15"
+   },
+   {
+    "price": "0.8",
+    "size": "63029.62"
+   },
+   {
+    "price": "0.81",
+    "size": "51485.68"
+   }
+  ],
+  "asks": [
+   {
+    "price": "0.84",
+    "size": "418141.42"
+   },
+   {
+    "price": "0.83",
+    "size": "254298.06"
+   },
+   {
+    "price": "0.82",
+    "size": "45914.33"
+   }
+  ],
+  "tick_size": "0.01",
+  "event_type": "book",
+  "last_trade_price": "0.190"
+ },
+ "price_change": {
+  "market": "0xd852e0f76587ed40d7092ca1036044ee8a516e17b17ee32e26623ea3c1b21ac7",
+  "price_changes": [
+   {
+    "asset_id": "95984957601079311090346346955717233367487551020215570592707048769682530675936",
+    "price": "0.61",
+    "size": "235",
+    "side": "BUY",
+    "hash": "6cf4f11d0370320d4e738ab82ed68e9409450ab7",
+    "best_bid": "0.62",
+    "best_ask": "0.63"
+   },
+   {
+    "asset_id": "16824250110722701630966164881294107698454934496284671196444041248860535292064",
+    "price": "0.39",
+    "size": "235",
+    "side": "SELL",
+    "hash": "234d50048795cf005cf2538c748e4dea13d29158",
+    "best_bid": "0.37",
+    "best_ask": "0.38"
+   }
+  ],
+  "timestamp": "1791272088365",
+  "event_type": "price_change"
+ },
+ "best_bid_ask": {
+  "market": "0xd852e0f76587ed40d7092ca1036044ee8a516e17b17ee32e26623ea3c1b21ac7",
+  "asset_id": "95984957601079311090346346955717233367487551020215570592707048769682530675936",
+  "best_bid": "0.6",
+  "best_ask": "0.63",
+  "spread": "0.03",
+  "timestamp": "1791272088439",
+  "event_type": "best_bid_ask"
+ },
+ "last_trade_price": {
+  "market": "0x073a09faf8483df9af5c428024a29c07657656fba6f026e7640748e6dceb65b4",
+  "asset_id": "67053655981978691209596336576567285313556675879269513345764496608914859895119",
+  "price": "0.67",
+  "size": "5",
+  "fee_rate_bps": "0",
+  "side": "SELL",
+  "timestamp": "1791272089023",
+  "event_type": "last_trade_price",
+  "transaction_hash": "0xed3d169764a8f75277723721ce0197dc354376c88d69606fba0106cc6d6cc2c5"
+ },
+ "new_market": {
+  "id": "5369495",
+  "question": "Total Kills Over/Under 21.5 in Game 1?",
+  "market": "0x16364491557bd4f338d67c1e4a9241e63e31bb21854a0240e11b7819077d6059",
+  "slug": "lol-bro2-navi-2026-10-06-game1-kill-over-21pt5",
+  "description": "In the upcoming Round 3 match between HANJIN BRION and Natus Vincere in the Demacia Cup Global Invitational Group Stage, initially scheduled for October 6, 2026 at 3:00 AM ET:\n\nThis market is about the total kills in Game 1.\n\nThis market will resolve to \"Over\" if the total kills in Game 1 is 22 or more. Otherwise, it will resolve to \"Under\".\n\nIf the match is canceled (not played at all), this market will resolve to 50-50.\n\nIf the match is postponed, it must be rescheduled to a start time on or before October 20, 2026 at 11:59 PM ET (14 calendar days after the originally scheduled start of October 6, 2026 at 3:00 AM ET). If, by that deadline, the most recently announced rescheduled start time is on or before the deadline, this market resolves based on the result of the match as played. Otherwise, this market resolves 50-50, regardless of whether the match is subsequently played.\n\nIf Game 1 is never played due to forfeit, disqualification, or walkover, this market will resolve to 50-50.\n\nIf Game 1 begins but is not completed, this market will resolve to 50-50.\n\nIf Game 1 is remade, resolution will be based on the total kills in the remade game only.\n\nThe resolution source for this market will be official information from https://gol.gg/esports/home. However, if https://gol.gg/esports/home has not published final results within 2 hours after the event’s conclusion, a consensus of credible reporting may be used instead including video evidence.\n",
+  "assets_ids": [
+   "54332113791634391688641988066673473435276034203189071036040175010702816987843",
+   "34044474248903107154008340245062199876764180756351789633408474741535833402937"
+  ],
+  "outcomes": [
+   "Over",
+   "Under"
+  ],
+  "event_message": {
+   "id": "1136991",
+   "ticker": "lol-bro2-navi-2026-10-06",
+   "slug": "lol-bro2-navi-2026-10-06",
+   "title": "LoL: HANJIN BRION vs Natus Vincere (BO3) - Demacia Cup Global Invitational Group Stage",
+   "description": "This market refers to the LoL Round 3 match between HANJIN BRION and Natus Vincere in the Demacia Cup Global Invitational Group Stage, initially scheduled for October 6, 2026 at 3:00 AM ET.\n\nThis market will resolve to \"HANJIN BRION\" if HANJIN BRION win the match against Natus Vincere.\n\nThis market will resolve to \"Natus Vincere\" if Natus Vincere win the match against HANJIN BRION.\n\nIf the match is canceled (not played at all) or ends in a tie, this market will resolve to 50-50.\n\nIf the match is postponed, it must be rescheduled to a start time on or before October 20, 2026 at 11:59 PM ET (14 calendar days after the originally scheduled start of October 6, 2026 at 3:00 AM ET). If, by that deadline, the most recently announced rescheduled start time is on or before the deadline, this market resolves based on the result of the match as played. Otherwise, this market resolves 50-50, regardless of whether the match is subsequently played.\n\nIf the match begins but is not completed, and one team wins due to the opponent's forfeiture, disqualification, or walkover, this market will resolve to the team who wins. \n\nIf the match ends in a forfeit, disqualification, or walkover (team withdraws before the start and the other wins automatically), this market will resolve to 50-50. \n\nThe resolution source for this market will be official information from https://gol.gg/esports/home. However, if https://gol.gg/esports/home has not published final results within 2 hours after the event’s conclusion, a consensus of credible reporting may be used instead including video evidence.\n\nIn cases where a team’s listed name includes minor discrepancies from the resolution source, this market will resolve based on the underlying real-world match rather than exact name matching. Recognizable abbreviations, alternate or erroneous spellings, sponsor tags, affiliate or academy designations, regional identifiers, and minor formatting differences will be treated as referring to the same team, provided the intended team can be clearly and uniquely identified within the relevant competition. If a listed team name has no reasonable connection to any participating team, or if it matches or could reasonably refer to another team in the same competition such that the intended team cannot be unambiguously determined, this market will resolve 50-50."
+  },
+  "timestamp": "1791272149379",
+  "event_type": "new_market",
+  "tags": [],
+  "condition_id": "0x16364491557bd4f338d67c1e4a9241e63e31bb21854a0240e11b7819077d6059",
+  "active": true,
+  "clob_token_ids": [
+   "54332113791634391688641988066673473435276034203189071036040175010702816987843",
+   "34044474248903107154008340245062199876764180756351789633408474741535833402937"
+  ],
+  "sports_market_type": "kill_over_under_game",
+  "line": "21.5",
+  "game_start_time": "2026-10-06 07:00:00+00",
+  "order_price_min_tick_size": "0.01",
+  "group_item_title": "Total Kills Over/Under 21.5 in Game 1?",
+  "taker_base_fee": "1000",
+  "fees_enabled": true,
+  "fee_schedule": {
+   "exponent": "1",
+   "rate": "0.05",
+   "taker_only": true,
+   "rebate_rate": "0.15"
+  }
+ },
+ "market_resolved": {
+  "id": "5317391",
+  "market": "0x36fbb62635c7ace264c2d22d16e587f7c2aff6a4fad30a5916567de5e5ae2c2c",
+  "assets_ids": [
+   "34279476220619684565746338435442495947092404707779352615042957467738461842059",
+   "32743217007513935674591327301584515498685380985162989923134556811106405058386"
+  ],
+  "winning_asset_id": "34279476220619684565746338435442495947092404707779352615042957467738461842059",
+  "winning_outcome": "Up",
+  "event_message": null,
+  "timestamp": "1791272216746",
+  "event_type": "market_resolved",
+  "tags": [
+   "Crypto",
+   "Bitcoin",
+   "Crypto Prices",
+   "Recurring",
+   "Up or Down",
+   "Hide From New",
+   "5M"
+  ]
+ }
+}

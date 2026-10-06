@@ -30,7 +30,7 @@ Run by the operator with `blindbook-admin list <slug>`.
 |---|---|
 | Binary markets only (Yes/No or two named outcomes). Single markets inside negRisk events (one candidate, one Fed outcome) are fine | simple settlement; verified on-chain (below) |
 | Polymarket price ∈ [0.10, 0.90] at listing | avoids near-certain markets where a buffer buys little liquidity |
-| Polymarket book deep enough to fill our max trade within 2¢ | a reliable, hard-to-spoof reference |
+| Polymarket book deep enough to fill 1,000 shares of outcome A within 2¢ of the top | a reliable, hard-to-spoof reference |
 | Clear resolution source; `acceptingOrders` true and the end date still ahead (Polymarket now flags every market `restricted`, so that flag isn't a filter) | avoid ambiguous settlement |
 | Public events only, nothing about private individuals | ethics |
 | A known **event start** (`gameStartTime`, or a scheduled time entered at listing) | trading halts when the event begins, so nobody trades on live information faster than the reference |
@@ -53,8 +53,8 @@ At listing the admin tool:
 
 ## Live reference, anchor and guard
 
-- The server keeps a live WebSocket subscription to Polymarket's order book for every listed outcome token (`wss://ws-subscriptions-clob.polymarket.com/ws/market`, no auth, PING every 10 s), split over several connections because Polymarket drops a slow consumer (200 markets produce ~1 MB/s), and keeps a local book per token built from `book` + `price_change` events. Its `market_resolved` event wakes our resolver early, but settlement still waits for the on-chain payout.
-- **Each 2-second batch records the reference** (30 s median mid, depth-aware bid and ask, timestamp) in the public log. That snapshot is the batch's **anchor**.
+- The server keeps a live WebSocket subscription to Polymarket's order book for every listed outcome token (`wss://ws-subscriptions-clob.polymarket.com/ws/market`, no auth, PING every 3 s), split over connections of at most 40 tokens because Polymarket drops a slow consumer (200 markets produce ~1 MB/s), and keeps a local book per token built from `book` + `price_change` events. Every `price_change` carries Polymarket's own best bid and ask, and the local book must agree with them. A disagreement that lasts 1 s (a missed delta) makes the server redo that connection, which brings fresh snapshots. In a 2-minute test with 60 markets on 3 connections, 4 of 13,280 changes disagreed, all healed with the next message, and no market was unhealthy in any batch. Its `market_resolved` event wakes our resolver early, but settlement still waits for the on-chain payout.
+- **Each 2-second batch records the reference** (the last 30 s of mid samples and their lower median, the depth-aware bid and ask for 500 shares, top of book, Polymarket's timestamps, feed health) in the public log ([PROTOCOL.md §1](PROTOCOL.md)). That snapshot is the batch's **anchor**.
 - **Buys never price below Polymarket's ask, and sells never above its bid.** With the moving anchor there's no stale price to arbitrage.
 - **Spoofing doesn't pay:** the median and the depth-aware quotes mean one fake order on a thin book can't swing our price.
 - **Anyone can audit a snapshot** against Polymarket's own public price history for that minute.
@@ -66,7 +66,7 @@ A market halts automatically when:
 - Polymarket stops accepting orders or closes the market;
 - either outcome is ≥ 0.98 (the result is effectively known);
 - the end date passes;
-- the reference feed is unhealthy for more than 10 s (connection down, heartbeat missed, book sequence gap). A market whose price simply hasn't moved is not stale.
+- the reference feed is unhealthy for more than 10 s (connection down or silent for 6 s, no snapshot, or a local book that disagrees with Polymarket's best prices). A market whose price simply hasn't moved is not stale.
 
 While halted, nothing can be bought or sold. Slips keep their value, and redemption opens at resolution.
 

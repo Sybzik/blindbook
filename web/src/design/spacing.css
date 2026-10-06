@@ -1,0 +1,27 @@
+/* 8px grid. Square corners. 1px rules. */
+:root{
+--space-half:4px;
+--space-1:8px;
+--space-2:16px;
+--space-3:24px;
+--space-4:32px;
+--space-5:40px;
+--space-6:48px;
+--space-8:64px;
+--space-12:96px;
+
+--radius:0;
+--border-w:1px;
+--key-depth:4px;      /* hard keycap skirt, not a shadow */
+
+--key-h-sm:44px;
+--key-h-md:48px;
+--key-h-lg:56px;
+--touch-min:44px;
+--titlebar-h:24px;
+--taskbar-h:40px;
+--desktop-icons-w:184px;
+--window-max:960px;
+--receipt-w:280px;
+--print-w:302px;      /* 80 mm thermal roll */
+}

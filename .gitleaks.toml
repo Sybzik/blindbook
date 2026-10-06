@@ -1,0 +1,21 @@
+# Secret scanning for CI (ROADMAP R13). Real keys, seeds and wallets never enter the repo
+# (.gitignore, ..\blindbook-work\wallets). The allowlist covers public test data only.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "public test vectors and public addresses"
+paths = [
+  # NUT-13 test vectors derived from the public mnemonic in the Cashu spec, plus generated BDHKE vectors
+  '''spikes/d-blind/vectors/.*\.json''',
+  '''spikes/d-blind/js/lib\.mjs''',
+  '''spikes/d-blind/results/.*\.json''',
+  # testnet transaction ids, public one-time addresses and timings
+  '''spikes/c-deposits/results/.*''',
+  # Polymarket condition ids and token ids (public)
+  '''spikes/e-polymarket/data/.*\.json''',
+  # the lockfile diff of the local zcash-devtool fork (crate checksums)
+  '''spikes/g-payout/zcash-devtool-nu7\.patch''',
+  '''Cargo\.lock''',
+  '''web/pnpm-lock\.yaml''',
+]

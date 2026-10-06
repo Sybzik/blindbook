@@ -1,0 +1,77 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - name: fmt
+        run: cargo fmt --all -- --check
+      - name: clippy
+        run: cargo clippy --workspace --all-targets --release -- -D warnings
+      - name: test
+        run: cargo test --workspace --release
+      - name: determinism (native trace == wasm32 trace)
+        run: |
+          cargo build --release --target wasm32-unknown-unknown -p blindbook-engine-wasm
+          cargo run --release -q -p blindbook-engine --example trace -- trace-native.bin
+          node crates/blindbook-engine-wasm/check-determinism.mjs target/wasm32-unknown-unknown/release/blindbook_engine_wasm.wasm trace-native.bin
+
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: app shell budget (300 KB gzip, ARCHITECTURE "Speed under load")
+        run: |
+          total=0
+          for f in dist/assets/index-*.js dist/assets/index-*.css; do
+            total=$((total + $(gzip -9 -c "$f" | wc -c)))
+          done
+          echo "app shell: $total bytes gzip"
+          test "$total" -le 307200
+      - name: the build makes no third-party requests (only same-origin assets)
+        run: |
+          if grep -R -E -o "https?://[a-zA-Z0-9.-]+" dist --include=*.html --include=*.css | grep -v -E "validator\.nymtech\.net|www\.w3\.org"; then
+            echo "unexpected absolute URL in the build output"; exit 1
+          fi
+
+  secrets:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

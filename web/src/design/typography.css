@@ -1,0 +1,22 @@
+:root{
+--font-ui:'Departure Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;   /* UI + numbers */
+--font-display:'VT323','Departure Mono',ui-monospace,monospace;            /* teletext headlines */
+--font-text:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace; /* long text */
+
+/* Departure Mono: 14 / 16 / 20 */
+--text-ui-sm:14px;
+--text-ui-md:16px;
+--text-ui-lg:20px;
+/* VT323: 32 / 48 / 72 */
+--text-display-sm:32px;
+--text-display-md:48px;
+--text-display-lg:72px;
+/* IBM Plex Mono long text */
+--text-body:15px;
+
+--leading-ui:1.4;
+--leading-body:1.6;
+--leading-display:1;
+--tracking-label:0.08em;
+--tracking-none:0;
+}

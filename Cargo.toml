@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = ["crates/blindbook-engine", "crates/blindbook-engine-wasm"]
+exclude = ["spikes"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+version = "0.1.0"
+license = "MIT"
+publish = false
+repository = "https://github.com/Sybzik/blindbook"
+
+[workspace.dependencies]
+libm = { version = "=0.2.16", default-features = false }
+proptest = "1"
+
+# Zcash: testnet activated NU7 on Oct 5 2026 (height 4,465,026), so the whole workspace pins the
+# NU7 pre-release set exactly (ARCHITECTURE D14). Move to the final releases once they ship.
+orchard = { version = "=0.16.0", default-features = false }
+pczt = "=0.10.0-pre.0"
+zcash_address = "=0.14.0-pre.0"
+zcash_client_backend = "=0.25.0-pre.0"
+zcash_client_sqlite = "=0.23.0-pre.0"
+zcash_keys = "=0.17.0-pre.0"
+zcash_note_encryption = "=0.5.1"
+zcash_primitives = "=0.31.0-pre.0"
+zcash_protocol = "=0.11.0-pre.0"
+zip32 = "=0.3.0"
+
+# Blind signatures (spikes/d-blind): byte-identical with @cashu/cashu-ts 4.11 in the browser.
+cashu = "=0.18.1"
+
+[profile.release]
+# Nothing here may change float semantics: Rust never contracts a*b+c into FMA and has no
+# fast-math flags, so opt-level and LTO only change speed (PROTOCOL 5.6).
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+debug = false
+
+[profile.test]
+opt-level = 2

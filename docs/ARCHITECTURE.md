@@ -281,7 +281,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Reference prices | Polymarket CLOB WebSocket `wss://ws-subscriptions-clob.polymarket.com/ws/market` (no auth, PING every 10 s, optional `best_bid_ask` and `market_resolved` events) + REST fallback |
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked |
 | Network privacy | `@nymproject/mix-fetch` 2.1: one tunnel per JavaScript realm, so every tunnel runs in its own disposable same-origin frame (main and cage); two race at boot; app-level request deadlines; `Connection: close` on writes and no TLS session resumption at the proxy; CSP `connect-src 'self' wss: https://validator.nymtech.net`, `worker-src blob:`, `script-src 'wasm-unsafe-eval'`; own Nym exit (IPR) if public exits stay unreliable; Tor onion as an explicit fallback |
-| Web | Vite, React 19, TypeScript, Tailwind v4, three.js / React Three Fiber, constant-URL navigation, PWA, strict CSP |
+| Web | Vite 8, React 19, TypeScript, the design system's own CSS tokens and components (no Tailwind), three.js only for a light 2.5D booth, constant-URL navigation, PWA, strict CSP injected at build |
 | Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones), Argon2id via `hash-wasm` for the passphrase (m = 64 MiB, t = 3, p = 1: ~0.13 s on a desktop; the only unlock on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | `zcash_address` 0.13 (Rust → WASM) to parse unified addresses and require an Orchard-protocol receiver, never regex |
 | Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |

@@ -1,0 +1,20 @@
+# Determinism guard (PROTOCOL 5.6): every transcendental goes through the `libm` crate.
+# The std/core float methods below may lower to platform libm or hardware FMA and are banned.
+disallowed-methods = [
+  { path = "f64::exp", reason = "use libm::exp" },
+  { path = "f64::exp_m1", reason = "use libm::expm1" },
+  { path = "f64::exp2", reason = "use libm::exp2" },
+  { path = "f64::ln", reason = "use libm::log" },
+  { path = "f64::ln_1p", reason = "use libm::log1p" },
+  { path = "f64::log", reason = "use libm::log" },
+  { path = "f64::log2", reason = "use libm::log2" },
+  { path = "f64::log10", reason = "use libm::log10" },
+  { path = "f64::powf", reason = "use libm::pow" },
+  { path = "f64::powi", reason = "powi is not guaranteed to be identical across targets" },
+  { path = "f64::mul_add", reason = "no fused multiply-add (PROTOCOL 5.6)" },
+  { path = "f64::floor", reason = "use libm::floor" },
+  { path = "f64::ceil", reason = "use libm::ceil" },
+  { path = "f64::round", reason = "use libm::round" },
+  { path = "f64::sqrt", reason = "use libm::sqrt" },
+  { path = "f64::tanh", reason = "use libm::tanh" },
+]

@@ -1,0 +1,47 @@
+/* Blindbook color tokens — exactly these. Green dominates. */
+:root{
+/* base */
+--void:#030805;          /* page, the room */
+--glass:#06110B;         /* CRT screen surface */
+--panel:#0A1A11;         /* windows and panels */
+--line:#1E4A31;          /* decorative rules + dotted leaders only. Never text, never input borders */
+--text-dim:#6FA886;      /* labels, secondary text — 6.5:1 on panel */
+--phosphor-mid:#3FCB7E;  /* input borders, inactive keys, focus outlines — 8.6:1 */
+--phosphor:#5CFF9D;      /* primary text, OUTCOME A, primary keys — 13.9:1 */
+--phosphor-hi:#C6FFDD;   /* title bars (void text), highlights, hover — 16.0:1 */
+--amber:#FFB547;         /* OUTCOME B only (+ AMOUNT VISIBLE warning) — 10.2:1 */
+--amber-dim:#C98F3A;     /* OUTCOME B secondary — 6.4:1 */
+--ref-violet:#A99BFF;    /* Polymarket reference data + links only — 7.6:1 */
+--paper:#EFE8D8;         /* receipts, slips, CALLED IT cards */
+--ink:#101410;           /* text on paper — 15.2:1 */
+--redact:#000000;        /* redaction bars (paper marker) */
+--redact-screen:#2F6E4A; /* on-screen redaction block characters */
+--alarm:#FF5A3C;         /* only real alarms: EXPOSED, mixnet down, errors — 5.8:1 */
+--print-white:#FFFFFF;   /* printable bearer slip only (black on white) */
+
+/* semantic aliases */
+--ref:var(--ref-violet);
+--bg-page:var(--void);
+--bg-screen:var(--glass);
+--bg-window:var(--panel);
+--rule:var(--line);
+--text-primary:var(--phosphor);
+--text-secondary:var(--text-dim);
+--text-highlight:var(--phosphor-hi);
+--text-on-bright:var(--void);
+--border-input:var(--phosphor-mid);
+--border-window:var(--phosphor-mid);
+--focus-ring:var(--phosphor-mid);
+--outcome-a:var(--phosphor);
+--outcome-a-dim:var(--phosphor-mid);
+--outcome-b:var(--amber);
+--outcome-b-dim:var(--amber-dim);
+--link:var(--ref-violet);
+--titlebar-bg:var(--phosphor-hi);
+--titlebar-stripe:var(--phosphor-mid);
+--titlebar-fg:var(--void);
+--paper-bg:var(--paper);
+--paper-fg:var(--ink);
+--danger:var(--alarm);
+--brass:var(--amber-dim); /* material only: the UNLOCK keyhole plate */
+}

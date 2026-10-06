@@ -1,0 +1,18 @@
+[package]
+name = "blindbook-mint"
+description = "Blindbook mint: keyset derivation from the pinned master key (PROTOCOL section 2) and blind signatures with DLEQ proofs (cashu BDHKE, NUT-12)"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+cashu = { workspace = true, features = ["mint", "wallet"] }
+bitcoin = { version = "0.32", default-features = false, features = ["std"] }
+thiserror = "2"
+
+[dev-dependencies]
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/blindbook-engine", "crates/blindbook-engine-wasm"]
+members = ["crates/blindbook-engine", "crates/blindbook-engine-wasm", "crates/blindbook-mint"]
 exclude = ["spikes"]
 
 [workspace.package]
@@ -29,7 +29,7 @@ zcash_protocol = "=0.11.0-pre.0"
 zip32 = "=0.3.0"
 
 # Blind signatures (spikes/d-blind): byte-identical with @cashu/cashu-ts 4.11 in the browser.
-cashu = "=0.18.1"
+cashu = { version = "=0.18.1", default-features = false }
 
 [profile.release]
 # Nothing here may change float semantics: Rust never contracts a*b+c into FMA and has no

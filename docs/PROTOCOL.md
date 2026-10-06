@@ -44,8 +44,8 @@ Rounding (normative): share and credit amounts round **down** to whole units. Ev
   secret = m + t        (signer only)
   public = M + t·G      (anyone)
   ```
-  `market_id` = 32-byte Polymarket `conditionId`; CREDIT uses 32 zero bytes. **Byte encoding (normative):** `M` as a 33-byte compressed point, `market_id` 32 bytes, `outcome_index` 1 byte (CREDIT: 0), `k` 1 byte.
-- **Keyset ids** are Cashu NUT-02 **v01** ids (`01` + 32 bytes), so `cashu-ts` NUT-13 derivation (the HMAC variant) works unchanged and restore is 5× faster than with v00 ids. The derivation, the ids and signatures made with `m + t` are byte-identical between the signer (`cashu` crate) and the browser (`cashu-ts`), verified in `spikes/d-blind`.
+  `market_id` = 32-byte Polymarket `conditionId`; CREDIT uses 32 zero bytes. **Byte encoding (normative):** the 86-byte preimage is `"blindbook/keyset/v1"` (19 ASCII bytes) ‖ `M` as a 33-byte compressed point ‖ `market_id` 32 bytes ‖ `outcome_index` 1 byte (CREDIT: `0xFF`) ‖ `k` 1 byte; all fields have fixed length, so plain concatenation is unambiguous.
+- **Keyset ids** are Cashu NUT-02 **v01** ids (`01` + 32 bytes; unit `bb-share` for outcome keysets, `bb-credit` for CREDIT; input fee 0; no expiry), so `cashu-ts` NUT-13 derivation (the HMAC variant) works unchanged and restore is 5× faster than with v00 ids. The derivation, the ids and signatures made with `m + t` are byte-identical between the signer (`cashu` crate) and the browser (`cashu-ts`), verified in `spikes/d-blind`.
 - **Signer encryption key:** X25519, public half pinned in the build; withdrawal addresses are sealed to it.
 - **No equivocation:** a client never accepts a key it didn't derive from `M`, and every signature carries a NUT-12 DLEQ proof.
 

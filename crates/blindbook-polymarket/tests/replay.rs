@@ -8,7 +8,7 @@ use blindbook_polymarket::feed::{Feed, HealthConfig};
 use blindbook_polymarket::fixed::{MICRO, PPM};
 use blindbook_polymarket::gamma::parse_market;
 use blindbook_polymarket::msg::{Frame, parse_frame};
-use blindbook_polymarket::reference::{DEFAULT_GUARD_SHARES, MarketFeed, RefSnapshot};
+use blindbook_polymarket::reference::{DEFAULT_GUARD_SHARES, MarketFeed, take};
 
 const FRAMES: &str = include_str!("data/ws-market.jsonl");
 const GAMMA: &str = include_str!("data/gamma-named.json");
@@ -73,7 +73,7 @@ fn real_market_replay() {
     assert!(mirrored_checks > 400);
 
     let now = FRAMES.lines().count() as u64 * 25;
-    let snap = RefSnapshot::take(&feed, &window, &market, now, 1_791_272_100_000);
+    let snap = take(&feed, &window, &market, now, 1_791_272_100_000);
     assert!(snap.anchor_matches());
     assert_eq!(snap.unhealthy_ms, 0);
     // The match was trading around 0.62 for HANJIN BRION in this capture.

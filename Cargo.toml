@@ -3,6 +3,7 @@ resolver = "3"
 members = [
   "crates/blindbook-engine",
   "crates/blindbook-engine-wasm",
+  "crates/blindbook-ledger",
   "crates/blindbook-mint",
   "crates/blindbook-polymarket",
 ]
@@ -42,6 +43,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "io-util"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }

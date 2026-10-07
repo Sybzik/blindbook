@@ -102,14 +102,15 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 |---|---|---|---|
 | `POST /v1/topup` | `amount_zat` (a top-up denomination), `credit_outputs[]`, `claim_hash = SHA256(topup_secret)` | on SEEN (within 0-conf caps) or 1 confirmation | `{topup_id, address, expires_height}` |
 | `GET /v1/topup/{id}` | | | `{status: awaiting / seen / credited / confirmed, signatures[]}` |
-| `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market_id, side (buy/sell), outcome (0/1), limit_bp, outputs[], change_outputs[], tag` | next 2 s batch | `{avg_price_bp, filled, refunded, signatures[]}` |
+| `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market_id, side (buy/sell), outcome (0/1), limit_bp, amount, outputs[], change_outputs[], tag` | next 2 s batch | `{avg_price_bp, filled, refunded, signatures[]}` |
 | `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[]}` |
 | `POST /v1/redeem` | `inputs[]` (winning keyset), `credit_outputs[]` | immediately after resolution | `{signatures[]}` |
 | `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount_units` (a standard denomination, THREAT_MODEL X6), `address_sealed` (X25519 sealed box of `{address, salt}`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{withdraw_id}`; status shown in the bundle |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
 | `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
 
-- Output counts are capped at 32 per keyset per request.
+- Output counts are capped at 32 per keyset per request; a request spends at most 64 slips.
+- **Trades pay from any slips:** `amount` (CREDIT units for a buy, share-units for a sell) may be less than the inputs' total, and the rest comes back on the change outputs in the same answer, so a bet never waits for a swap to exact change. The public log records `amount`, not the slips' denominations.
 - **Blank outputs for trades (normative):** the client can't know in advance how a trade fills, so `/v1/trade` carries blinded outputs **without amounts** for both possible results (as in Cashu NUT-08); the signer picks each used output's denomination and returns it with the signature and DLEQ.
   - **buy:** `outputs[]` in the outcome's position keyset (shares bought), `change_outputs[]` in CREDIT (refunds: limit, halt, the part shrunk by the invariant);
   - **sell:** `outputs[]` in CREDIT (proceeds), `change_outputs[]` in the **same position keyset** (shares that didn't sell: limit, halt, the part shrunk by the invariant).
@@ -234,7 +235,7 @@ Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with
    - `payoutDenominator(conditionId)` = `0xdd34de67`;
    - `payoutNumerators(conditionId, i)` = `0x0504c814`.
 2. When the denominator is greater than 0: record the numerators, the Polygon block and the resolution tx hash. The market becomes **RESOLVED**.
-3. A winning slip of `a` share-units pays `floor(a · num_i / den)` CREDIT units. A 50-50 result (`[1,1]`) pays half per share. Losing keysets become worthless.
+3. A redeem request of `a` share-units of outcome i pays `floor(a · num_i / den)` CREDIT units. A 50-50 result (`[1,1]`) pays half per share. Losing keysets become worthless.
 4. Redemption never expires.
 
 ## 8. Public data (read path)
@@ -246,9 +247,10 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 | `GET /v1/head` | `{height, seq, root, pow_bits}` | poll ~3 s |
 | `GET /v1/live` | current prices (ours and the Polymarket reference) for all markets, plus the last 2 minutes of batch results | poll ~3 s |
 | `GET /v1/snapshot/{seq}.json.gz` | full state: markets (labels, rules text, WebP thumbnails ≤ 4 KB), keyset ids, issuance log, spent set, house balance | first load, then cached |
-| `GET /v1/delta/{seq}.json.gz` | one block's worth of batches: inputs (with tags), reference snapshots, results, issued `B_`/`C_`/DLEQ (shuffled), spent `Y`s, payouts, resolutions, anchors, public chain stats for the block (shielded action count, for Block Radio), `prev_root` | per block |
+| `GET /v1/delta/{seq}.json.gz` | one block's worth of batch records (per market: parameters, schedule, reference snapshot, pool before, orders with tags, halt, fills, pool after), issued `B_`/`C_`/DLEQ **sorted by `B_`**, spent `Y`s **sorted**, events (market listed, top-up credited, voucher, redeemed, withdrawal queued, payout sent, resolved, anchored), public chain stats for the block (shielded action count, for Block Radio), `prev_root` | per block |
 
-- `root = SHA256(prev_root ‖ SHA256(delta))`: a hash chain, anchored on-chain.
+- `root = SHA256(prev_root ‖ SHA256(canonical JSON of the delta))` (RFC 8785; the first delta's `prev_root` is 32 zero bytes): a hash chain, anchored on-chain. Sorting issued signatures and spent `Y`s means their order inside a block says nothing about which request they came from. Types and the builder: `crates/blindbook-ledger`.
+- **What the verifier replays:** every batch record carries everything `clear_batch` needs (parameters, schedule, reference, pool before, orders), so anyone can recompute the fills and the pool after, check that each market's pool after equals its pool before in the next batch, recompute each anchor from its samples, and check the chain of roots against the on-chain anchors.
 - Your own results arrive in the **response** within seconds. The bundle is for the public record, restore, proofs and verification.
 
 ## 9. Signer protocol

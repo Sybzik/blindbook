@@ -9,6 +9,7 @@ publish.workspace = true
 
 [dependencies]
 blindbook-engine = { path = "../blindbook-engine" }
+blindbook-ledger = { path = "../blindbook-ledger" }
 futures-util.workspace = true
 reqwest.workspace = true
 rustls.workspace = true

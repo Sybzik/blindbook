@@ -17,7 +17,7 @@ use crate::anchor::{MidWindow, SAMPLE_EVERY_MS};
 use crate::feed::{Feed, FeedStats, HealthConfig, plan_shards};
 use crate::msg::{Frame, ResolvedMsg, parse_frame, subscribe_initial, subscribe_more};
 use crate::net::{Wss, connect_wss};
-use crate::reference::{MarketFeed, RefSnapshot};
+use crate::reference::{MarketFeed, RefSnapshot, take};
 
 pub const WS_MARKET: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
 const SEND_TIMEOUT: Duration = Duration::from_secs(2);
@@ -143,7 +143,7 @@ impl Mirror {
         let now = self.clock.now();
         let st = lock(&self.state);
         let w = st.windows.get(condition_id)?;
-        Some(RefSnapshot::take(&st.feed, w, m, now, self.clock.wall(now)))
+        Some(take(&st.feed, w, m, now, self.clock.wall(now)))
     }
 
     pub fn stats(&self) -> FeedStats {

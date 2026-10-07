@@ -1,10 +1,11 @@
 //! The per-batch reference snapshot: what each 2-second batch records in the public log and
 //! hands to the engine (MARKETS "Live reference, anchor and guard", PROTOCOL sections 1 and 5).
 
-use blindbook_engine::Reference;
+pub use blindbook_ledger::reference::RefSnapshot;
+use blindbook_ledger::reference::anchor_of;
 use serde::{Deserialize, Serialize};
 
-use crate::anchor::{MidWindow, anchor_of};
+use crate::anchor::MidWindow;
 use crate::feed::Feed;
 use crate::fixed::{MICRO, PPM};
 
@@ -25,81 +26,39 @@ pub struct MarketFeed {
     pub guard_micro: u64,
 }
 
-/// One market's reference at one batch. Prices in ppm; 0 means "none" (and halts the market).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RefSnapshot {
-    /// Unix ms when the snapshot was taken.
-    pub at_ms: u64,
-    /// Outcome A's mid samples in the last 30 s, oldest first. `mid_ppm` is their lower median.
-    pub mid_samples: Vec<u32>,
-    pub mid_ppm: u32,
-    /// Average price to buy `guard_micro` shares of each outcome on Polymarket's book.
-    pub ask_ppm: [u32; 2],
-    /// Average price to sell `guard_micro` shares of each outcome.
-    pub bid_ppm: [u32; 2],
-    pub guard_micro: u64,
-    /// Top of book per outcome, for auditors comparing with Polymarket's price history.
-    pub best_bid_ppm: [u32; 2],
-    pub best_ask_ppm: [u32; 2],
-    /// Polymarket's timestamp of the last event in each outcome's book.
-    pub server_ts_ms: [u64; 2],
-    /// How long the reference has been unhealthy (0 = healthy); the engine halts above 10 s.
-    pub unhealthy_ms: u64,
-}
-
-impl RefSnapshot {
-    /// Build the snapshot from the live feed. `now_ms` is the feed's monotonic clock, `wall_ms`
-    /// the Unix time recorded in the log.
-    pub fn take(
-        feed: &Feed,
-        window: &MidWindow,
-        m: &MarketFeed,
-        now_ms: u64,
-        wall_ms: u64,
-    ) -> Self {
-        let mut s = RefSnapshot {
-            at_ms: wall_ms,
-            mid_samples: window.samples(now_ms),
-            mid_ppm: 0,
-            ask_ppm: [PPM; 2],
-            bid_ppm: [0; 2],
-            guard_micro: m.guard_micro,
-            best_bid_ppm: [0; 2],
-            best_ask_ppm: [0; 2],
-            server_ts_ms: [0; 2],
-            unhealthy_ms: 0,
-        };
-        s.mid_ppm = anchor_of(&s.mid_samples).unwrap_or(0);
-        for (i, token) in m.tokens.iter().enumerate() {
-            if let Some(b) = feed.book(token) {
-                s.ask_ppm[i] = b.buy_avg_ppm(m.guard_micro);
-                s.bid_ppm[i] = b.sell_avg_ppm(m.guard_micro);
-                s.best_bid_ppm[i] = b.best_bid().unwrap_or(0);
-                s.best_ask_ppm[i] = b.best_ask().unwrap_or(0);
-            }
-            s.server_ts_ms[i] = feed.server_ts_ms(token);
-            s.unhealthy_ms = s.unhealthy_ms.max(feed.unhealthy_ms(token, now_ms));
+/// Build the snapshot from the live feed. `now_ms` is the feed's monotonic clock, `wall_ms`
+/// the Unix time recorded in the log.
+pub fn take(
+    feed: &Feed,
+    window: &MidWindow,
+    m: &MarketFeed,
+    now_ms: u64,
+    wall_ms: u64,
+) -> RefSnapshot {
+    let mut s = RefSnapshot {
+        at_ms: wall_ms,
+        mid_samples: window.samples(now_ms),
+        mid_ppm: 0,
+        ask_ppm: [PPM; 2],
+        bid_ppm: [0; 2],
+        guard_micro: m.guard_micro,
+        best_bid_ppm: [0; 2],
+        best_ask_ppm: [0; 2],
+        server_ts_ms: [0; 2],
+        unhealthy_ms: 0,
+    };
+    s.mid_ppm = anchor_of(&s.mid_samples).unwrap_or(0);
+    for (i, token) in m.tokens.iter().enumerate() {
+        if let Some(b) = feed.book(token) {
+            s.ask_ppm[i] = b.buy_avg_ppm(m.guard_micro);
+            s.bid_ppm[i] = b.sell_avg_ppm(m.guard_micro);
+            s.best_bid_ppm[i] = b.best_bid().unwrap_or(0);
+            s.best_ask_ppm[i] = b.best_ask().unwrap_or(0);
         }
-        s
+        s.server_ts_ms[i] = feed.server_ts_ms(token);
+        s.unhealthy_ms = s.unhealthy_ms.max(feed.unhealthy_ms(token, now_ms));
     }
-
-    /// The engine's input. `closed` / `accepting_orders` come from the catalog and from
-    /// `market_resolved` events.
-    pub fn to_engine(&self, closed: bool, accepting_orders: bool) -> Reference {
-        Reference {
-            mid_ppm: self.mid_ppm,
-            ask_ppm: self.ask_ppm,
-            bid_ppm: self.bid_ppm,
-            age_ms: self.unhealthy_ms,
-            closed,
-            accepting_orders,
-        }
-    }
-
-    /// Recompute the anchor from the recorded samples (what the verifier does).
-    pub fn anchor_matches(&self) -> bool {
-        anchor_of(&self.mid_samples).unwrap_or(0) == self.mid_ppm
-    }
+    s
 }
 
 #[cfg(test)]
@@ -170,7 +129,7 @@ mod tests {
         for t in 0..10 {
             w.push(t * 1_000, 615_000);
         }
-        let s = RefSnapshot::take(&f, &w, &market(), 9_500, 1_791_272_100_000);
+        let s = take(&f, &w, &market(), 9_500, 1_791_272_100_000);
         assert_eq!(s.mid_ppm, 615_000);
         assert!(s.anchor_matches());
         // 1,000 shares of A: 800 @ 0.62 + 200 @ 0.63 = 0.622; selling: 600 @ 0.61 + 400 @ 0.60.
@@ -191,7 +150,7 @@ mod tests {
     #[test]
     fn no_samples_or_no_book_halts() {
         let f = live_feed();
-        let s = RefSnapshot::take(&f, &MidWindow::default(), &market(), 0, 0);
+        let s = take(&f, &MidWindow::default(), &market(), 0, 0);
         let r = s.to_engine(false, true);
         assert_eq!(
             halt_reason(&Params::testnet(), &r, &Schedule::open()),
@@ -204,7 +163,7 @@ mod tests {
         );
         let mut w = MidWindow::default();
         w.push(0, 500_000);
-        let s = RefSnapshot::take(&empty, &w, &market(), 20_000, 0);
+        let s = take(&empty, &w, &market(), 20_000, 0);
         assert_eq!(s.ask_ppm, [PPM; 2]);
         assert_eq!(s.bid_ppm, [0; 2]);
         assert_eq!(s.unhealthy_ms, 20_000);
@@ -218,7 +177,7 @@ mod tests {
         f.on_frame(0, 12_000);
         f.on_disconnected(0, 12_000);
         let p = Params::testnet();
-        let at = |now| RefSnapshot::take(&f, &w, &market(), now, 0).to_engine(false, true);
+        let at = |now| take(&f, &w, &market(), now, 0).to_engine(false, true);
         assert_eq!(halt_reason(&p, &at(22_000), &Schedule::open()), None);
         assert_eq!(
             halt_reason(&p, &at(22_001), &Schedule::open()),

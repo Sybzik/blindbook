@@ -43,11 +43,7 @@ impl MidWindow {
     }
 }
 
-/// The normative anchor of a list of samples (what the verifier recomputes from the log).
-pub fn anchor_of(samples: &[u32]) -> Option<u32> {
-    let mut s = samples.to_vec();
-    blindbook_engine::median_ppm(&mut s)
-}
+pub use blindbook_ledger::reference::anchor_of;
 
 #[cfg(test)]
 mod tests {

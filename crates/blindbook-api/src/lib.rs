@@ -122,6 +122,7 @@ pub fn start(
     let router = Router::new()
         .route("/v1/head", get(routes::head))
         .route("/v1/live", get(routes::live))
+        .route("/v1/markets", get(routes::markets))
         .route("/v1/trade", post(routes::trade))
         .route("/v1/swap", post(routes::swap))
         .route("/v1/redeem", post(routes::redeem))

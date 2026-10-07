@@ -40,9 +40,20 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
+    rollupOptions: {
+      // The app, and the tunnel frame (its own copy of mix-fetch per frame).
+      input: { index: 'index.html', tunnel: 'tunnel.html' },
+    },
     // The app shell must stay under 300 KB gzip (ARCHITECTURE "Speed under load"); the mixnet
     // module is a separate lazy chunk.
-    chunkSizeWarningLimit: 6500,
+    chunkSizeWarningLimit: 17000,
   },
-  server: { host: '127.0.0.1', port: 5173, strictPort: true },
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+    // Development only: the devserver (crates/blindbook-api/examples/devserver.rs) on our origin.
+    proxy: { '/v1': 'http://127.0.0.1:8090', '/dev': 'http://127.0.0.1:8090' },
+  },
+  worker: { format: 'es' },
 });

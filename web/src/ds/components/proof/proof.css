@@ -1,0 +1,25 @@
+.bb-called{display:flex;flex-direction:column;align-items:flex-start;gap:var(--space-3)}
+.bb-called__card{position:relative;width:340px;padding:18px 20px 20px;border:1px solid color-mix(in srgb,var(--ink) 20%,transparent);display:flex;flex-direction:column;gap:2px}
+.bb-called__head{display:flex;align-items:center;gap:10px;padding-bottom:10px;border-bottom:2px solid var(--ink);margin-bottom:12px}
+.bb-called__kind{margin-left:auto;font-size:var(--text-ui-sm);letter-spacing:var(--tracking-label)}
+.bb-called__stamp{align-self:flex-start;margin:4px 0 12px}
+.bb-called__market{font-size:var(--text-ui-md);margin-bottom:4px!important}
+.bb-called__oc{display:inline-flex;align-items:center;gap:8px}
+.bb-called__oc .bb-slip__swatch{width:12px;height:12px}
+.bb-called__proof{display:flex;align-items:center;gap:14px;margin-top:12px;padding-top:12px;border-top:2px dashed color-mix(in srgb,var(--ink) 40%,transparent)}
+.bb-called__proof p{font-size:var(--text-ui-sm);line-height:1.4;text-wrap:pretty}
+.bb-called__verified{display:flex;align-items:center;gap:12px;margin-top:14px;font-size:var(--text-ui-sm)}
+.bb-called__actions{display:flex;flex-wrap:wrap;gap:var(--space-1)}
+
+.bb-pass{width:460px;border:1px solid color-mix(in srgb,var(--ink) 20%,transparent);font-size:var(--text-ui-sm)}
+.bb-pass__band{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 16px 4px;background:var(--ink);color:var(--paper);letter-spacing:var(--tracking-label)}
+.bb-pass__title{font-family:var(--font-display);font-size:var(--text-display-sm);line-height:1;letter-spacing:.08em}
+.bb-pass__body{display:flex;gap:18px;padding:16px}
+.bb-pass__photo{flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border:2px solid var(--ink);letter-spacing:var(--tracking-label)}
+.bb-pass__fields{flex:1;min-width:0}
+.bb-pass__fields .bb-leader{padding:5px 0}
+.bb-pass__bearer{margin-top:8px!important;font-family:var(--font-text);font-style:italic;font-size:var(--text-body)}
+.bb-pass__slots{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 16px 16px}
+.bb-pass__slot{display:grid;place-items:center;height:56px;border:2px dashed color-mix(in srgb,var(--ink) 40%,transparent);text-align:center}
+.bb-pass__slot.is-stamped{border-style:solid;border-color:color-mix(in srgb,var(--ink) 20%,transparent)}
+.bb-pass__empty{font-size:var(--text-ui-sm);letter-spacing:var(--tracking-label);color:var(--ink);opacity:.62;padding:0 6px;line-height:1.2}

@@ -1,0 +1,6 @@
+.bb-rules{display:flex;flex-direction:column;gap:var(--space-3)}
+.bb-rules__part+.bb-rules__part{border-top:1px solid var(--line);padding-top:var(--space-3)}
+.bb-rules__h{margin:0 0 var(--space-1);display:flex;align-items:center;gap:var(--space-1);font-weight:400}
+.bb-rules__tag{padding:1px 6px;border:1px solid var(--text-dim);font-size:var(--text-ui-sm)}
+.bb-rules__quote{margin:0 0 var(--space-1);padding:0;color:var(--phosphor);max-width:68ch}
+.bb-rules__link{font-family:var(--font-ui);font-size:var(--text-ui-sm)}

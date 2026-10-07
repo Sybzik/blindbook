@@ -465,6 +465,23 @@ pub async fn head(State(state): State<AppState>) -> Response {
     )
 }
 
+/// The catalog: every listed market with its labels, rules, keysets, parameters and status. The
+/// same file for every visitor.
+pub async fn markets(State(state): State<AppState>) -> Response {
+    let markets: Vec<_> = state
+        .shared
+        .markets
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .values()
+        .cloned()
+        .collect();
+    answer(
+        StatusCode::OK,
+        json!({ "credit_keyset": state.shared.credit_id, "markets": markets }),
+    )
+}
+
 pub async fn live(State(state): State<AppState>) -> Response {
     let bytes = state.live.read().unwrap_or_else(|e| e.into_inner()).clone();
     let mut r = (StatusCode::OK, bytes).into_response();

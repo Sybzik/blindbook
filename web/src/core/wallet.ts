@@ -12,6 +12,7 @@ import { type Keyset, creditKeyset, outcomeKeyset } from './keysets';
 import { calledItSecret, calledItTag, decodeSlips, encodeSlips } from './codes';
 import { seal } from './seal';
 import type { Api, FillRecord } from './api';
+import { short, trace } from './trace';
 
 export interface HistoryEntry {
   at_ms: number;
@@ -38,12 +39,34 @@ export interface WalletData {
   v: 1;
   /** 64-byte BIP 39 seed, hex: the root of every secret. */
   seed: string;
+  /** The 12 words themselves, so an unlocked vault can show them again for a backup. */
+  mnemonic?: string;
   /** Next NUT-13 counter per keyset id. */
   counters: Record<string, number>;
   calledNext: number;
   slips: Proof[];
   history: HistoryEntry[];
   topups: TopupRecord[];
+  /** Back-room state that never leaves the device: dead-drop notes, NOBODY PASS stamps, scores. */
+  local?: LocalData;
+  /** Codes we handed over (or printed) and nobody has taken over yet: they can be taken back. */
+  outbox?: Outgoing[];
+}
+
+export interface Outgoing {
+  code: string;
+  at_ms: number;
+  id: string;
+  amount: number;
+  paper: boolean;
+}
+
+export interface LocalData {
+  /** The 12 words were confirmed by stamping (or the vault was restored from them). */
+  backedUp?: boolean;
+  notes?: string;
+  stamps?: string[];
+  best?: Record<string, number>;
 }
 
 export function newWalletData(seed: Uint8Array): WalletData {
@@ -115,6 +138,12 @@ export class Wallet {
 
   creditBalance(): number {
     return this.balance(this.credit.id);
+  }
+
+  /** Update the device-only back-room state and persist it inside the vault. */
+  async setLocal(patch: Partial<LocalData>) {
+    this.data.local = { ...this.data.local, ...patch };
+    await this.save(this.data);
   }
 
   /** Reserve `n` counters for a keyset and persist the reservation before use. */
@@ -211,6 +240,8 @@ export class Wallet {
     const chg = await this.blank(change);
     const index = this.data.calledNext++;
     const tag = calledItTag(calledItSecret(this.seed, index));
+    trace(() => `tag    SHA256(called-it secret #${index}) = ${short(tag)} · the only link to this bet, and only you hold the secret`);
+    trace(() => `spend  ${inputs.length} slips · ${inputs.reduce((n, p) => n + p.amount, 0)} units · server sees Y = hash_to_curve(secret), never who`);
     await this.save(this.data);
     const r = await this.api.trade({ market, side, outcome, limit_bp, amount, inputs, outputs: outs.msgs, change_outputs: chg.msgs, tag });
     const got = receive(r.signatures, { outputs: outs.pending, change: chg.pending }, this.keysets(get, change));
@@ -236,6 +267,7 @@ export class Wallet {
     if (!inputs) throw new Error('not enough CREDIT');
     const chg = await this.blank(this.credit);
     const sealed = await seal(sealPk, address);
+    trace(() => `seal   address → X25519 + HKDF + AES-GCM to the signer's pinned key · only the signer can open it · ${sealed.sealed.slice(0, 18)}… · commitment ${short(sealed.commitment)}`);
     const r = await this.api.withdraw(inputs, amount, chg.msgs, sealed.sealed, sealed.commitment);
     const got = receive(r.signatures, { change: chg.pending }, this.keysets(this.credit));
     await this.commit(inputs, got, { at_ms: Date.now(), kind: 'withdraw', stored: r.stored_record });
@@ -243,7 +275,8 @@ export class Wallet {
   }
 
   /** Hand slips of a keyset worth at least `amount` to someone: exact change first, then a code. */
-  async send(id: string, amount: number): Promise<string> {
+  /** Hand over `amount` of a keyset as a bearer code; it stays in the outbox until taken back. */
+  async send(id: string, amount: number, paper = false): Promise<string> {
     const ks = this.known.get(id);
     if (!ks) throw new Error('unknown keyset');
     let picked = select(this.data.slips.filter((s) => s.id === id), amount);
@@ -261,9 +294,33 @@ export class Wallet {
       if (!picked || picked.reduce((n, p) => n + p.amount, 0) !== amount) throw new Error('exact change failed');
     }
     const gone = new Set(picked.map((p) => p.secret));
+    const code = encodeSlips(picked);
     this.data.slips = this.data.slips.filter((s) => !gone.has(s.secret));
+    this.data.outbox = [...(this.data.outbox ?? []), { code, at_ms: Date.now(), id, amount, paper }];
     await this.save(this.data);
-    return encodeSlips(picked);
+    return code;
+  }
+
+  /**
+   * Take back a code from the outbox. If the receiver already took it over, the swap is refused
+   * as spent and the entry is cleared: that is the hand-off having worked.
+   */
+  async reclaim(code: string): Promise<'back' | 'taken'> {
+    const drop = async () => {
+      this.data.outbox = (this.data.outbox ?? []).filter((o) => o.code !== code);
+      await this.save(this.data);
+    };
+    try {
+      await this.receiveCode(code);
+      await drop();
+      return 'back';
+    } catch (e) {
+      if ((e as { code?: string }).code === 'spent') {
+        await drop();
+        return 'taken';
+      }
+      throw e;
+    }
   }
 
   /** Take over slips someone handed us: swap them at once, so the sender can't spend them too. */
@@ -280,6 +337,11 @@ export class Wallet {
     const r = await this.api.swap(slips, out.msgs);
     const got = receive(r.signatures, { outputs: out.pending }, this.keysets(ks));
     await this.commit([], got, { at_ms: Date.now(), kind: 'receive', stored: r.stored_record });
+    // Our own code coming back (or a code we were given twice) leaves the outbox.
+    if (this.data.outbox?.some((o) => o.code === code)) {
+      this.data.outbox = this.data.outbox.filter((o) => o.code !== code);
+      await this.save(this.data);
+    }
     return total;
   }
 

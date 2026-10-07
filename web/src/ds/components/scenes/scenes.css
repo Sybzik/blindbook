@@ -1,0 +1,46 @@
+.bb-mixstrip{display:flex;flex-direction:column;gap:6px;width:100%;max-width:560px;font-family:var(--font-ui)}
+.bb-mixstrip__track{position:relative;height:16px}
+.bb-mixstrip__rail{position:absolute;left:10%;right:10%;top:7px;height:0;border-top:2px dotted var(--line)}
+.bb-mixstrip__lit{position:absolute;left:10%;top:7px;height:2px;background:var(--phosphor-mid)}
+.bb-mixstrip__arrow{position:absolute;top:50%;transform:translate(-50%,-52%);padding:0 2px;background:var(--glass);font-size:var(--text-ui-sm);line-height:1;color:var(--text-dim)}
+.bb-mixstrip__arrow.is-on{color:var(--phosphor-mid)}
+.bb-mixstrip__node{position:absolute;top:2px;width:12px;height:12px;margin-left:-6px;background:var(--glass);border:1px solid var(--text-dim)}
+.bb-mixstrip__node.is-on{background:var(--phosphor);border-color:var(--phosphor-hi)}
+.bb-mixstrip__packet{position:absolute;top:4px;width:8px;height:8px;margin-left:-4px;background:var(--phosphor-hi);box-shadow:0 0 6px color-mix(in srgb,var(--phosphor-hi) 70%,transparent);z-index:1}
+.bb-mixstrip__labels{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));text-align:center}
+.bb-mixstrip__labels span{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:var(--text-ui-sm);letter-spacing:var(--tracking-label);line-height:1.1;color:var(--text-dim)}
+.bb-mixstrip__labels b{font-weight:400}
+.bb-mixstrip__labels i{font-style:normal;min-height:1.1em}
+.bb-mixstrip__labels .is-on{color:var(--phosphor)}
+.bb-mixstrip__labels .is-linked{color:var(--phosphor-hi);text-shadow:var(--glow-text)}
+[data-signal="clean"] .bb-mixstrip__labels .is-linked{text-shadow:none}
+[data-signal="clean"] .bb-mixstrip__packet{box-shadow:none}
+
+.bb-boot{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--space-3);width:100%;height:100%;min-height:420px;padding:var(--space-4) var(--space-2);box-sizing:border-box;background:var(--void);color:var(--phosphor);cursor:default}
+.bb-boot__eye{display:grid;place-items:center}
+.bb-boot__lines{display:flex;flex-direction:column;width:100%;max-width:360px}
+.bb-boot__line .bb-leader{padding:4px 0}
+.bb-boot__line .bb-leader__label{color:var(--phosphor)}
+.bb-boot__line.is-wait{visibility:hidden}
+.bb-boot__bar{display:flex;gap:2px;width:100%;max-width:360px}
+.bb-boot__bar span{flex:1;height:14px;background:var(--line)}
+.bb-boot__bar span.is-on{background:var(--phosphor)}
+.bb-boot__mix{max-width:420px}
+.bb-boot__skip{margin:0;font-size:var(--text-ui-sm);letter-spacing:var(--tracking-label);text-transform:uppercase;color:var(--text-dim)}
+
+
+.bb-keyhole{display:inline-grid;place-items:center;padding:6px}
+.bb-keyhole__plate{fill:var(--brass)}
+.bb-keyhole__hole{fill:var(--phosphor);filter:drop-shadow(0 0 1.5px color-mix(in srgb,var(--phosphor) 55%,transparent))}
+.bb-keyhole.is-lit .bb-keyhole__hole{fill:var(--phosphor-hi);filter:drop-shadow(0 0 2.5px color-mix(in srgb,var(--phosphor-hi) 80%,transparent)) drop-shadow(0 0 6px color-mix(in srgb,var(--phosphor) 60%,transparent))}
+.bb-keyhole.is-unlocking .bb-keyhole__hole,.bb-keyhole.is-prompt .bb-keyhole__hole{animation:bb-pulse .8s steps(4) infinite}
+.bb-keyhole.is-error .bb-keyhole__hole{fill:var(--alarm);filter:none}
+[data-signal="clean"] .bb-keyhole__hole,[data-signal="clean"] .bb-keyhole.is-lit .bb-keyhole__hole{filter:none;animation:none}
+.bb-unlock{display:flex;flex-direction:column;align-items:center;gap:var(--space-2);width:100%;max-width:360px;margin:0 auto;font-family:var(--font-ui);text-align:center}
+.bb-unlock--desktop .bb-input,.bb-unlock--desktop .bb-key{align-self:stretch;text-align:left}
+.bb-unlock--desktop .bb-key{text-align:center}
+.bb-unlock__title{margin:0;min-height:48px;display:flex;align-items:center;justify-content:center;gap:10px;font-family:var(--font-display);font-weight:400;font-size:var(--text-display-md);line-height:1;color:var(--phosphor-hi)}
+.bb-unlock__lead{margin:-8px 0 4px;font-size:var(--text-ui-md);line-height:1.45;color:var(--phosphor);text-wrap:pretty}
+.bb-unlock__link{min-height:var(--touch-min);padding:0 8px;background:none;border:0;color:var(--link);font-family:var(--font-ui);font-size:var(--text-ui-sm);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.bb-unlock__link:hover{color:var(--void);background:var(--link);text-decoration:none}
+.bb-unlock__link:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}

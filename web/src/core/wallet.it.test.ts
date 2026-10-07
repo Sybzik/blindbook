@@ -11,7 +11,7 @@ import { withPow } from './pow';
 import { restore, type DeltaLike, type Snapshot } from './restore';
 import { yOf } from './blind';
 
-const BASE = process.env.BB_DEV_API;
+const BASE = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.BB_DEV_API;
 const M = '0204559d9106c538b0f21bd82b50c47117bfda93530ed212fb818b886321cdea3c';
 const SEAL_PK = '45a6018a2cf7c127c6ddfb1246298c9e2e09db027ab6cb4c3dc22bd7f838e745';
 const PAYEE = 'utest166fy5luckyz2fnztzsznh6rwt5pe0va4mpnqm6axfklss87w53fw50aqg3rwmt2stt5nnmnzgteckxjquxx2yjuk4rmrntds7gtghekc';

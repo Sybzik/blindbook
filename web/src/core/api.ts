@@ -3,6 +3,7 @@
 // carries proof-of-work over its canonical body.
 
 import type { BlindedMessage, Proof, SignatureOut } from './blind';
+import { trace } from './trace';
 
 export interface Transport {
   request(method: 'GET' | 'POST', path: string, body?: unknown, timeoutMs?: number): Promise<{ status: number; body: unknown; bytes?: Uint8Array }>;
@@ -102,6 +103,8 @@ export interface RecentFill {
 export interface Live {
   at_ms: number;
   head: { height: number; seq: number; root: string };
+  /** The last chain block in the log and its shielded activity. */
+  block: { height: number; shielded_actions: number } | null;
   markets: LiveMarket[];
   recent: RecentFill[];
 }
@@ -150,7 +153,10 @@ export class Api {
   }
 
   private async post<T>(path: string, body: object, kind: 'light' | 'heavy', timeoutMs = 20_000): Promise<T> {
-    const withPow = await this.pow(body, await this.bits(kind));
+    const bits = await this.bits(kind);
+    const t0 = performance.now();
+    const withPow = await this.pow(body, bits);
+    trace(() => `pow    ${path} · ${bits} bits (${kind}) · nonce ${withPow.pow.nonce} · ${Math.round(performance.now() - t0)} ms in workers`);
     return check<T>(await this.transport.request('POST', path, withPow, timeoutMs));
   }
 

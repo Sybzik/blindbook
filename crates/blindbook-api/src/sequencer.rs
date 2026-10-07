@@ -70,8 +70,16 @@ pub struct RecentFill {
 }
 
 /// State shared with the HTTP handlers and the live-price task.
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct ChainBlock {
+    pub height: u64,
+    pub shielded_actions: u64,
+}
+
 pub struct Shared {
     pub head: RwLock<Head>,
+    /// The last chain block closed into the log, with its shielded activity (BLOCK RADIO).
+    pub block: RwLock<Option<ChainBlock>>,
     pub markets: RwLock<BTreeMap<H32, MarketView>>,
     pub recent: RwLock<VecDeque<RecentFill>>,
     pub catalog: RwLock<BTreeMap<H32, MarketInfo>>,
@@ -92,6 +100,7 @@ impl Shared {
                 seq: 0,
                 root: GENESIS_ROOT,
             }),
+            block: RwLock::new(None),
             markets: RwLock::default(),
             recent: RwLock::default(),
             catalog: RwLock::default(),
@@ -514,6 +523,10 @@ impl Sequencer {
             )
             .map_err(io)?;
         *self.shared.head.write().unwrap_or_else(|e| e.into_inner()) = head;
+        *self.shared.block.write().unwrap_or_else(|e| e.into_inner()) = Some(ChainBlock {
+            height,
+            shielded_actions: chain.shielded_actions,
+        });
         Ok(())
     }
 

@@ -11,7 +11,7 @@ use blindbook_ledger::delta::Head;
 use blindbook_ledger::ledger::MarketStatus;
 use serde::Serialize;
 
-use crate::sequencer::{RecentFill, RefFn, Shared, now_ms};
+use crate::sequencer::{ChainBlock, RecentFill, RefFn, Shared, now_ms};
 
 #[derive(Serialize)]
 pub struct LiveReference {
@@ -37,6 +37,8 @@ pub struct LiveMarket {
 pub struct Live {
     pub at_ms: u64,
     pub head: Head,
+    /// The last chain block in the log and its shielded activity.
+    pub block: Option<ChainBlock>,
     pub markets: Vec<LiveMarket>,
     pub recent: Vec<RecentFill>,
 }
@@ -95,6 +97,7 @@ pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
     Live {
         at_ms,
         head: *shared.head.read().unwrap_or_else(|e| e.into_inner()),
+        block: *shared.block.read().unwrap_or_else(|e| e.into_inner()),
         markets: out,
         recent: shared
             .recent

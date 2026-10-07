@@ -9,6 +9,7 @@ import * as cashu from '@cashu/cashu-ts';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { fromHex, toHex, utf8 } from './bytes';
 import { type Keyset, keyFor } from './keysets';
+import { short, trace } from './trace';
 
 const Point = secp256k1.Point;
 type Pt = InstanceType<typeof Point>;
@@ -65,6 +66,7 @@ export function makeOutputs(
   amounts: number[],
 ): { msgs: BlindedMessage[]; pending: Pending[] } {
   const pending = amounts.map((_, i) => deriveOutput(seed, keysetId, start + i));
+  trace(() => `blind  ${pending.length} outputs · keyset ${short(keysetId)} · counters ${start}–${start + pending.length - 1} · B_ = Y + r·G, first ${short(pending[0]?.B_ ?? '')}`);
   return {
     msgs: pending.map((p, i) => ({ amount: amounts[i] ?? 0, id: keysetId, B_: p.B_ })),
     pending,
@@ -103,6 +105,7 @@ export function receive(
     const ok = cashu.verifyDLEQProof({ e: fromHex(s.dleq.e), s: fromHex(s.dleq.s) }, B_, C_, K);
     if (!ok) throw new SignatureError(`${tag}: DLEQ proof fails for the key derived from M`);
     const C: Pt = cashu.unblindSignature(C_, p.r, K);
+    trace(() => `dleq   ${tag} amount ${s.amount} ✓ against K derived from M · unblind C = C_ − r·K → ${short(C.toHex(true))}`);
     proofs.push({ amount: s.amount, id: s.id, secret: p.secret, C: C.toHex(true) });
   }
   return proofs;

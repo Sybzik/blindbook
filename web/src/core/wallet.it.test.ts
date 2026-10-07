@@ -8,6 +8,8 @@ import { Api, DirectTransport, type PowFn } from './api';
 import { Wallet, newWalletData, type WalletData } from './wallet';
 import { utf8 } from './bytes';
 import { withPow } from './pow';
+import { restore, type DeltaLike, type Snapshot } from './restore';
+import { yOf } from './blind';
 
 const BASE = process.env.BB_DEV_API;
 const M = '0204559d9106c538b0f21bd82b50c47117bfda93530ed212fb818b886321cdea3c';
@@ -73,5 +75,24 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     expect(await bob.w.receiveCode(slipCode)).toBe(1_000);
     expect(bob.w.creditBalance()).toBe(1_000);
     await expect(bob.w.receiveCode(slipCode)).rejects.toThrow(/spent/);
-  }, 60_000);
+
+    // Zero-query restore: only public files, and the same slips and trades come back.
+    const head0 = await api.head();
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 1_000));
+      if ((await api.head()).seq > head0.seq) break;
+    }
+    const head = await api.head();
+    const snap = await api.json<Snapshot>('/v1/snapshot/latest.json.gz');
+    const deltas: DeltaLike[] = [];
+    for (let seq = 1; seq <= head.seq; seq++) deltas.push(await api.json<DeltaLike>(`/v1/delta/${seq}.json.gz`));
+    const r = restore(w.seed, M, { ...snap, seq: 0 }, deltas, yOf);
+    expect(r.foreign).toEqual([]);
+    const sum = (ps: { amount: number; id: string }[], id: string) => ps.filter((p) => p.id === id).reduce((n, p) => n + p.amount, 0);
+    expect(sum(r.slips, w.credit.id)).toBe(w.creditBalance());
+    expect(sum(r.slips, pos.id)).toBe(w.balance(pos.id));
+    expect(new Set(r.slips.map((p) => p.secret))).toEqual(new Set(w.data.slips.map((p) => p.secret)));
+    expect(r.trades.map((t) => t.side)).toEqual(['buy', 'sell']);
+    expect(r.calledNext).toBe(w.data.calledNext);
+  }, 90_000);
 });

@@ -112,7 +112,8 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 - [x] Engine (native = WASM), mint keysets and blind signatures, Polymarket mirror and Polygon resolver
 - [x] Ledger: batches around the engine, spent set, issuance, swaps, redemptions, withdrawals, hash-chained log
 - [x] Signer core: checks every slip and claim, applies the same ledger operation, signs with DLEQ
-- [ ] API service, signer transport, indexer, payouts
+- [x] API service (sequencer, journal, public log files, live prices) and the signer link with exact-once recovery
+- [ ] Indexer (top-ups), payouts, verifier
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof
 - [ ] Demo video

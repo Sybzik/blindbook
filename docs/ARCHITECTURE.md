@@ -274,7 +274,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 
 | Layer | Choice |
 |---|---|
-| Core | Rust 1.95 (edition 2024), tokio, axum, SQLite; engine crate is pure, deterministic, compiles to WASM; backend built and run in Linux containers |
+| Core | Rust 1.95 (edition 2024), tokio, axum; state = replay of append-only journals (no database server); engine and ledger crates are pure and deterministic, the engine compiles to WASM; backend built and run in Linux containers |
 | Zcash | librustzcash **NU7 pre-release set**, pinned exactly: `zcash_client_backend` 0.25.0-pre.0, `zcash_client_sqlite` 0.23.0-pre.0, `zcash_keys` 0.17.0-pre.0, `zcash_primitives` 0.31.0-pre.0, `zcash_protocol` 0.11.0-pre.0, `zcash_address` 0.14.0-pre.0, `orchard` 0.16.0, `pczt` 0.10.0-pre.0. Testnet activated NU7 on Oct 5 and the 0.24 line can no longer build valid testnet transactions; the same crates serve mainnet (no NU7 there yet). Move to the final releases when they ship |
 | Chain access | local and self-hosted nodes via **ZcashFoundation/z3** (Docker Compose: Zebra + Zaino with a lightwalletd-compatible gRPC; regtest, testnet, mainnet); public `testnet.zec.rocks:443` as fallback; always untargeted |
 | E-cash | `cashu` crate 0.18 from CDK (`dhke` module, NUT-12 DLEQ, NUT-13) on the signer; `@cashu/cashu-ts` 4.11 in the browser (byte-identical, `spikes/d-blind`), DLEQ checks with `@noble/curves` in a worker; NUT-02 v01 keyset ids; our own multi-keyset mint |

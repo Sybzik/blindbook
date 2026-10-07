@@ -1,0 +1,142 @@
+//! `blindbook-signer`: keep the master key away from the internet-facing API.
+//!
+//! ```text
+//! blindbook-signer keygen <key-file>                 new master key; prints M
+//! blindbook-signer vouchers <n> <codes-file> <hashes-file>
+//!                                                    judge voucher codes (give out) and hashes (signer)
+//! blindbook-signer run                               dial the API and serve
+//!     BB_SIGNER_KEY      file with the master secret key (hex)
+//!     BB_API_URL         wss://<api>/v1/signer (ws:// only for local tests)
+//!     BB_SIGNER_TOKEN    bearer token the API expects
+//!     BB_SIGNER_DATA     directory for the journal
+//!     BB_VOUCHERS        optional file of voucher hashes (one hex per line)
+//!     BB_VOUCHER_UNITS   CREDIT units per voucher (default 50,000 = 0.5 TAZ)
+//! ```
+//! Keys, codes and journals never go into the repository (`..\blindbook-work\` locally).
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use blindbook_ledger::H32;
+use blindbook_mint::cashu::SecretKey;
+use blindbook_mint::{MasterKey, sha256};
+use blindbook_signer::Signer;
+use blindbook_signer::link::{Station, run};
+
+fn env(k: &str) -> Result<String, String> {
+    std::env::var(k).map_err(|_| format!("{k} is not set"))
+}
+
+fn write_private(path: &Path, text: &str) -> Result<(), String> {
+    if path.exists() {
+        return Err(format!("{} exists; refusing to overwrite", path.display()));
+    }
+    std::fs::write(path, text).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn keygen(path: &Path) -> Result<(), String> {
+    let k = SecretKey::generate();
+    write_private(path, &format!("{}\n", k.to_secret_hex()))?;
+    println!("M = {}", MasterKey::from_secret(k).public_key().to_hex());
+    Ok(())
+}
+
+/// Codes like `BB-7K2M-Q9XD-3HTR-W6PN` (Crockford base32: no I, L, O, U).
+fn vouchers(n: usize, codes: &Path, hashes: &Path) -> Result<(), String> {
+    const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+    let mut code_lines = String::new();
+    let mut hash_lines = String::new();
+    for _ in 0..n {
+        let bytes = SecretKey::generate().to_secret_bytes();
+        let chars: String = bytes[..16]
+            .iter()
+            .map(|b| ALPHABET[(*b as usize) % 32] as char)
+            .collect();
+        let code = format!(
+            "BB-{}-{}-{}-{}",
+            &chars[0..4],
+            &chars[4..8],
+            &chars[8..12],
+            &chars[12..16]
+        );
+        hash_lines.push_str(&format!("{}\n", H32(sha256(code.as_bytes()))));
+        code_lines.push_str(&code);
+        code_lines.push('\n');
+    }
+    write_private(codes, &code_lines)?;
+    write_private(hashes, &hash_lines)?;
+    println!(
+        "{n} vouchers: codes in {}, hashes in {}",
+        codes.display(),
+        hashes.display()
+    );
+    Ok(())
+}
+
+async fn serve() -> Result<(), String> {
+    let key_hex = std::fs::read_to_string(env("BB_SIGNER_KEY")?).map_err(|e| e.to_string())?;
+    let key = SecretKey::from_hex(key_hex.trim()).map_err(|e| e.to_string())?;
+    let mut signer = Signer::new(MasterKey::from_secret(key)).map_err(|e| e.to_string())?;
+    if let Ok(path) = std::env::var("BB_VOUCHERS") {
+        let units: u64 = std::env::var("BB_VOUCHER_UNITS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(50_000);
+        let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        let hashes: Vec<H32> = text.lines().filter_map(|l| H32::parse(l.trim())).collect();
+        tracing::info!(count = hashes.len(), units, "vouchers loaded");
+        signer.add_vouchers(hashes, units);
+    }
+    let data = PathBuf::from(env("BB_SIGNER_DATA")?);
+    std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
+    let station = Station::open(signer, &data.join("signer-journal.jsonl"))?;
+    tracing::info!(
+        m = %station.signer.public_key().to_hex(),
+        applied = station.applied,
+        "signer ready"
+    );
+    run(
+        env("BB_API_URL")?,
+        env("BB_SIGNER_TOKEN")?,
+        Arc::new(Mutex::new(station)),
+    )
+    .await;
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let r = match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["keygen", path] => keygen(Path::new(path)),
+        ["vouchers", n, codes, hashes] => match n.parse() {
+            Ok(n) => vouchers(n, Path::new(codes), Path::new(hashes)),
+            Err(_) => Err("n must be a number".into()),
+        },
+        ["run"] => serve().await,
+        _ => Err(
+            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> | run".into(),
+        ),
+    };
+    if let Err(e) = r {
+        eprintln!("error: {e}");
+        std::process::exit(1);
+    }
+}

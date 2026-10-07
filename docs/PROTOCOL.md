@@ -255,8 +255,12 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 
 ## 9. Signer protocol
 
-- **No inbound ports.** The signer opens a persistent outbound stream (WebSocket over TLS) to the API.
-- **Independent verification.** It runs its own indexer and engine replica and **verifies every batch before signing**, including the exposure invariant. Signing takes milliseconds.
+- **No inbound ports.** The signer opens a persistent outbound stream (WebSocket over TLS) to the API's `/v1/signer`, authenticated with a bearer token (≥ 32 characters).
+- **One operation at a time, one order (normative).** The API's sequencer puts every state change (list market, trade batch, swap, redeem, credit, withdraw, resolve) in one order and sends each to the signer: `{"id", "op"}` → `{"id", "reply": {"invalid", "signatures"}}`. Both sides apply it to their own ledger replica with the same `ops::apply`, leaving out the requests the signer found invalid (`invalid`), so the replicas never diverge; the API checks the signatures line up with its own sign jobs and halts if they don't (`crates/blindbook-ledger/src/ops.rs`).
+- **Independent verification.** It runs its own indexer and engine replica and **verifies every batch before signing**: each spent slip (`Y` matches the secret, `C = k·hash_to_curve(x)` for its keyset and amount), each blinded output (a curve point), each top-up claim against its own indexer, each voucher against its own list, the exposure invariant. Signing takes milliseconds.
+- **Hello and step check.** On connect the signer sends `{"hello": {"m", "applied"}}`. The API admits it only with the pinned `M` and the same number of applied operations.
+- **A lost answer is applied exactly once.** If the link drops after an operation was sent but before its answer, the API keeps that operation in doubt, admits the signer one operation ahead, and re-sends it before anything else; the signer recognises the repeat (digest of the redacted operation, kept in its journal with the reply) and answers from its cache. Tested in `crates/blindbook-api/tests/remote.rs`.
+- **Journals hold no spendable secret.** Both sides keep an append-only journal (fsynced before any answer leaves) and rebuild their state from it after a restart; spent slips are written with their secret and `C` replaced by placeholders (`ops::redact`), keeping only `Y`, keyset and amount.
 - **Supply guard:** if redemptions of any keyset would exceed what the signer itself issued, it halts all withdrawals and raises an alarm.
 - **Scheduled work:** it builds, proves, signs and broadcasts sweeps, payouts and anchors itself: it holds the keys and runs its own indexer, so no PCZT round trip is needed (PCZT stays the path for a future FROST setup).
 
@@ -281,7 +285,7 @@ Payouts go only to unified addresses with an Orchard-protocol receiver, checked 
 - The signer runs its own indexer the same way.
 - Mainnet option: self-hosted Zebra + Zaino.
 
-## 12. On-disk state (SQLite)
+## 12. On-disk state
 
-`markets`, `topups` (diversifier index ↔ request), `deposits`, `batches`, `snapshots`, `issuance`, `spent`, `withdrawals` (commitment, sealed blob until broadcast, status, txid; **no plaintext address**), `anchors`, `house_ledger`.
+The ledger state is not a database: it is the replay of an append-only journal (`journal.jsonl` on the API, `signer-journal.jsonl` on the signer; see §9), and the public log files are written from the same replay. Top-up requests and deposits (diversifier index ↔ request) and payout status are kept by the indexer and the signer next to their journals. Withdrawals keep only the commitment, the sealed blob until broadcast, status and txid; **no plaintext address**.
 No table, log or metric ever contains an IP, user agent or plaintext payout address. The boot-time self-check refuses to start a service with access logging enabled.

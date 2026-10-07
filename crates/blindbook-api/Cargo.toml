@@ -20,6 +20,7 @@ blindbook-polymarket = { path = "../blindbook-polymarket" }
 blindbook-signer = { path = "../blindbook-signer", optional = true }
 flate2 = "1"
 futures-util.workspace = true
+reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
@@ -30,4 +31,4 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 blindbook-signer = { path = "../blindbook-signer" }
-reqwest.workspace = true
+tokio-tungstenite.workspace = true

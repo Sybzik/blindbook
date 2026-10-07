@@ -373,9 +373,10 @@ pub async fn signer(
         remote
             .attach(socket, |hello: &Hello| {
                 let ours = shared.applied_ops.load(Ordering::SeqCst);
+                let doubt = shared.in_doubt.load(Ordering::SeqCst);
                 if hello.m != m {
                     Err(format!("signer has M {}, we pin {m}", hello.m))
-                } else if hello.applied != ours {
+                } else if hello.applied != ours && !(doubt && hello.applied == ours + 1) {
                     Err(format!(
                         "signer applied {} operations, we applied {ours}",
                         hello.applied

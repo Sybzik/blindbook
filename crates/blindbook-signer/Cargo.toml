@@ -10,7 +10,15 @@ publish.workspace = true
 [dependencies]
 blindbook-ledger = { path = "../blindbook-ledger" }
 blindbook-mint = { path = "../blindbook-mint" }
-thiserror.workspace = true
-
-[dev-dependencies]
+futures-util.workspace = true
+rustls.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-rustls.workspace = true
+tokio-tungstenite.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+webpki-roots.workspace = true
+

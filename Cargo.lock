@@ -265,6 +265,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "tokio-tungstenite 0.30.0",
  "tower-http 0.7.1",
  "tracing",
  "tracing-subscriber",
@@ -335,8 +336,17 @@ version = "0.1.0"
 dependencies = [
  "blindbook-ledger",
  "blindbook-mint",
+ "futures-util",
+ "rustls",
+ "serde",
  "serde_json",
  "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "tokio-tungstenite 0.30.0",
+ "tracing",
+ "tracing-subscriber",
+ "webpki-roots",
 ]
 
 [[package]]

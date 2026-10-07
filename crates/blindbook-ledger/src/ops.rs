@@ -220,3 +220,60 @@ pub fn inputs_of(op: &Op) -> Vec<&[Input]> {
         Op::ListMarket { .. } | Op::Credit { .. } | Op::Resolve { .. } => Vec::new(),
     }
 }
+
+/// A placeholder curve point for redacted slips (the format checks only look at its shape).
+pub const REDACTED_POINT: &str =
+    "020000000000000000000000000000000000000000000000000000000000000000";
+pub const REDACTED_SECRET: &str = "redacted";
+
+fn redact_inputs(inputs: &mut [Input]) {
+    for i in inputs {
+        i.proof.secret = REDACTED_SECRET.into();
+        i.proof.c = REDACTED_POINT.into();
+    }
+}
+
+/// The operation with every spent slip's secret and signature replaced by placeholders: what
+/// the API and the signer write to their journals. Only `Y`, keyset and amount stay, and replay
+/// never re-checks the rest (the request passed the checks when it arrived), so a stolen journal
+/// holds nothing spendable.
+pub fn redact(op: &Op) -> Op {
+    let mut op = op.clone();
+    match &mut op {
+        Op::Trades { reqs, .. } => {
+            for r in reqs {
+                redact_inputs(&mut r.inputs);
+            }
+        }
+        Op::Swap { inputs, .. } | Op::Redeem { inputs, .. } | Op::Withdraw { inputs, .. } => {
+            redact_inputs(inputs)
+        }
+        Op::ListMarket { .. } | Op::Credit { .. } | Op::Resolve { .. } => {}
+    }
+    op
+}
+
+/// Signer → API, first message on a connection.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hello {
+    /// Master public key `M`, hex.
+    pub m: String,
+    /// Operations the signer has applied (its journal length); must equal the API's.
+    pub applied: u64,
+}
+
+/// API → signer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToSigner {
+    pub id: u64,
+    pub op: Op,
+}
+
+/// Signer → API.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum FromSigner {
+    Hello { hello: Hello },
+    Reply { id: u64, reply: Reply },
+    Error { id: u64, error: String },
+}

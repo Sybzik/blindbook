@@ -10,14 +10,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
+pub use blindbook_ledger::ops::{FromSigner, Hello, ToSigner};
 use blindbook_ledger::ops::{Op, Reply};
 use futures_util::{SinkExt, StreamExt};
-use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LinkError {
+    /// Nothing was sent: no signer connected.
     #[error("the signer is not connected")]
+    NotConnected,
+    /// Sent, and the connection dropped before the answer: the signer may have applied it.
+    #[error("the signer link dropped before it answered")]
     Down,
     #[error("the signer did not answer in time")]
     Timeout,
@@ -25,45 +29,34 @@ pub enum LinkError {
     Signer(String),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Hello {
-    /// Master public key, hex.
-    pub m: String,
-    /// Operations the signer has applied (its journal length).
-    pub applied: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum FromSigner {
-    Hello { hello: Hello },
-    Reply { id: u64, reply: Reply },
-    Error { id: u64, error: String },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ToSigner {
-    pub id: u64,
-    pub op: Op,
-}
-
 type Call = (Op, oneshot::Sender<Result<Reply, LinkError>>);
 
 /// A signer connected over WebSocket.
 #[derive(Default)]
 pub struct Remote {
-    tx: Mutex<Option<mpsc::Sender<Call>>>,
+    /// The live connection's sender, tagged with its connection number, so a closing old
+    /// connection never removes a newer one.
+    tx: Mutex<Option<(u64, mpsc::Sender<Call>)>>,
+    generation: std::sync::atomic::AtomicU64,
 }
 
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+/// A ping while idle, so a half-open connection is noticed.
+pub const KEEPALIVE: Duration = Duration::from_secs(15);
 
 impl Remote {
     async fn call(&self, op: &Op) -> Result<Reply, LinkError> {
-        let tx = self.tx.lock().await.clone().ok_or(LinkError::Down)?;
+        let tx = self
+            .tx
+            .lock()
+            .await
+            .as_ref()
+            .map(|(_, t)| t.clone())
+            .ok_or(LinkError::NotConnected)?;
         let (rtx, rrx) = oneshot::channel();
         tx.send((op.clone(), rtx))
             .await
-            .map_err(|_| LinkError::Down)?;
+            .map_err(|_| LinkError::NotConnected)?;
         tokio::time::timeout(CALL_TIMEOUT, rrx)
             .await
             .map_err(|_| LinkError::Timeout)?
@@ -87,10 +80,33 @@ impl Remote {
             return;
         }
         tracing::info!(applied = hello.applied, "signer connected");
+        let generation = self
+            .generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
         let (tx, mut rx) = mpsc::channel::<Call>(1);
-        *self.tx.lock().await = Some(tx);
+        *self.tx.lock().await = Some((generation, tx));
         let mut next_id = 0u64;
-        while let Some((op, reply)) = rx.recv().await {
+        let mut keepalive = tokio::time::interval(KEEPALIVE);
+        keepalive.tick().await;
+        loop {
+            let (op, reply) = tokio::select! {
+                call = rx.recv() => match call {
+                    Some(c) => c,
+                    None => break,
+                },
+                msg = stream.next() => match msg {
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
+                    Some(Ok(Message::Text(_))) => continue,
+                    _ => break,
+                },
+                _ = keepalive.tick() => {
+                    if sink.send(Message::Ping(Vec::new().into())).await.is_err() {
+                        break;
+                    }
+                    continue;
+                }
+            };
             next_id += 1;
             let msg = serde_json::to_string(&ToSigner { id: next_id, op }).expect("serializable");
             if sink.send(Message::Text(msg.into())).await.is_err() {
@@ -116,7 +132,11 @@ impl Remote {
                 break;
             }
         }
-        *self.tx.lock().await = None;
+        let mut slot = self.tx.lock().await;
+        if slot.as_ref().is_some_and(|(g, _)| *g == generation) {
+            *slot = None;
+        }
+        drop(slot);
         tracing::warn!("signer disconnected");
     }
 

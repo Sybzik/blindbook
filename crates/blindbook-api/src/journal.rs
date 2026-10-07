@@ -12,13 +12,9 @@ use std::path::{Path, PathBuf};
 
 use blindbook_ledger::delta::ChainStats;
 use blindbook_ledger::ops::Op;
-use blindbook_ledger::wire::{BlindSignature, Input};
+pub use blindbook_ledger::ops::{REDACTED_POINT, REDACTED_SECRET, redact};
+use blindbook_ledger::wire::BlindSignature;
 use serde::{Deserialize, Serialize};
-
-/// A placeholder curve point (the format checks only look at its shape).
-pub const REDACTED_POINT: &str =
-    "020000000000000000000000000000000000000000000000000000000000000000";
-pub const REDACTED_SECRET: &str = "redacted";
 
 // One line per entry; the size difference between variants doesn't matter here.
 #[allow(clippy::large_enum_variant)]
@@ -34,30 +30,6 @@ pub enum Entry {
         height: u64,
         chain: ChainStats,
     },
-}
-
-fn redact_inputs(inputs: &mut [Input]) {
-    for i in inputs {
-        i.proof.secret = REDACTED_SECRET.into();
-        i.proof.c = REDACTED_POINT.into();
-    }
-}
-
-/// The operation with every spent slip's secret and signature removed.
-pub fn redact(op: &Op) -> Op {
-    let mut op = op.clone();
-    match &mut op {
-        Op::Trades { reqs, .. } => {
-            for r in reqs {
-                redact_inputs(&mut r.inputs);
-            }
-        }
-        Op::Swap { inputs, .. } | Op::Redeem { inputs, .. } | Op::Withdraw { inputs, .. } => {
-            redact_inputs(inputs)
-        }
-        Op::ListMarket { .. } | Op::Credit { .. } | Op::Resolve { .. } => {}
-    }
-    op
 }
 
 pub struct Journal {
@@ -106,7 +78,7 @@ impl Journal {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use blindbook_ledger::wire::Proof;
+    use blindbook_ledger::wire::{Input, Proof};
 
     #[test]
     fn redaction_keeps_only_public_fields() {

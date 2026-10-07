@@ -22,6 +22,8 @@ use blindbook_ledger::wire::{self, BlindedMessage, Input};
 use blindbook_mint::cashu::PublicKey;
 use blindbook_mint::{KeysetKind, MasterKey, SecretKeyset, y_hex};
 
+pub mod link;
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("keyset ids differ from the ones derived from M: {0}")]
@@ -185,8 +187,8 @@ impl Signer {
         })
     }
 
-    /// Check, apply and sign one operation.
-    pub fn handle(&mut self, op: &Op) -> Result<(Reply, Applied), Error> {
+    /// Derive and check the keysets of a market being listed.
+    fn prepare(&mut self, op: &Op) -> Result<(), Error> {
         if let Op::ListMarket { entry, keysets } = op {
             for (o, want) in keysets.iter().enumerate() {
                 let kind = kind_of(Keyset::Outcome {
@@ -203,9 +205,12 @@ impl Signer {
                 self.keysets.insert(want.clone(), ks);
             }
         }
-        let invalid = self.invalid(op);
-        let applied = ops::apply(&mut self.ledger, op, &invalid);
-        if let (Op::Credit { claim, .. }, Applied::Effects(_)) = (op, &applied) {
+        Ok(())
+    }
+
+    /// A used voucher or credited deposit can't be claimed again.
+    fn consume_claim(&mut self, op: &Op, applied: &Applied) {
+        if let (Op::Credit { claim, .. }, Applied::Effects(_)) = (op, applied) {
             match claim {
                 CreditClaim::Voucher { code_hash } => {
                     self.vouchers.remove(code_hash);
@@ -217,6 +222,14 @@ impl Signer {
                 }
             }
         }
+    }
+
+    /// Check, apply and sign one operation.
+    pub fn handle(&mut self, op: &Op) -> Result<(Reply, Applied), Error> {
+        self.prepare(op)?;
+        let invalid = self.invalid(op);
+        let applied = ops::apply(&mut self.ledger, op, &invalid);
+        self.consume_claim(op, &applied);
         let signatures = applied
             .jobs()
             .into_iter()
@@ -229,5 +242,14 @@ impl Signer {
             },
             applied,
         ))
+    }
+
+    /// Re-apply an operation from the signer's own journal after a restart: no checks, no
+    /// signing (both happened when it first ran).
+    pub fn replay(&mut self, op: &Op, invalid: &[usize]) -> Result<Applied, Error> {
+        self.prepare(op)?;
+        let applied = ops::apply(&mut self.ledger, op, invalid);
+        self.consume_claim(op, &applied);
+        Ok(applied)
     }
 }

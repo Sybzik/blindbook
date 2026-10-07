@@ -79,6 +79,9 @@ pub struct Shared {
     pub halted: AtomicBool,
     /// Operations applied (the signer must report the same number when it connects).
     pub applied_ops: AtomicU64,
+    /// An operation was sent and the link dropped before its answer: the signer may have
+    /// applied it (and may report one more operation than we have) until it is re-sent.
+    pub in_doubt: AtomicBool,
 }
 
 impl Shared {
@@ -95,6 +98,7 @@ impl Shared {
             credit_id,
             halted: AtomicBool::new(false),
             applied_ops: AtomicU64::new(0),
+            in_doubt: AtomicBool::new(false),
         }
     }
 }
@@ -153,6 +157,9 @@ pub struct Sequencer {
     all_issued: Vec<IssuedRecord>,
     /// Operations applied so far (the signer reports the same count at hello).
     pub applied_ops: u64,
+    /// Sent, unanswered: re-sent before anything else (the signer answers a repeat from its
+    /// cache, so it is applied exactly once on both sides).
+    in_doubt: Option<Op>,
 }
 
 /// Turn an operation's jobs and signatures into issuance records.
@@ -203,6 +210,7 @@ impl Sequencer {
             batch_id: 0,
             all_issued: Vec::new(),
             applied_ops: 0,
+            in_doubt: None,
         };
         for e in entries {
             match e {
@@ -381,12 +389,44 @@ impl Sequencer {
             .unwrap_or_else(|e| e.into_inner()) = views;
     }
 
+    /// Re-send the operation in doubt, if any. Nothing else runs until it has an answer.
+    async fn settle_doubt(&mut self) -> Result<(), ApiError> {
+        let Some(op) = self.in_doubt.take() else {
+            return Ok(());
+        };
+        tracing::warn!("re-sending the operation whose answer was lost");
+        match self.apply_reply(op.clone()).await {
+            Ok(_) => {
+                self.shared.in_doubt.store(false, Ordering::SeqCst);
+                Ok(())
+            }
+            Err(e) => {
+                self.in_doubt = Some(op);
+                Err(e)
+            }
+        }
+    }
+
     /// Send an operation to the signer, apply it, check, journal and record it.
     async fn execute(&mut self, op: Op) -> Result<OpDone, ApiError> {
         if self.shared.halted.load(Ordering::SeqCst) {
             return Err(ApiError::Halted);
         }
-        let reply = self.link.call(&op).await?;
+        self.settle_doubt().await?;
+        self.apply_reply(op).await
+    }
+
+    async fn apply_reply(&mut self, op: Op) -> Result<OpDone, ApiError> {
+        let reply = match self.link.call(&op).await {
+            Ok(r) => r,
+            Err(e @ (LinkError::Down | LinkError::Timeout)) => {
+                // The signer may have applied it; ask again before anything else.
+                self.in_doubt = Some(op);
+                self.shared.in_doubt.store(true, Ordering::SeqCst);
+                return Err(e.into());
+            }
+            Err(e) => return Err(e.into()),
+        };
         let applied = ops::apply(&mut self.ledger, &op, &reply.invalid);
         let jobs = applied.jobs();
         let aligned = jobs.len() == reply.signatures.len()

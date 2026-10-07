@@ -8,7 +8,7 @@ import { Qr } from '../Qr';
 import { Scan } from '../Scan';
 import { creditKeyset } from '../../core/keysets';
 import { config, COIN } from '../../app/config';
-import { Win } from '../win';
+import { Win, OpenVault } from '../win';
 import { app, actions, type Position } from '../../app/services';
 import { useStore } from '../../app/store';
 import { coin, coinLabel, utc } from '../../app/format';
@@ -71,7 +71,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
     return (
       <Win title="P300 · SLIPS" onClose={onClose}>
         <TeletextHeader page="P300" title="YOUR SLIPS" />
-        <p className="bb-text">Your slips live in the vault on this device. Open it first.</p>
+        <OpenVault>Your slips live in the vault on this device. Open it first.</OpenVault>
       </Win>
     );
 

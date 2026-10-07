@@ -216,7 +216,12 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
             <button type="button" className="bb-link" onClick={() => setMaxCents(null)}>use the default</button>
           </p>
         )}
-        {vault !== 'unlocked' && <p className="bb-conditions">Open your vault first (it lives only on this device).</p>}
+        {vault !== 'unlocked' && (
+          <p className="bb-conditions">
+            Open your vault first (it lives only on this device).{' '}
+            <button type="button" className="bb-link" onClick={() => openWindow('vault')}>open it</button>
+          </p>
+        )}
         {(locked || tooMuch) && vault === 'unlocked' && (
           <p className="bb-conditions" style={{ color: locked ? 'var(--alarm)' : 'var(--text-dim)' }}>{lockReason ?? 'Not enough balance. Top up in F3 CAGE.'}</p>
         )}

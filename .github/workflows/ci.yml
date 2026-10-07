@@ -46,6 +46,12 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v7
+      # The verifier's batch replay is the engine built for wasm32 (web/scripts/wasm.mjs).
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.95"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
       - uses: pnpm/action-setup@v6
         with:
           version: 10

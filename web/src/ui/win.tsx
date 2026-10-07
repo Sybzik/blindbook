@@ -1,7 +1,8 @@
 // Every page window floats on the desktop: draggable, resizable, the hint strip at the bottom.
 
 import { createContext, useContext, type ReactNode } from 'react';
-import { TerminalWindow } from '../ds';
+import { KeyButton, TerminalWindow } from '../ds';
+import { openWindow } from './uistate';
 
 export const WinCtx = createContext<{ narrow: boolean; hint: ReactNode; pager?: boolean }>({ narrow: false, hint: null });
 
@@ -43,3 +44,13 @@ export const HINTS: Record<string, string> = {
   lock: 'Your passphrase never leaves this computer.',
   record: 'Everything the server stored about you, from its own answers.',
 };
+
+/** "Open it first" on pages that need the vault: one key back to it. */
+export function OpenVault({ children }: { children: ReactNode }) {
+  return (
+    <div className="col" style={{ gap: 10, alignItems: 'flex-start' }}>
+      <p className="bb-text" style={{ margin: 0 }}>{children}</p>
+      <KeyButton size="sm" icon="lock" onClick={() => openWindow('vault')}>OPEN THE VAULT</KeyButton>
+    </div>
+  );
+}

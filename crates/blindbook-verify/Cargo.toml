@@ -14,7 +14,6 @@ default = ["chain"]
 chain = ["dep:blindbook-indexer", "dep:blindbook-treasury"]
 
 [dependencies]
-blindbook-engine = { path = "../blindbook-engine" }
 blindbook-indexer = { path = "../blindbook-indexer", optional = true }
 blindbook-treasury = { path = "../blindbook-treasury", optional = true }
 blindbook-ledger = { path = "../blindbook-ledger" }

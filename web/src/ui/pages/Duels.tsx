@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from 'react';
 import { AmountChips, KeyButton, LeaderRow, OutcomePill, TeletextHeader } from '../../ds';
-import { Win } from '../win';
+import { Win, OpenVault } from '../win';
 import { Qr } from '../Qr';
 import { app, actions, recoverDuel, type MarketMeta } from '../../app/services';
 import { useStore } from '../../app/store';
@@ -170,7 +170,7 @@ export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; fo
       )}
       {tab === 'new' &&
         (vault !== 'unlocked' ? (
-          <p className="bb-text">Your stake comes from the vault on this device. Open it first.</p>
+          <OpenVault>Your stake comes from the vault on this device. Open it first.</OpenVault>
         ) : link ? (
           <div className="col" style={{ gap: 12, maxWidth: 560 }}>
             <p className="bb-label bb-hi" style={{ margin: 0 }}>YOUR CHALLENGE IS OPEN · SEND THE LINK</p>
@@ -190,7 +190,7 @@ export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; fo
         ))}
       {tab === 'mine' && (
         <div className="col" style={{ gap: 10, maxWidth: 760 }}>
-          {vault !== 'unlocked' && <p className="bb-text">Your duels live in the vault. Open it first.</p>}
+          {vault !== 'unlocked' && <OpenVault>Your duels live in the vault. Open it first.</OpenVault>}
           {vault === 'unlocked' && mine.length === 0 && <p className="bb-ui bb-dim">You haven't opened a duel yet.</p>}
           {[...mine].reverse().map((d) => {
             const m = markets.find((x) => x.id === d.market);

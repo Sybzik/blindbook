@@ -439,6 +439,8 @@ name = "blindbook-engine-wasm"
 version = "0.1.0"
 dependencies = [
  "blindbook-engine",
+ "blindbook-ledger",
+ "serde_json",
 ]
 
 [[package]]
@@ -578,7 +580,6 @@ dependencies = [
 name = "blindbook-verify"
 version = "0.1.0"
 dependencies = [
- "blindbook-engine",
  "blindbook-indexer",
  "blindbook-ledger",
  "blindbook-mint",

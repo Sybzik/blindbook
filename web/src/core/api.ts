@@ -177,9 +177,13 @@ export class Api {
   }
 
   async json<T>(path: string): Promise<T> {
+    return JSON.parse(await this.text(path)) as T;
+  }
+
+  /** A public file as text (gunzipped), for checks that must not round numbers through JS. */
+  async text(path: string): Promise<string> {
     const raw = await this.transport.bytes(path);
-    const text = new TextDecoder().decode(path.endsWith('.gz') ? await gunzip(raw) : raw);
-    return JSON.parse(text) as T;
+    return new TextDecoder().decode(path.endsWith('.gz') ? await gunzip(raw) : raw);
   }
 
   voucher(code: string, outputs: BlindedMessage[]) {

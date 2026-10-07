@@ -10,7 +10,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "wasm": "node scripts/wasm.mjs",
+    "prebuild": "node scripts/wasm.mjs",
+    "predev": "node scripts/wasm.mjs"
   },
   "dependencies": {
     "@cashu/cashu-ts": "4.11.0",

@@ -16,10 +16,9 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use blindbook_engine as engine;
 use blindbook_ledger::H32;
 use blindbook_ledger::delta::{Delta, GENESIS_ROOT, Head, LogEvent, verify_chain};
-use blindbook_ledger::ledger::{BatchRecord, Pool, Side, fill_record};
+use blindbook_ledger::ledger::Pool;
 use blindbook_mint::cashu::nuts::nut12::BlindSignatureDleq;
 use blindbook_mint::cashu::{Amount, BlindSignature, Id, PublicKey, SecretKey};
 use blindbook_mint::{KeysetKind, PublicKeyset};
@@ -64,73 +63,7 @@ fn kind_name(k: &KeysetKind) -> String {
     }
 }
 
-/// Replay one batch record with the engine; `None` if it matches.
-pub fn replay_batch(b: &BatchRecord) -> Option<String> {
-    if !b.reference.anchor_matches() {
-        return Some(format!(
-            "batch {} {}: anchor isn't the lower median of its samples",
-            b.batch_id, b.market
-        ));
-    }
-    let mut pool = b.before.to_engine();
-    let orders: Vec<engine::Order> = b
-        .orders
-        .iter()
-        .enumerate()
-        .map(|(i, o)| engine::Order {
-            id: i as u64,
-            side: match o.side {
-                Side::Buy => engine::Side::Buy,
-                Side::Sell => engine::Side::Sell,
-            },
-            outcome: o.outcome,
-            amount: o.amount,
-            limit_bp: o.limit_bp,
-        })
-        .collect();
-    let report = engine::clear_batch(
-        &mut pool,
-        &b.params.engine(),
-        &b.reference.to_engine(b.closed, b.accepting_orders),
-        &engine::Schedule {
-            now_ms: b.at_ms,
-            event_start_ms: b.event_start_ms,
-            end_ms: b.end_ms,
-        },
-        &orders,
-        &mut engine::Trace::off(),
-    );
-    let fills: Vec<_> = report
-        .fills
-        .iter()
-        .zip(&b.orders)
-        .map(|(f, o)| fill_record(o.tag, o.side, f))
-        .collect();
-    if fills != b.fills {
-        return Some(format!(
-            "batch {} {}: fills differ on replay",
-            b.batch_id, b.market
-        ));
-    }
-    let after = Pool {
-        u: pool.u,
-        c: pool.c,
-        house: pool.house,
-    };
-    if after != b.after {
-        return Some(format!(
-            "batch {} {}: pool after differs on replay",
-            b.batch_id, b.market
-        ));
-    }
-    if report.halt.map(|h| format!("{h:?}")) != b.halt {
-        return Some(format!(
-            "batch {} {}: halt differs on replay",
-            b.batch_id, b.market
-        ));
-    }
-    None
-}
+pub use blindbook_ledger::replay::replay_batch;
 
 /// One unit of CREDIT or of a share is 0.00001 ZEC.
 pub const ZAT_PER_UNIT: u64 = 1_000;

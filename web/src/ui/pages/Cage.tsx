@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { AmountChips, KeyButton, LeaderRow, PreflightChecklist, TeletextHeader, TextInput, ThermalReceipt } from '../../ds';
-import { Win } from '../win';
+import { Win, OpenVault } from '../win';
 import { Qr } from '../Qr';
 import { app, actions, setLocal, walletWords } from '../../app/services';
 import { WordCheck, WordList } from '../WordCheck';
@@ -298,7 +298,7 @@ export function CagePage({ onClose }: { onClose: () => void }) {
     <Win title="P350 · CAGE" onClose={onClose}>
       <TeletextHeader page="P350" title="THE CAGE" meta={coinLabel(balance)} />
       {vault !== 'unlocked' ? (
-        <p className="bb-text">Open your vault first. Money in and out goes through here.</p>
+        <OpenVault>Open your vault first. Money in and out goes through here.</OpenVault>
       ) : (
         <>
           <div className="tk-tabs" role="tablist">

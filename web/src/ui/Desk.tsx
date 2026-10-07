@@ -122,6 +122,10 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   // A window asked for another one (the bet panel's CHALLENGE, for example).
   useEffect(() => {
     if (!request) return;
+    if (request.id === 'vault') {
+      setVaultWin(true);
+      return;
+    }
     if (request.duel) setDuelDraft(request.duel);
     setVaultWin(false);
     go(request.id);
@@ -308,8 +312,9 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     return null;
   };
 
+  // The vault keeps its tab while it is closed, so "look around first" is never a dead end.
   const tabs = [
-    ...(showVault ? [{ id: 'vault', title: vault === 'none' ? 'VAULT · NEW' : 'VAULT · LOCKED' }] : []),
+    ...(vault === 'none' || vault === 'locked' ? [{ id: 'vault', title: vault === 'none' ? 'VAULT · NEW' : 'VAULT · LOCKED' }] : []),
     ...open.map((id) => ({ id, title: id === 'market' && called ? 'CALLED IT' : titleOf(id) })),
   ];
   const defHint = showVault ? HINTS.lock : called ? HINTS.called : HINTS[page.startsWith('tt:') ? 'how' : page];

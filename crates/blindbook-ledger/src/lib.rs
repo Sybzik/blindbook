@@ -9,6 +9,7 @@
 //! - [`ops`]: the operations the API sequences and the signer executes, and [`ops::apply`].
 //! - [`delta`]: the hash-chained public log.
 //! - [`canonical`]: RFC 8785 canonical JSON, used for every hash.
+//! - [`replay`]: every batch of the record through the engine again (the verifiers).
 //!
 //! No I/O, no clocks, no randomness, no curve code: callers pass in time, `Y` values and keyset
 //! ids, so the same inputs always give the same log.
@@ -20,6 +21,7 @@ pub mod keysets;
 pub mod ledger;
 pub mod ops;
 pub mod reference;
+pub mod replay;
 pub mod wire;
 
 pub use hex::H32;

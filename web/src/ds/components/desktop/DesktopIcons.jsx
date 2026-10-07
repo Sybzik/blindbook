@@ -28,7 +28,7 @@ export function DesktopIcon({ label, icon, indicator, led, alert = false, select
   else if (indicator !== undefined && indicator !== null && indicator !== '') tag = <span className="bb-dicon__tag">{indicator}</span>;
   else if (led !== undefined) tag = <span className="bb-dicon__tag" aria-label={led ? 'live' : 'off'}><span className={'bb-led' + (led ? ' is-on' : '')} /></span>;
   return (
-    <button type="button" className={cls} aria-current={selected ? 'page' : undefined} aria-keyshortcuts={fkey} onClick={onClick} {...rest}>
+    <button type="button" className={cls} aria-label={typeof label === 'string' ? label + (indicator !== undefined && indicator !== null && indicator !== '' ? ', ' + indicator : '') : undefined} aria-current={selected ? 'page' : undefined} aria-keyshortcuts={fkey} onClick={onClick} {...rest}>
       {icon && <span className="bb-dicon__icon"><PixelIcon name={icon} size={iconSize} /></span>}
       <span className="bb-dicon__label">{label}</span>
       {tag}

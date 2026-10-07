@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { APP_ICONS, AmountSlider, KeyButton, LeaderRow, PixelIcon } from '../../ds';
-import { Win } from '../win';
+import { Win, OpenVault } from '../win';
 import { app, setLocal } from '../../app/services';
 import { useStore } from '../../app/store';
 import { COIN } from '../../app/config';
@@ -310,7 +310,7 @@ function DeadDrop() {
     const t = setTimeout(() => void setLocal({ notes: text }).then(() => setState('saved')), 700);
     return () => clearTimeout(t);
   }, [text]);
-  if (vault !== 'unlocked') return <p className="bb-text">Notes are kept inside the vault. Open it first.</p>;
+  if (vault !== 'unlocked') return <OpenVault>Notes are kept inside the vault. Open it first.</OpenVault>;
   return (
     <div className="tk-app-body">
       <p className="bb-label" style={{ margin: 0 }}>

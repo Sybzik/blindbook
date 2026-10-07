@@ -63,6 +63,8 @@ export interface Result {
   /** The last reserve report and the liabilities at that point of the log. */
   reserve: { height: number; reserveZat: number; unsweptZat: number; owedZat: number } | null;
   solventOk: boolean;
+  /** The engine's replay of every batch (wasm), null before it ran. */
+  replay: { batches: number; failures: string[] } | null;
   ms: number;
 }
 
@@ -70,27 +72,50 @@ const GENESIS = '0'.repeat(64);
 /** One unit of CREDIT or of a share is 0.00001 ZEC. */
 const ZAT_PER_UNIT = 1_000;
 
-export async function fetchDeltas(onProgress?: (n: number, of: number) => void): Promise<{ deltas: Delta[]; head: { seq: number; root: string; height: number } }> {
+export async function fetchDeltas(onProgress?: (n: number, of: number) => void): Promise<{ deltas: Delta[]; texts: string[]; head: { seq: number; root: string; height: number } }> {
   const api = getApi();
   const head = await api.head();
   const deltas: Delta[] = [];
+  const texts: string[] = [];
   for (let seq = 1; seq <= head.seq; seq++) {
-    deltas.push(await api.json<Delta>(`/v1/delta/${seq}.json.gz`));
+    const t = await api.text(`/v1/delta/${seq}.json.gz`);
+    texts.push(t);
+    deltas.push(JSON.parse(t) as Delta);
     onProgress?.(seq, head.seq);
   }
-  return { deltas, head };
+  return { deltas, texts, head };
+}
+
+/** Every batch through the pricing engine again, in this browser: the engine's own code built
+ *  for wasm32 (crates/blindbook-engine-wasm), the same the server runs. */
+async function replayBatches(texts: string[]): Promise<{ batches: number; failures: string[] }> {
+  const { default: url } = await import('../../wasm/engine.wasm?url');
+  const { instance } = await WebAssembly.instantiateStreaming(fetch(url), {});
+  const x = instance.exports as { memory: WebAssembly.Memory; alloc(n: number): number; replay(): number; buf_ptr(): number };
+  const input = new TextEncoder().encode('[' + texts.join(',') + ']');
+  const ptr = x.alloc(input.length);
+  new Uint8Array(x.memory.buffer, ptr, input.length).set(input);
+  const n = x.replay();
+  return JSON.parse(new TextDecoder().decode(new Uint8Array(x.memory.buffer, x.buf_ptr(), n))) as { batches: number; failures: string[] };
 }
 
 /** Download the public log and check it; shared by P400 and the console's "verify". */
 export async function runAudit(onProgress?: (s: string) => void): Promise<{ result: Result; deltas: Delta[] }> {
   const t0 = performance.now();
-  const { deltas, head } = await fetchDeltas((n, of) => onProgress?.(`delta ${n} of ${of}`));
+  const { deltas, texts, head } = await fetchDeltas((n, of) => onProgress?.(`delta ${n} of ${of}`));
   onProgress?.('checking');
   const r = audit(deltas, head.root);
-  return { result: { ...r, ms: Math.round(performance.now() - t0) }, deltas };
+  onProgress?.('replaying every batch through the engine');
+  let replay: Result['replay'] = null;
+  try {
+    replay = await replayBatches(texts);
+  } catch (e) {
+    replay = { batches: 0, failures: [`the engine could not run here: ${(e as Error).message}`] };
+  }
+  return { result: { ...r, replay, ms: Math.round(performance.now() - t0) }, deltas };
 }
 
-function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms'> {
+function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'> {
   let prev = GENESIS;
   let chainOk = true;
   for (const d of deltas) {
@@ -226,8 +251,8 @@ function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string 
         }
       }
       setRes({ ok: false, line: 'This proof is not in the public log: it is not genuine, or the log you downloaded is older than the call.' });
-    } catch (e) {
-      setRes({ ok: false, line: String((e as Error).message) });
+    } catch {
+      setRes({ ok: false, line: 'That is not a CALLED IT proof: the link is incomplete or was changed.' });
     }
   };
   // Opened from a proof link: check it as soon as the log is in.
@@ -320,6 +345,13 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
           <>
             <LeaderRow label="HASH CHAIN" value={res.chainOk ? `${res.deltas} deltas link up to the head ✓` : 'BROKEN ✗'} tone={res.chainOk ? 'hi' : 'alarm'} />
             <LeaderRow label="SIGNATURES" value={`${res.sigsOk} of ${res.sigs} DLEQ proofs valid for keys derived from M`} tone={res.sigsOk === res.sigs ? 'hi' : 'alarm'} />
+            {res.replay && (
+              <LeaderRow
+                label="BATCHES REPLAYED"
+                value={res.replay.failures.length ? `${res.replay.failures.length} differ ✗ · ${res.replay.failures[0]}` : `${res.replay.batches} through the pricing engine, same fills and pools ✓`}
+                tone={res.replay.failures.length ? 'alarm' : 'hi'}
+              />
+            )}
             <LeaderRow label="KEYSETS IN THE LOG" value={res.keysetsOk ? 'every market uses the keys derived from M ✓' : 'a market uses keys not derived from M ✗'} tone={res.keysetsOk ? 'hi' : 'alarm'} />
             <LeaderRow label="SUPPLY" value={res.supplyOk ? 'nothing spent beyond what was issued ✓' : 'more spent than issued ✗'} tone={res.supplyOk ? 'hi' : 'alarm'} />
             <LeaderRow label="ON-CHAIN ANCHORS" value={res.anchors.length ? `${res.anchors.length} · last ${res.anchors.at(-1)!.txid.slice(0, 10)}…` : 'none yet'} />
@@ -331,7 +363,7 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
       {run === 'error' && <p className="bb-conditions" style={{ color: 'var(--alarm)' }}>{progress}</p>}
       {run === 'done' && res && (
         <div className="row" style={{ gap: 16, margin: '20px 0', flexWrap: 'wrap' }}>
-          {res.chainOk && <Stamp tone="phosphor" rotate={-3} worn={false}>LEDGER MATCH ✓</Stamp>}
+          {res.chainOk && res.replay?.failures.length === 0 && <Stamp tone="phosphor" rotate={-3} worn={false}>LEDGER MATCH ✓</Stamp>}
           {res.sigsOk === res.sigs && res.keysetsOk && <Stamp tone="phosphor" rotate={2} worn={false}>NO TAGGED KEYS ✓</Stamp>}
           {res.supplyOk && <Stamp tone="phosphor" rotate={-2} worn={false}>SUPPLY ✓</Stamp>}
           {res.solventOk && <Stamp tone="phosphor" rotate={3} worn={false}>SOLVENT ✓</Stamp>}

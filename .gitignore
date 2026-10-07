@@ -48,3 +48,6 @@ desktop.ini
 
 # the design tool exports: attached inputs (third-party screenshots, brief copies) stay local
 design/*/uploads/
+
+# Built from crates/blindbook-engine-wasm by web/scripts/wasm.mjs
+web/src/wasm/

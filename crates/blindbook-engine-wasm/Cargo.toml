@@ -1,6 +1,6 @@
 [package]
 name = "blindbook-engine-wasm"
-description = "wasm32 build of the engine for the determinism check (plain C ABI, no wasm-bindgen)"
+description = "wasm32 build of the engine: the determinism check and the browser verifier's batch replay (plain C ABI, no wasm-bindgen)"
 edition.workspace = true
 rust-version.workspace = true
 version.workspace = true
@@ -12,3 +12,5 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 blindbook-engine = { path = "../blindbook-engine" }
+blindbook-ledger = { path = "../blindbook-ledger" }
+serde_json.workspace = true

@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { KeyButton, LeaderRow, Redacted, TeletextHeader } from '../../ds';
-import { Win } from '../win';
+import { Win, OpenVault } from '../win';
 import { app } from '../../app/services';
 import { useStore } from '../../app/store';
 import { config } from '../../app/config';
@@ -18,6 +18,10 @@ const KIND: Record<string, string> = {
   withdraw: 'WITHDRAWAL',
   receive: 'SLIPS TAKEN OVER',
   send: 'SLIPS HANDED OVER',
+  duel_open: 'DUEL OFFERED',
+  duel_take: 'DUEL TAKEN',
+  duel_cancel: 'DUEL CANCELLED',
+  duel_won: 'DUEL SHARES COLLECTED',
 };
 
 function show(v: unknown): string {
@@ -36,7 +40,7 @@ export function RecordPage({ onClose }: { onClose: () => void }) {
     <Win title="P600 · WHAT WE KNOW" onClose={onClose}>
       <TeletextHeader page="P600" title="WHAT WE KNOW ABOUT YOU" />
       {vault !== 'unlocked' ? (
-        <p className="bb-text">The records live in your vault. Open it first.</p>
+        <OpenVault>The records live in your vault. Open it first.</OpenVault>
       ) : !e ? (
         <p className="bb-text">Nothing yet. After your first request, the server's own record of it appears here, exactly as stored.</p>
       ) : (

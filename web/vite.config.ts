@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -35,8 +38,83 @@ function cspPlugin(): Plugin {
   };
 }
 
+/**
+ * The service worker (THREAT_MODEL N7): after the first visit the app loads from its own cache,
+ * so starting it sends no request for the app. Generated at build with the exact file list, so a
+ * new build is a new worker; it never touches /v1/ (API traffic goes through the mixnet).
+ */
+function serviceWorkerPlugin(): Plugin {
+  return {
+    name: 'blindbook-sw',
+    apply: 'build',
+    generateBundle(_, bundle) {
+      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map'));
+      const shell = ['/', '/index.html', '/tunnel.html', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+      const list = [...new Set([...shell, ...files.map((f) => '/' + f)])];
+      const version = createHash('sha256').update(list.join(' ')).update(JSON.stringify(Object.values(bundle).map((b) => ('code' in b ? b.code.length : 0)))).digest('hex').slice(0, 16);
+      const sw = `// Generated at build. Serves the app from its cache; never touches /v1/.
+const CACHE = 'blindbook-${version}';
+const FILES = ${JSON.stringify(list)};
+self.addEventListener('install', (e) => {
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+});
+self.addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
+});
+self.addEventListener('fetch', (e) => {
+  const u = new URL(e.request.url);
+  if (e.request.method !== 'GET' || u.origin !== self.location.origin || u.pathname.startsWith('/v1/') || u.pathname.startsWith('/dev/')) return;
+  // Navigations get the app shell (the URL never changes inside the app, and proof links ride after #).
+  const key = e.request.mode === 'navigate' ? (u.pathname === '/tunnel.html' ? '/tunnel.html' : '/index.html') : u.pathname;
+  e.respondWith(caches.open(CACHE).then((c) => c.match(key).then((hit) => hit || fetch(e.request))));
+});
+`;
+      this.emitFile({ type: 'asset', fileName: 'sw.js', source: sw });
+    },
+  };
+}
+
+/**
+ * Integrity (THREAT_MODEL D3): every script and stylesheet the pages load directly carries a
+ * Subresource Integrity hash, and dist/SHA256SUMS lists every file, so anyone who builds the
+ * same commit can compare what a host serves with what the source produces.
+ */
+function integrityPlugin(): Plugin {
+  return {
+    name: 'blindbook-integrity',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_, bundle) {
+      const sri = (name: string) => {
+        const f = bundle[name.replace(/^\//, '')];
+        if (!f) return null;
+        const data = f.type === 'chunk' ? f.code : f.source;
+        return 'sha384-' + createHash('sha384').update(data).digest('base64');
+      };
+      for (const f of Object.values(bundle)) {
+        if (f.type !== 'asset' || !f.fileName.endsWith('.html')) continue;
+        f.source = String(f.source).replace(/<(script|link)([^>]*?)(src|href)="(\/assets\/[^"]+\.(?:js|css))"([^>]*)>/g, (m, tag, a, attr, url, b) => {
+          const h = sri(url);
+          return h && !m.includes('integrity=') ? `<${tag}${a}${attr}="${url}" integrity="${h}"${b}>` : m;
+        });
+      }
+    },
+    closeBundle() {
+      // Every file in dist, the copied public/ files included.
+      const dir = 'dist';
+      const walk = (d: string): string[] =>
+        readdirSync(join(dir, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name).replace(/\\/g, '/')]));
+      const lines = walk('')
+        .filter((f) => f !== 'SHA256SUMS')
+        .sort()
+        .map((f) => `${createHash('sha256').update(readFileSync(join(dir, f))).digest('hex')}  ${f}`);
+      writeFileSync(join(dir, 'SHA256SUMS'), lines.join('\n') + '\n');
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cspPlugin()],
+  plugins: [react(), cspPlugin(), serviceWorkerPlugin(), integrityPlugin()],
   build: {
     target: 'es2022',
     sourcemap: false,

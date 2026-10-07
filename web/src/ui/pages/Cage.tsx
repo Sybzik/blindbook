@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { AmountChips, KeyButton, LeaderRow, PreflightChecklist, TeletextHeader, TextInput, ThermalReceipt } from '../../ds';
-import { Win, OpenVault } from '../win';
+import { Win, OpenVault, InstallHint } from '../win';
 import { Qr } from '../Qr';
 import { app, actions, setLocal, walletWords } from '../../app/services';
 import { WordCheck, WordList } from '../WordCheck';
@@ -120,6 +120,7 @@ function TopUp() {
   return (
     <div className="tk-cage">
       <div className="tk-steps">
+        <InstallHint />
         {S(1, 'PICK A STANDARD AMOUNT', true)}
         <div data-hint="Standard sizes keep you in the crowd.">
           <AmountChips value={amt} options={options} unit={COIN} onChange={(v: string) => { setAmt(v); setStep('amount'); setRecId(null); }} />
@@ -276,7 +277,7 @@ function Withdraw() {
           <KeyButton disabled={st !== 'valid' || !enough || !!busy} loading={busy === 'WITHDRAWING'} onClick={withdraw}>
             {busy === 'WITHDRAWING' ? (delayUntil ? `SENDING IN ${secondsLeft} S` : 'SENDING') : 'WITHDRAW'}
           </KeyButton>
-          {delayUntil && (
+          {delayUntil && busy === 'WITHDRAWING' && (
             <p className="bb-conditions" role="status">
               Waiting a random moment before sending, so the time of this withdrawal can't be matched to anything you did. Keep this page open.
             </p>

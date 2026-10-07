@@ -25,7 +25,8 @@ import { BET_UNITS, COIN, config } from '../../app/config';
 import { coin, countdown, haltText, height, utc } from '../../app/format';
 import type { FillRecord, LiveMarket, TradeAnswer } from '../../core/api';
 import { calledItSecret, encodeProof } from '../../core/codes';
-import { currentWallet, earnStamp } from '../../app/services';
+import { currentWallet, earnStamp, setMixDelay } from '../../app/services';
+import { ToggleSwitch } from '../../ds';
 import { Qr } from '../Qr';
 import { drawCalledIt, savePng } from '../cards';
 import { openWindow, ui } from '../uistate';
@@ -151,6 +152,15 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
   const [slip, setSlip] = useState<FilledSlip | null>(null);
   const [maxCents, setMaxCents] = useState<number | null>(null);
   const prefill = useStore(ui, (s) => s.prefill);
+  const mixDelay = useStore(app, (s) => s.mixDelay);
+  const delayUntil = useStore(app, (s) => s.delayUntil);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!delayUntil) return;
+    const t = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(t);
+  }, [delayUntil]);
+  const waitS = delayUntil ? Math.max(0, Math.ceil((delayUntil - Date.now()) / 1000)) : 0;
   // ODDS CALC "USE IN BET" (or the console) hands over a max price, side or size once.
   useEffect(() => {
     if (!prefill || (prefill.market && prefill.market !== meta.id)) return;
@@ -233,8 +243,11 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
       <PayoutPreview outcome={label} side={side} payout={payout.toFixed(4)} profit={'+' + profit.toFixed(4)} unit={COIN} size="lg" />
       <div data-hint={lockReason ?? (tooMuch ? 'Not enough balance. Top up in F3 CAGE.' : `Buys ${label} at up to ${limit}¢. You can't lose more than ${amt} ${COIN}.`)}>
         <KeyButton size="lg" fullWidth loading={busy === 'PRINTING'} disabled={disabled || !!busy} onClick={buy}>
-          {busy === 'PRINTING' ? 'PRINTING' : 'BUY ' + label}
+          {busy === 'PRINTING' ? (delayUntil ? `MIXING · ${waitS} S` : 'PRINTING') : 'BUY ' + label}
         </KeyButton>
+        <div className="tk-mix" data-hint="Waits a random 5–30 s before sending, so the moment of your bet says less about you. Off by default: bets are instant.">
+          <ToggleSwitch label="MIX DELAY" checked={mixDelay} onChange={(v: boolean) => setMixDelay(v)} />
+        </div>
         <TradeConditions fill="~2 s" max={limit + '¢'} fee="1%" closes={meta.eventStartMs ? 'at the event start' : utc(meta.endMs)} />
         {maxCents !== null && (
           <p className="bb-conditions">

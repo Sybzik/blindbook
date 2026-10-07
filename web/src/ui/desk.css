@@ -207,3 +207,6 @@
 .tk-toast{position:fixed;z-index:120;left:50%;bottom:72px;translate:-50% 0;margin:0;padding:8px 14px;background:var(--void);border:1px solid var(--phosphor-mid);color:var(--phosphor-hi);box-shadow:0 6px 24px rgba(0,0,0,.6);max-width:min(90vw,520px);text-align:center}
 .tk-tray-blk{cursor:help}
 .bb-tray__seg--blk{cursor:help}
+
+.tk-mix{display:flex;justify-content:flex-end;margin-top:6px}
+.tk-install{padding:10px 12px;border:1px dashed var(--phosphor-mid);background:color-mix(in srgb,var(--glass) 70%,transparent)}

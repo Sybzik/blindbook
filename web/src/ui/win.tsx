@@ -54,3 +54,20 @@ export function OpenVault({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/** iPhone Safari shows no install prompt: say how, and why (its own storage, no 7-day wipe). */
+export function InstallHint() {
+  const ios = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const installed =
+    typeof window !== 'undefined' && ((navigator as Navigator & { standalone?: boolean }).standalone === true || matchMedia('(display-mode: standalone)').matches);
+  if (!ios || installed) return null;
+  return (
+    <div className="tk-install" role="note">
+      <p className="bb-label bb-hi" style={{ margin: 0 }}>INSTALL IT FIRST</p>
+      <p className="bb-ui" style={{ margin: '4px 0 0' }}>
+        In Safari: Share <span aria-hidden="true">⎋</span> → <b>Add to Home Screen</b>. The installed app keeps its own storage, which iOS doesn't wipe after a week away, and
+        opens without loading anything. A vault made here in Safari stays in Safari.
+      </p>
+    </div>
+  );
+}

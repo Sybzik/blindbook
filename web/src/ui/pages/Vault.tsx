@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { KeyButton, LeaderRow, TextInput, UnlockKeyhole } from '../../ds';
-import { Win } from '../win';
+import { InstallHint, Win } from '../win';
 import { app, createVault, newWords, prfSupported, restoreFromWords, unlockWithPasskey, unlockWithPassphrase } from '../../app/services';
 import { useStore } from '../../app/store';
 import { coinLabel } from '../../app/format';
@@ -138,6 +138,7 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
         <p className="bb-text" style={{ margin: 0 }}>
           No account, no email. Your balance is a set of slips kept in a vault on this device, and 12 words bring it back anywhere.
         </p>
+        <InstallHint />
         <KeyButton onClick={() => { setWords(newWords()); setMode('words'); }}>NEW VAULT</KeyButton>
         <KeyButton variant="secondary" onClick={() => setMode('restore')}>RESTORE FROM 12 WORDS</KeyButton>
       </div>,

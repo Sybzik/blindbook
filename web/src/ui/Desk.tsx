@@ -26,6 +26,8 @@ import { play, setSound } from './sound';
 
 const MAX_WINDOWS = 4;
 const IDLE_MS = 120_000;
+/** The vault locks itself after 15 minutes without input, or 15 minutes in the background. */
+const LOCK_MS = 15 * 60_000;
 const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
 
 const TITLES: Record<string, string> = {
@@ -299,6 +301,54 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     document.addEventListener('visibilitychange', v);
     return () => document.removeEventListener('visibilitychange', v);
   }, [phone]);
+
+  // Auto-lock (THREAT_MODEL D1): the vault closes after 15 idle minutes; a page left in the
+  // background is judged by when it was hidden.
+  useEffect(() => {
+    if (vault !== 'unlocked') return;
+    let last = Date.now();
+    const touch = () => (last = Date.now());
+    const check = () => {
+      if (Date.now() - last >= LOCK_MS) {
+        lockVault();
+        setVaultWin(true);
+        app.set({ notice: 'The vault locked itself after 15 idle minutes. Nothing of you stays on screen.' });
+      }
+    };
+    const evs = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    evs.forEach((e) => addEventListener(e, touch, { passive: true }));
+    document.addEventListener('visibilitychange', check);
+    const t = setInterval(check, 30_000);
+    return () => {
+      evs.forEach((e) => removeEventListener(e, touch));
+      document.removeEventListener('visibilitychange', check);
+      clearInterval(t);
+    };
+  }, [vault]);
+
+  // A screen that drops frames gets CLEAN SIGNAL (no glow, scanlines or motion) by itself, once.
+  useEffect(() => {
+    if (clean || document.hidden) return;
+    let frames = 0;
+    let raf = 0;
+    const t0 = performance.now();
+    const count = () => {
+      frames++;
+      if (performance.now() - t0 < 3_000) raf = requestAnimationFrame(count);
+    };
+    raf = requestAnimationFrame(count);
+    const done = setTimeout(() => {
+      cancelAnimationFrame(raf);
+      if (!document.hidden && frames > 0 && frames < 60) {
+        ui.set({ clean: true });
+        app.set({ notice: 'This screen was dropping frames, so the effects are off (CLEAN SIGNAL in START turns them back on).' });
+      }
+    }, 3_200);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(done);
+    };
+  }, []);
 
   // Two idle minutes bring the screensaver.
   useEffect(() => {

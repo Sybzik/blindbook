@@ -59,8 +59,10 @@ export interface AppState {
   local: LocalData;
   outbox: Outgoing[];
   duels: MyDuel[];
-  /** A withdrawal waiting out its random privacy delay: when it will be sent. */
+  /** A withdrawal (or, with mix delay on, a trade) waiting out its random delay. */
   delayUntil: number | null;
+  /** Mix delay: wait a random 5–30 s before sending a bet or a sale (a preference, not data). */
+  mixDelay: boolean;
   busy: string | null;
   notice: string | null;
   error: string | null;
@@ -80,6 +82,7 @@ export const app = createStore<AppState>({
   outbox: [],
   duels: [],
   delayUntil: null,
+  mixDelay: readPref('bb-mixdelay'),
   busy: null,
   notice: null,
   error: null,
@@ -179,6 +182,35 @@ async function pollHead() {
 }
 
 let started = false;
+
+function readPref(k: string): boolean {
+  try {
+    return localStorage.getItem(k) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setMixDelay(on: boolean) {
+  app.set({ mixDelay: on });
+  try {
+    localStorage.setItem('bb-mixdelay', on ? '1' : '0');
+  } catch {
+    /* private mode */
+  }
+}
+
+/** With mix delay on, a trade leaves at a random moment 5–30 s later, so its time says less. */
+async function mixWait() {
+  if (!app.get().mixDelay) return;
+  const ms = 5_000 + Math.random() * 25_000;
+  app.set({ delayUntil: Date.now() + ms });
+  try {
+    await new Promise((r) => setTimeout(r, ms));
+  } finally {
+    app.set({ delayUntil: null });
+  }
+}
 
 /** Connect and begin the polls every visitor makes; safe to call more than once. */
 export async function start() {
@@ -437,11 +469,18 @@ export async function recoverDuel(duel: string): Promise<number> {
 export const actions = {
   voucher: (code: string) => act('REDEEMING CODE', (w) => w.voucher(code)),
   buy: (market: string, outcome: 0 | 1, units: number, limitBp: number) =>
-    act('PRINTING', (w) => w.buy(market, outcome, units, limitBp)).then(async (r) => {
+    act('PRINTING', async (w) => {
+      await mixWait();
+      return w.buy(market, outcome, units, limitBp);
+    }).then(async (r) => {
       if (r.fill.out > 0) await earnStamp('FIRST SLIP');
       return r;
     }),
-  sell: (market: string, outcome: 0 | 1, units: number, limitBp: number) => act('SELLING', (w) => w.sell(market, outcome, units, limitBp)),
+  sell: (market: string, outcome: 0 | 1, units: number, limitBp: number) =>
+    act('SELLING', async (w) => {
+      await mixWait();
+      return w.sell(market, outcome, units, limitBp);
+    }),
   redeem: (market: string, outcome: 0 | 1) => act('CASHING IN', (w) => w.redeem(market, outcome)),
   send: (keyset: string, units: number, paper = false) => act('PREPARING SLIPS', (w) => w.send(keyset, units, paper)),
   reclaim: (code: string) => act('TAKING BACK', (w) => w.reclaim(code)),

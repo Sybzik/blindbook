@@ -3,7 +3,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { TerminalWindow } from '../ds';
 
-export const WinCtx = createContext<{ narrow: boolean; hint: ReactNode }>({ narrow: false, hint: null });
+export const WinCtx = createContext<{ narrow: boolean; hint: ReactNode; pager?: boolean }>({ narrow: false, hint: null });
 
 export function Win(props: {
   title: ReactNode;
@@ -17,6 +17,13 @@ export function Win(props: {
   children?: ReactNode;
 }) {
   const c = useContext(WinCtx);
+  // On the pager a page is a channel: full screen, no window chrome.
+  if (c.pager)
+    return (
+      <section className={'pg-chan' + (props.closing ? ' is-closing' : '')} aria-label={typeof props.title === 'string' ? props.title : undefined} onAnimationEnd={props.closing ? props.onClosed : undefined}>
+        {props.children}
+      </section>
+    );
   return <TerminalWindow draggable={!c.narrow} resizable={!c.narrow && props.resizable !== false} hint={c.hint} {...props} />;
 }
 

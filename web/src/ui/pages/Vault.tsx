@@ -26,6 +26,7 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
   const [progress, setProgress] = useState<string | null>(null);
   const [summary, setSummary] = useState<{ slips: number; trades: number; balance: number } | null>(null);
   const [backedUp, setBackedUp] = useState(false);
+  const [usePass, setUsePass] = useState(false);
   const phone = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   const hasPrf = wraps.some((w) => w.kind === 'prf');
   const hasPass = wraps.some((w) => w.kind === 'pass');
@@ -102,6 +103,13 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
       )}
     </Win>
   );
+
+  if (mode === 'unlock' && phone && hasPrf && !usePass)
+    return shell(
+      'VAULT · LOCKED',
+      <UnlockKeyhole device="phone" state={st === 'unlocking' ? 'prompt' : st} error={err ?? undefined} onUnlock={faceId}
+        onUsePassphrase={() => (hasPass ? setUsePass(true) : setMode('restore'))} />,
+    );
 
   if (mode === 'unlock')
     return shell(

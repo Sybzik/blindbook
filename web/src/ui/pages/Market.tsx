@@ -1,7 +1,7 @@
 // P100 market index, P2xx market page (chart of both outcomes, RULES, recent fills, bet panel)
 // and the CALLED IT card.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import {
   AlarmBanner,
   AmountChips,
@@ -18,7 +18,7 @@ import {
   TeletextHeader,
   TradeConditions,
 } from '../../ds';
-import { Win } from '../win';
+import { Win, WinCtx } from '../win';
 import { app, actions, type MarketMeta, type Point } from '../../app/services';
 import { useStore } from '../../app/store';
 import { BET_UNITS, COIN, config } from '../../app/config';
@@ -234,6 +234,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   const link = useStore(app, (s) => s.link);
   const head = useStore(app, (s) => s.head);
   const [rules, setRules] = useState(false);
+  const { pager } = useContext(WinCtx);
   const outcomes = useMemo(() => (meta ? outcomesOf(meta, live, series ?? []) : []), [meta, live, series]);
   if (!meta) return <Win title="MARKET" onClose={onClose}><p className="bb-text">Loading…</p></Win>;
   const st = statusOf(meta, live);
@@ -257,11 +258,13 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
       </p>
       {st === 'HALTED' && <div style={{ marginTop: 16 }}><AlarmBanner title="MARKET HALTED" action="">{haltText(live?.halt ?? null)}</AlarmBanner></div>}
       <div className="tk-market">
+        {/* On the pager the bet comes first: one thumb, no scrolling to BUY. */}
+        {pager && <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />}
         <div className="col" style={{ gap: 4 }}>
           <LeaderRow label="CLOSES" value={closesText(meta)} />
           <LeaderRow label="POLYMARKET" value={`${meta.outcomes[0].toUpperCase()} ${ref}¢ · ${meta.outcomes[1].toUpperCase()} ${100 - ref}¢`} tone="ref" />
           <div style={{ marginTop: 10 }} data-hint="Both outcomes, live. REF adds Polymarket's price as dashed violet lines.">
-            {rules ? <RulesPanel rules={meta.rules} rows={rows} /> : <ScopeChart key={meta.id} outcomes={outcomes} height={168} />}
+            {rules ? <RulesPanel rules={meta.rules} rows={rows} /> : <ScopeChart key={meta.id} outcomes={outcomes} height={pager ? 120 : 168} />}
           </div>
           <div className="row" style={{ marginTop: 8, gap: 8 }}>
             <KeyButton variant="secondary" size="sm" icon="rules" onClick={() => setRules(!rules)} data-hint="Polymarket's rules word for word, and how Blindbook settles this market.">
@@ -276,7 +279,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
             ))}
           </div>
         </div>
-        <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />
+        {!pager && <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />}
       </div>
     </Win>
   );

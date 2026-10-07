@@ -133,11 +133,11 @@ function LandingScene({ px, rim }) {
       <rect x="206" y="598" width="228" height="92" fill="url(#ld-cab)" />
       <rect x="206" y="598" width="228" height="1.5" fill="#5CFF9D" opacity=".18" />
       <ellipse cx="320" cy="694" rx="130" ry="10" fill="#000" opacity=".7" filter="url(#ld-b6)" />
-      <LdCrt x={212} y={494} w={110} h={104} top="LEGACY" price={px.a + '¢'} color="#5CFF9D" />
-      <LdCrt x={330} y={522} w={102} h={76} top="PARIVISION" price={px.b + '¢'} color="#FFB547" />
+      <LdCrt x={212} y={494} w={110} h={104} top={px.la || 'LEGACY'} price={px.a + '¢'} color="#5CFF9D" />
+      <LdCrt x={330} y={522} w={102} h={76} top={px.lb || 'PARIVISION'} price={px.b + '¢'} color="#FFB547" />
       <rect x="1044" y="612" width="124" height="80" fill="url(#ld-cab)" />
       <ellipse cx="1106" cy="696" rx="80" ry="8" fill="#000" opacity=".7" filter="url(#ld-b6)" />
-      <LdCrt x={1046} y={508} w={120} h={104} top="P202 · YES" price={px.y + '¢'} color="#5CFF9D" />
+      <LdCrt x={1046} y={508} w={120} h={104} top={px.ly || 'P202 · YES'} price={px.y + '¢'} color="#5CFF9D" />
 
       <rect width={LD_W} height={LD_H} fill="url(#ld-vig)" />
     </svg>

@@ -115,7 +115,7 @@ export function UnlockKeyhole({ device = 'phone', state = 'idle', onUsePassphras
       <form className={'bb-unlock bb-unlock--desktop ' + className} onSubmit={(e) => { e.preventDefault(); onUnlock && onUnlock(); }}>
         <Keyhole state={st} />
         <h2 className="bb-unlock__title bb-glow">{st === 'unlocked' ? 'VAULT OPEN' : 'VAULT LOCKED'}</h2>
-        <p className="bb-unlock__lead">Enter your passphrase to open your slips on this computer.</p>
+        <p className="bb-unlock__lead">Enter your passphrase to open your slips on this device.</p>
         <TextInput label="PASSPHRASE" type="password" value={passphrase} onChange={onPassphrase} placeholder="passphrase"
           state={st === 'error' ? 'invalid' : undefined} message={st === 'error' ? error || 'That passphrase did not open the vault. Try again.' : undefined} inputProps={{ disabled: busy }} />
         <KeyButton type="submit" size="lg" icon="lock" fullWidth loading={busy}>{busy ? 'UNLOCKING' : 'UNLOCK'}</KeyButton>

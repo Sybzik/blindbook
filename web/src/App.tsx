@@ -45,7 +45,22 @@ export function App() {
 
   const lm = (i: number) => live?.markets.find((m) => m.id === markets[i]?.id);
   const pa = (i: number) => (lm(i)?.price_a_ppm ? Math.round(lm(i)!.price_a_ppm! / 10_000) : null);
-  const prices = pa(0) !== null ? { a: pa(0)!, b: 100 - pa(0)!, y: pa(1) ?? pa(0)! } : undefined;
+  // The booth's three CRTs show the first two markets, live.
+  const label = (s: string | undefined) => (s ?? '').toUpperCase().slice(0, 12);
+  const named = markets.findIndex((m) => !(m.outcomes[0] === 'Yes' && m.outcomes[1] === 'No'));
+  const ia = named >= 0 ? named : 0;
+  const iy = ia === 0 ? 1 : 0;
+  const prices =
+    pa(ia) !== null
+      ? {
+          a: pa(ia)!,
+          b: 100 - pa(ia)!,
+          y: pa(iy) ?? pa(ia)!,
+          la: label(markets[ia]?.outcomes[0]),
+          lb: label(markets[ia]?.outcomes[1]),
+          ly: markets[iy] ? `${markets[iy]!.page} · ${label(markets[iy]!.outcomes[0])}` : '',
+        }
+      : undefined;
 
   if (phase === 'landing')
     return (

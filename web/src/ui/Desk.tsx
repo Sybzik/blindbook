@@ -2,7 +2,7 @@
 // focus, the rest on the taskbar), the console, alarms, the vault, the screensaver.
 
 import { useEffect, useRef, useState } from 'react';
-import { APP_ICONS, AlarmBanner, AppIcons, DesktopIcons, StartMenu, Taskbar, TeletextHeader, Wallpaper } from '../ds';
+import { APP_ICONS, AlarmBanner, AppIcons, DesktopIcons, KeyButton, MixnetLamp, PixelIcon, SplitFlap, StartMenu, Taskbar, TeletextHeader, ToggleSwitch, Wallpaper } from '../ds';
 import { WinCtx, HINTS, Win } from './win';
 import { app, lockVault } from '../app/services';
 import { useStore } from '../app/store';
@@ -59,6 +59,12 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
   const [mid, setMid] = useState<string | null>(null);
   const [called, setCalled] = useState<FilledSlip | null>(null);
   const [narrow, setNarrow] = useState(() => innerWidth < 900);
+  // Phones get the pager: one channel at a time, a key row, swipe to change channel.
+  const [phone, setPhone] = useState(() => innerWidth < 700);
+  const [menu, setMenu] = useState(false);
+  const [burst, setBurst] = useState(false);
+  const [relink, setRelink] = useState(false);
+  const swipe = useRef<{ x: number; y: number; t: number } | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [con, setCon] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
@@ -73,7 +79,10 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
   const konami = useRef(0);
 
   useEffect(() => {
-    const r = () => setNarrow(innerWidth < 900);
+    const r = () => {
+      setNarrow(innerWidth < 900);
+      setPhone(innerWidth < 700);
+    };
     addEventListener('resize', r);
     return () => removeEventListener('resize', r);
   }, []);
@@ -102,6 +111,11 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
     setCalled(null);
     setHint(null);
     setStartOpen(false);
+    setMenu(false);
+    if (phone && !clean) {
+      setBurst(true);
+      setTimeout(() => setBurst(false), 200);
+    }
     setOpen((o) => {
       if (o.includes(id)) return o;
       let n = o;
@@ -192,6 +206,20 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
     return () => removeEventListener('keydown', k);
   });
 
+  // Coming back from the wallet app: iOS suspended the page, so reconnect visibly.
+  useEffect(() => {
+    let hiddenAt = 0;
+    const v = () => {
+      if (document.hidden) hiddenAt = Date.now();
+      else if (hiddenAt && Date.now() - hiddenAt > 2_000 && phone) {
+        setRelink(true);
+        setTimeout(() => setRelink(false), 1_400);
+      }
+    };
+    document.addEventListener('visibilitychange', v);
+    return () => document.removeEventListener('visibilitychange', v);
+  }, [phone]);
+
   // Two idle minutes bring the screensaver.
   useEffect(() => {
     let t = setTimeout(() => setIdle(true), IDLE_MS);
@@ -257,6 +285,134 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
     ...open.map((id) => ({ id, title: id === 'market' && called ? 'CALLED IT' : titleOf(id) })),
   ];
   const defHint = showVault ? HINTS.lock : called ? HINTS.called : HINTS[page.startsWith('tt:') ? 'how' : page];
+
+  if (phone) {
+    const channels = ['markets', ...(mid ? ['market'] : []), 'slips', 'cage', 'verify', 'how'];
+    if (!channels.includes(page)) channels.push(page);
+    const step = (d: number) => {
+      const i = channels.indexOf(page);
+      setVaultWin(false);
+      go(channels[(i + d + channels.length) % channels.length]!);
+    };
+    const onDown = (e: React.PointerEvent) => {
+      if ((e.target as HTMLElement).closest('input,textarea,[role=slider],.tk-snake__board,.tk-tracker,[data-noswipe]')) return;
+      swipe.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+    };
+    const onUp = (e: React.PointerEvent) => {
+      const s0 = swipe.current;
+      swipe.current = null;
+      if (!s0) return;
+      const dx = e.clientX - s0.x;
+      const dy = e.clientY - s0.y;
+      if (Math.abs(dx) > 70 && Math.abs(dx) > 2 * Math.abs(dy) && Date.now() - s0.t < 1200) step(dx < 0 ? 1 : -1);
+    };
+    const pages = [
+      { id: 'markets', label: 'MARKETS', icon: 'markets' },
+      { id: 'slips', label: 'SLIPS', icon: 'slips' },
+      { id: 'cage', label: 'CAGE', icon: 'cage' },
+      { id: 'verify', label: 'VERIFY', icon: 'verify' },
+      { id: 'how', label: 'HOW IT WORKS', icon: 'how' },
+      { id: 'record', label: 'WHAT WE KNOW', icon: 'eye' },
+      { id: 'pass', label: 'NOBODY PASS', icon: 'stamp' },
+    ];
+    return (
+      <div className="pg-app bb-crt" data-signal={clean ? 'clean' : undefined}>
+        <div className="pg-status">
+          <span className="pg-bal">
+            BAL <span className={vault === 'unlocked' ? 'bb-a' : 'bb-dim'}>{vault === 'unlocked' ? coin(balance) : 'LOCKED'}</span>
+          </span>
+          <MixnetLamp state={config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'} compact />
+          <SplitFlap value={(head?.height ?? 0).toLocaleString('en-US')} size="sm" label="block height" />
+        </div>
+        <div className="pg-body" onPointerDown={onDown} onPointerUp={onUp}>
+          {config.mixnet && link === 'down' && (
+            <AlarmBanner title="MIXNET LINK LOST" action="" onAction={undefined}>
+              Reconnecting… trading is locked; your balance is safe.
+            </AlarmBanner>
+          )}
+          {head?.halted && (
+            <AlarmBanner title="SERVICE HALTED" action="" onAction={undefined}>
+              Your slips keep their value; trading resumes once it is resolved.
+            </AlarmBanner>
+          )}
+          <WinCtx.Provider value={{ narrow: true, hint: null, pager: true }}>
+            {showVault && !menu && <VaultWindow key={vault} onOpen={() => setVaultWin(false)} onDismiss={() => setVaultWin(false)} />}
+            {menu && (
+              <section className="pg-chan pg-menu" aria-label="Menu">
+                <TeletextHeader page="MENU" title="BLINDBOOK" />
+                <p className="bb-label">PAGES</p>
+                <div className="pg-grid">
+                  {pages.map((p) => (
+                    <button key={p.id} type="button" className={'pg-icon' + (page === p.id ? ' is-on' : '')} onClick={() => { setVaultWin(false); go(p.id); }}>
+                      <PixelIcon name={p.icon as never} size={28} />
+                      <span>{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="bb-label">BACK ROOM</p>
+                <div className="pg-grid">
+                  {(APP_ICONS as { id: string; label: string; icon: string }[]).map((a) => (
+                    <button key={a.id} type="button" className={'pg-icon' + (page === a.id ? ' is-on' : '')} onClick={() => { setVaultWin(false); go(a.id); }}>
+                      <PixelIcon name={a.icon as never} size={28} />
+                      <span>{a.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="pg-switches">
+                  <ToggleSwitch label="CLEAN SIGNAL" checked={clean} onChange={(v: boolean) => ui.set({ clean: v })} />
+                  <ToggleSwitch label="SOUND" checked={sound} onChange={(v: boolean) => ui.set({ sound: v })} />
+                </div>
+                <div className="col" style={{ gap: 8 }}>
+                  <KeyButton variant="secondary" icon="console" onClick={() => { setMenu(false); setCon(true); }}>CONSOLE</KeyButton>
+                  {vault === 'unlocked' ? (
+                    <KeyButton variant="secondary" icon="lock" onClick={() => { setMenu(false); lock(); }}>LEAVE THE BOOTH · LOCK</KeyButton>
+                  ) : (
+                    <KeyButton variant="secondary" icon="lock" onClick={() => { setMenu(false); setVaultWin(true); }}>OPEN THE VAULT</KeyButton>
+                  )}
+                  <KeyButton variant="secondary" icon="eye" onClick={onIntro}>REPLAY INTRO</KeyButton>
+                </div>
+              </section>
+            )}
+            {open.map((id) => (
+              <div key={id === 'market' ? 'market:' + mid : id} className="tk-win" hidden={menu || showVault || id !== page}>
+                {render(id)}
+              </div>
+            ))}
+          </WinCtx.Provider>
+          {burst && <div className="pg-burst" aria-hidden="true" />}
+        </div>
+        {con && (
+          <div className="pg-console">
+            <Console onClose={() => setCon(false)} run={(c, out) => runCommand(c, out, desk)} height={300} />
+          </div>
+        )}
+        <nav className="pg-keys" aria-label="Pager keys">
+          <KeyButton size="sm" variant="secondary" fullWidth onClick={() => step(-1)} aria-label="Previous channel">◀ CH</KeyButton>
+          <KeyButton size="sm" variant={menu ? 'primary' : 'secondary'} fullWidth onClick={() => setMenu((m) => !m)}>MENU</KeyButton>
+          <KeyButton size="sm" variant={con ? 'primary' : 'secondary'} icon="console" fullWidth onClick={() => setCon((c) => !c)} className="pg-key-wide">CONSOLE</KeyButton>
+          <KeyButton size="sm" variant="secondary" fullWidth onClick={() => step(1)} aria-label="Next channel">CH ▶</KeyButton>
+        </nav>
+        {relink && (
+          <div className="pg-relink" role="status">
+            <p className="bb-display-md bb-glow bb-hi">{config.mixnet ? 'RE-LINKING' : 'WELCOME BACK'}</p>
+            <p className="bb-label">{config.mixnet ? 'the phone paused the page · building a fresh route' : 'the phone paused the page'}</p>
+          </div>
+        )}
+        {insider && (
+          <div className="tk-insider" role="status">
+            <p className="bb-display-md bb-glow bb-hi">INSIDER MODE</p>
+            <p className="bb-ui">we can&apos;t tell who you are. that includes insiders.</p>
+          </div>
+        )}
+        {leaving && (
+          <div className="tk-leave" role="status">
+            <p className="bb-display-md bb-glow bb-hi">NOTHING OF YOU STAYS BEHIND</p>
+          </div>
+        )}
+        {idle && <Screensaver onWake={() => setIdle(false)} still={clean} />}
+      </div>
+    );
+  }
 
   return (
     <div className="tk-app" data-signal={clean ? 'clean' : undefined} onMouseOver={onHover} onFocus={onHover}>

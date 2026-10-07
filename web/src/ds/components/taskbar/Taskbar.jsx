@@ -8,7 +8,7 @@ const LAMP = {
   relinking: { text: 'RELINKING', led: 'is-on is-blink', color: 'var(--phosphor-hi)' },
   down: { text: 'DOWN', led: 'is-alert', color: 'var(--alarm)' },
   /* A development build without the mixnet says so instead of pretending. */
-  off: { text: 'OFF · DEV BUILD', led: '', color: 'var(--text-dim)' },
+  off: { text: 'OFF', led: '', color: 'var(--text-dim)' },
 };
 
 /* The mixnet lamp: the only thing in the chrome that moves on its own. */

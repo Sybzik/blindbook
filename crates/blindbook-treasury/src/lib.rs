@@ -24,14 +24,16 @@ use tokio::sync::Mutex as AsyncMutex;
 use zcash_address::unified::{self, Encoding, Receiver, Revision};
 use zcash_address::{ToAddress, ZcashAddress};
 use zcash_client_backend::data_api::chain::{BlockCache, BlockSource, error as chain_error};
+use zcash_client_backend::data_api::locking::LockFilter;
 use zcash_client_backend::data_api::scanning::ScanRange;
+use zcash_client_backend::data_api::wallet::TargetHeight;
 use zcash_client_backend::data_api::wallet::input_selection::{GreedyInputSelector, SpendPolicy};
 use zcash_client_backend::data_api::wallet::{
     ConfirmationsPolicy, SpendingKeys, create_proposed_transactions, propose_send_max_transfer,
     propose_transfer,
 };
 use zcash_client_backend::data_api::{
-    Account, AccountBirthday, MaxSpendMode, WalletRead, WalletWrite,
+    Account, AccountBirthday, InputSource, MaxSpendMode, TargetValue, WalletRead, WalletWrite,
 };
 use zcash_client_backend::fees::standard::MultiOutputChangeStrategy;
 use zcash_client_backend::fees::{DustOutputPolicy, SplitPolicy, StandardFeeRule};
@@ -478,6 +480,49 @@ impl Treasury {
         if txids.len() > 1 {
             return Err(Error("a multi-transaction proposal".into()));
         }
+        Ok(*txids.first())
+    }
+
+    /// Reserve notes spendable right now. With a single note every transaction waits for the
+    /// previous one's change to confirm, so the loop keeps a few ([`Treasury::build_split`]).
+    pub fn reserve_notes(&self) -> Result<usize, Error> {
+        let Some(tip) = self.db.chain_height().map_err(err)? else {
+            return Ok(0);
+        };
+        let notes = self
+            .db
+            .select_spendable_notes(
+                self.reserve,
+                TargetValue::AllFunds(MaxSpendMode::MaxSpendable),
+                &[ShieldedPool::Ironwood, ShieldedPool::Orchard],
+                TargetHeight::from(tip + 1),
+                confirmations(),
+                &[],
+                LockFilter::Unfiltered,
+            )
+            .map_err(err)?;
+        Ok(notes.ironwood().len() + notes.orchard().len())
+    }
+
+    /// Split the reserve into 7 equal notes to fresh reserve addresses plus change: 8 Ironwood
+    /// actions with the outgoing viewing key discarded, the same shape as a payout, so a split
+    /// looks like any other payout on-chain.
+    pub fn build_split(&mut self) -> Result<TxId, Error> {
+        let spendable = self.balances()?.reserve_spendable;
+        let part = spendable.saturating_sub(40_000) / 8;
+        if part < 100_000 {
+            return Err(Error("too little to split".into()));
+        }
+        let mut payments = Vec::with_capacity(PAYOUT_OUTPUTS);
+        for _ in 0..PAYOUT_OUTPUTS {
+            let to = r0_zaddr(&self.address_of(self.reserve)?, &self.net);
+            payments.push(Payment::without_memo(
+                to,
+                Zatoshis::from_u64(part).map_err(err)?,
+            ));
+        }
+        let request = TransactionRequest::new(payments).map_err(err)?;
+        let txids = self.create(self.reserve, request, OvkPolicy::Discard)?;
         Ok(*txids.first())
     }
 

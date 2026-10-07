@@ -129,6 +129,7 @@ async fn pass(
     save(state_path, state);
 
     // New payouts, at most one transaction per block.
+    let mut paid = false;
     if h > state.last_payout {
         let busy: Vec<H32> = state
             .inflight
@@ -164,6 +165,7 @@ async fn pass(
                 save(state_path, state);
                 t.broadcast(c, txid).await.map_err(|e| e.to_string())?;
                 tracing::info!(txid = %f.txid, withdrawals = batch.len(), "payout sent");
+                paid = true;
                 report(LogEvent::PayoutSent {
                     txid: f.txid,
                     commitments: f.commitments,
@@ -171,6 +173,21 @@ async fn pass(
             } else {
                 tracing::warn!(spendable, needed = total, "payouts wait for reserve funds");
             }
+        }
+    }
+
+    // Keep a few spendable reserve notes, so payouts and anchors don't queue behind each other's
+    // change. A split has the payout shape (8 actions, OVK discarded).
+    if !paid
+        && t.reserve_notes().map_err(|e| e.to_string())? < 3
+        && t.balances().map_err(|e| e.to_string())?.reserve_spendable >= 2_000_000
+    {
+        match t.build_split() {
+            Ok(txid) => match t.broadcast(c, txid).await {
+                Ok(_) => tracing::info!(%txid, "reserve split into more notes"),
+                Err(e) => tracing::warn!(error = %e, "split broadcast failed"),
+            },
+            Err(e) => tracing::debug!(error = %e, "no split"),
         }
     }
 

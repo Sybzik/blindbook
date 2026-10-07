@@ -105,7 +105,7 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market_id, side (buy/sell), outcome (0/1), limit_bp, amount, outputs[], change_outputs[], tag` | next 2 s batch | `{avg_price_bp, filled, refunded, signatures[]}` |
 | `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[]}` |
 | `POST /v1/redeem` | `inputs[]` (winning keyset), `credit_outputs[]` | immediately after resolution | `{signatures[]}` |
-| `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount_units` (a standard denomination, THREAT_MODEL X6), `address_sealed` (X25519 sealed box of `{address, salt}`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{withdraw_id}`; status shown in the bundle |
+| `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount` (units, a standard denomination, THREAT_MODEL X6), `change_outputs[]`, `address_sealed` (`bbseal1:`, sealed to the signer's pinned X25519 key; format in `crates/blindbook-seal`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{signatures[] (change), stored_record}`; payout shown in the log as `PayoutSent {txid, commitments}` |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
 | `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
 
@@ -270,10 +270,17 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 |---|---|---|---|
 | Sweep | deposit account → reserve | matured top-up notes in, one note out | none |
 | Payout | reserve → users (+ change) | always **8 Ironwood actions**: ≤ 7 recipients + change, padded with **zero-value outputs to freshly generated throwaway addresses** (indistinguishable from real ones); recipient and padding outputs use `OvkPolicy::Discard`; ZIP 317 fee 0.0004 ZEC. Verified on testnet (`spikes/g-payout`): 8 actions, and the sender's full viewing key sees only the change | none |
-| Anchor | reserve → reserve (internal) | 2 actions | `bb1:anchor:<height>:<root-hex>` |
+| Anchor | reserve → reserve (internal) | 2 actions | `bb1:anchor:<height>:<root-hex>` (the signer's own root, §9) |
+| Split | reserve → reserve | the payout shape (7 equal outputs to fresh reserve addresses + change, OVK discarded), whenever fewer than 3 reserve notes are spendable, so payouts and anchors never wait for each other's change | none |
 | Buffer funding | operator → reserve | | `bb1:buffer:<market_id>` |
 
 Payouts go only to unified addresses with an Orchard-protocol receiver, checked by parsing with `zcash_address`.
+
+- **Deposit and reserve are separate accounts** of one seed (ZIP 32 accounts 0 and 1): the API holds only the deposit account's incoming viewing key, and the reserve's full viewing key can be published for the solvency check without revealing any single top-up, because deposits reach the reserve only through sweeps.
+- **Never paying twice (normative for the signer):** a payout is built and stored by the wallet, its txid and the withdrawals it pays are written to disk, and only then is it broadcast; after a restart the in-flight payouts are re-broadcast (harmless) and re-reported. A withdrawal leaves the queue only when its `PayoutSent` event is recorded in the log.
+- **The address is checked before the CREDIT is spent:** the signer opens the sealed address and checks it against the commitment, the network and the Orchard receiver while it checks the slips; a withdrawal it couldn't pay is refused and spends nothing.
+- **Confirmations:** the wallet spends its own notes after 1 confirmation and received notes (deposits, buffer funding) after 3.
+- **Measured on testnet (Oct 7):** a withdrawal to a sealed address was paid in the next payout, 8 Ironwood actions (tx `948d5136…`); two withdrawals made back to back went out together in one payout (`80d88933…`); the signer anchored its own log root (`ef070d78…`). Implementation: `crates/blindbook-treasury`, `crates/blindbook-signer/src/payouts.rs`, `crates/blindbook-seal`.
 
 ## 11. Indexer rules
 

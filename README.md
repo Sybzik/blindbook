@@ -114,7 +114,8 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 - [x] Signer core: checks every slip and claim, applies the same ledger operation, signs with DLEQ
 - [x] API service (sequencer, journal, public log files, live prices) and the signer link with exact-once recovery
 - [x] Indexer: one-time addresses, mempool SEEN and block detection with the incoming viewing key; top-ups credited on testnet in under 2 s
-- [ ] Payouts, sweeps, anchors, verifier
+- [x] Treasury: sealed-address withdrawals paid in 8-action shielded payouts, sweeps, on-chain anchors of the signer's own log root (live on testnet)
+- [ ] Verifier (CLI and browser)
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof
 - [ ] Demo video
@@ -130,7 +131,9 @@ crates/
   blindbook-mint/     keysets derived from the pinned master key, blind signatures with DLEQ proofs
   blindbook-polymarket/  Polymarket mirror: catalog, live books, anchor, guard, feed health; Polygon resolver
   blindbook-api/      secretless: top-up desk, trade batches, bundle and live feed (axum)
-  blindbook-signer/   holds all keys; replays before signing; blind signatures, sweeps, payouts, anchors
+  blindbook-signer/   holds all keys; replays before signing; blind signatures, its own log and indexer
+  blindbook-treasury/ deposit and reserve wallets: sweeps, 8-action payouts, anchors (signer only)
+  blindbook-seal/     sealed withdrawal addresses (X25519 + HKDF + AES-GCM) and their commitments
   blindbook-verify/   independent auditor (CLI; the same engine runs in the browser)
 web/                  static app: vault, slip wallet, mixnet client, terminal UI, 3D booth, console
 video/                demo video (Remotion)

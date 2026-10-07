@@ -1,0 +1,32 @@
+[package]
+name = "blindbook-treasury"
+description = "Blindbook treasury (signer only): the deposit and reserve wallets, sweeps, fixed-shape payouts with a discarded outgoing viewing key, and on-chain anchors (PROTOCOL section 10)"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait = "0.1"
+blindbook-indexer = { path = "../blindbook-indexer" }
+nonempty = { version = "0.11", default-features = false }
+orchard.workspace = true
+rand = { version = "0.10", default-features = false, features = ["std", "thread_rng"] }
+rand_core = "0.10"
+rusqlite = "0.37"
+secrecy = "0.8"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+zcash_address.workspace = true
+zcash_client_backend = { workspace = true, features = ["lightwalletd-tonic-tls-webpki-roots", "orchard", "sync"] }
+zcash_client_sqlite = { workspace = true, features = ["orchard"] }
+zcash_keys = { workspace = true, features = ["orchard", "sapling"] }
+zcash_primitives.workspace = true
+zcash_proofs = { version = "=0.31.0-pre.0", features = ["bundled-prover"] }
+zcash_protocol.workspace = true
+zip32.workspace = true
+zip321 = "=0.10.0-pre.0"
+
+[dev-dependencies]

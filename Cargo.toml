@@ -9,6 +9,7 @@ members = [
   "crates/blindbook-mint",
   "crates/blindbook-polymarket",
   "crates/blindbook-signer",
+  "crates/blindbook-treasury",
 ]
 exclude = ["spikes"]
 

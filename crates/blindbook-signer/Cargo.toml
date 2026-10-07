@@ -1,0 +1,16 @@
+[package]
+name = "blindbook-signer"
+description = "Blindbook signer: holds the mint master key, checks every slip and every operation against its own ledger replica, and signs (PROTOCOL section 9). No inbound ports."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+blindbook-ledger = { path = "../blindbook-ledger" }
+blindbook-mint = { path = "../blindbook-mint" }
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

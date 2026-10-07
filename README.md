@@ -111,7 +111,8 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 - [x] Spikes ([`spikes/`](spikes/)): Nym mixnet in the browser · one-time deposit addresses on testnet · blind signatures Rust ↔ browser · Polymarket + Polygon · engine · fixed-shape payouts
 - [x] Engine (native = WASM), mint keysets and blind signatures, Polymarket mirror and Polygon resolver
 - [x] Ledger: batches around the engine, spent set, issuance, swaps, redemptions, withdrawals, hash-chained log
-- [ ] Signer, API, indexer
+- [x] Signer core: checks every slip and claim, applies the same ledger operation, signs with DLEQ
+- [ ] API service, signer transport, indexer, payouts
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof
 - [ ] Demo video

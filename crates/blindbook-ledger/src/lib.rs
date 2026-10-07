@@ -6,6 +6,7 @@
 //! - [`ledger`]: market pools, the spent set, issuance per keyset, and the operations: trade
 //!   batches around `blindbook-engine`, swaps, redemptions, top-up credits, withdrawals.
 //! - [`reference`]: the reference snapshot each batch prices from.
+//! - [`ops`]: the operations the API sequences and the signer executes, and [`ops::apply`].
 //! - [`delta`]: the hash-chained public log.
 //! - [`canonical`]: RFC 8785 canonical JSON, used for every hash.
 //!
@@ -17,6 +18,7 @@ pub mod delta;
 pub mod hex;
 pub mod keysets;
 pub mod ledger;
+pub mod ops;
 pub mod reference;
 pub mod wire;
 

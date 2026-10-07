@@ -66,6 +66,10 @@ pub enum Reject {
     BadWithdrawalAmount,
     #[error("more spent from a keyset than was ever issued")]
     SupplyGuard,
+    #[error("a slip's signature is invalid")]
+    InvalidSlip,
+    #[error("the top-up or voucher claim could not be confirmed")]
+    InvalidClaim,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,7 +216,7 @@ pub struct TradeRequest {
 }
 
 /// What the batch knows about a market's reference and Polymarket's state.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MarketInputs {
     pub reference: RefSnapshot,
     pub closed: bool,
@@ -320,8 +324,12 @@ pub struct Ledger {
     pub issued: BTreeMap<String, u64>,
     /// Units spent per keyset id.
     pub burned: BTreeMap<String, u64>,
-    /// House balance outside the markets: withdrawal fees, redemption dust.
+    /// House balance outside the markets: withdrawal fees.
     pub house: i64,
+    /// Set for good once anything tried to spend more from a keyset than was issued: all
+    /// withdrawals stop until the operator investigates (PROTOCOL section 9, supply guard).
+    #[serde(default)]
+    pub supply_alarm: bool,
     #[serde(skip)]
     pub keysets: KeysetIds,
 }

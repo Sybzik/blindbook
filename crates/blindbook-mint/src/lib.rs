@@ -88,6 +88,14 @@ impl KeysetKind {
     }
 }
 
+/// `Y = hash_to_curve(secret)` of a slip, as the hex of the compressed point: the slip's entry
+/// in the public spent set. Cashu hashes the secret string's UTF-8 bytes.
+pub fn y_hex(secret: &str) -> Result<String, Error> {
+    Ok(cashu::dhke::hash_to_curve(secret.as_bytes())
+        .map_err(crypto)?
+        .to_hex())
+}
+
 /// SHA-256.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
     sha256::Hash::hash(data).to_byte_array()

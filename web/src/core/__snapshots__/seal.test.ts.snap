@@ -1,0 +1,8 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`sealed withdrawal addresses > pinned vector for the Rust side 1`] = `
+{
+  "commitment": "f6277091ad30a891443fa34d93eeea67fb5080ba9f9b5f2fa972237067b4808d",
+  "sealed": "bbseal1:jcI5YXsA72S_qk5iwjgLIs7KkCXjRjKWM4RoPnDqoBQq0BYfkUPmOcHCrrjqIBPlOC2QkKnmL2yFTtDXTKC_KIE37DPpLZah7RRDLI0PevEmxbNk7MjLhO7CWCQyrPIHefKabg7mKBuPp-ZeXSNz6oqezf9tQyuv6m3eLLxAfJLbzob0zR3swax6-OHcLslEBuHiDoiy6Dnxeby6N6QnI2mO0AhKMKxh2XTpdPyXuQd9aQyiEJ9qJ74IaT-20IdYYNN6SAWPLzXgoluRW2G5-OsDwOKjmdfo7zbem2o8O7UKH4qFIpdSWqWCQQNevbYAkaaWxEqkxh0HHRk58HOOgw-8",
+}
+`;

@@ -169,6 +169,17 @@ mod tests {
         assert_eq!(open(&sk, "nope", &c), Err(Error::Format));
     }
 
+    /// The blob web/src/core/seal.test.ts produces with pinned randomness: the signer opens what
+    /// the browser seals.
+    #[test]
+    fn opens_the_browser_vector() {
+        use sha2::{Digest, Sha256};
+        let sk: [u8; 32] = Sha256::digest(b"blindbook/seal-test/signer").into();
+        let sealed = "bbseal1:jcI5YXsA72S_qk5iwjgLIs7KkCXjRjKWM4RoPnDqoBQq0BYfkUPmOcHCrrjqIBPlOC2QkKnmL2yFTtDXTKC_KIE37DPpLZah7RRDLI0PevEmxbNk7MjLhO7CWCQyrPIHefKabg7mKBuPp-ZeXSNz6oqezf9tQyuv6m3eLLxAfJLbzob0zR3swax6-OHcLslEBuHiDoiy6Dnxeby6N6QnI2mO0AhKMKxh2XTpdPyXuQd9aQyiEJ9qJ74IaT-20IdYYNN6SAWPLzXgoluRW2G5-OsDwOKjmdfo7zbem2o8O7UKH4qFIpdSWqWCQQNevbYAkaaWxEqkxh0HHRk58HOOgw-8";
+        let c = hex32("f6277091ad30a891443fa34d93eeea67fb5080ba9f9b5f2fa972237067b4808d").unwrap();
+        assert_eq!(open(&sk, sealed, &c), Ok(ADDR.to_owned()));
+    }
+
     #[test]
     fn sealing_is_randomized() {
         let (_, pk) = keygen();

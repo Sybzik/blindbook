@@ -87,3 +87,28 @@ mod tests {
         assert_eq!(check(body, 1), None, "no pow field");
     }
 }
+
+#[cfg(test)]
+mod vectors {
+    use super::*;
+    use serde_json::json;
+
+    /// Pinned for the browser implementation (web/src/core/pow.test.ts uses the same values).
+    #[test]
+    fn pinned_vector() {
+        let body = json!({ "market": "ab", "amount": 5, "z": [1, 2], "s": "é\n" });
+        let canonical = String::from_utf8(to_canonical(&body).unwrap()).unwrap();
+        let digest = sha256(canonical.as_bytes());
+        let nonce = solve(&body, 12);
+        assert_eq!(canonical, r#"{"amount":5,"market":"ab","s":"é\n","z":[1,2]}"#);
+        assert_eq!(
+            blindbook_ledger::hex::encode(&digest),
+            "e2494b42ee6de3f4f1ed4b6cb4ab45ee2af3f56d443029a75896d11aa29978a1"
+        );
+        assert_eq!(nonce, 2432);
+        assert_eq!(
+            blindbook_ledger::hex::encode(&work_hash(&digest, nonce)),
+            "000aff2031488c5b61910b9d475c0ecf82a03d35a9d54afaa7f2ec27bc04773b"
+        );
+    }
+}

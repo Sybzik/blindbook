@@ -38,6 +38,8 @@ pub struct Remote {
     /// connection never removes a newer one.
     tx: Mutex<Option<(u64, mpsc::Sender<Call>)>>,
     generation: std::sync::atomic::AtomicU64,
+    /// Where the treasury's events go (the sequencer turns each into `Op::Record`).
+    events: std::sync::Mutex<Option<mpsc::Sender<blindbook_ledger::delta::LogEvent>>>,
 }
 
 pub const CALL_TIMEOUT: Duration = Duration::from_secs(10);
@@ -97,7 +99,10 @@ impl Remote {
                 },
                 msg = stream.next() => match msg {
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
-                    Some(Ok(Message::Text(_))) => continue,
+                    Some(Ok(Message::Text(t))) => {
+                        self.forward(&t);
+                        continue;
+                    }
                     _ => break,
                 },
                 _ = keepalive.tick() => {
@@ -120,7 +125,10 @@ impl Remote {
                         Ok(FromSigner::Error { id, error }) if id == next_id => {
                             break Err(LinkError::Signer(error));
                         }
-                        _ => continue,
+                        _ => {
+                            self.forward(&t);
+                            continue;
+                        }
                     },
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => continue,
                     _ => break Err(LinkError::Down),
@@ -138,6 +146,23 @@ impl Remote {
         }
         drop(slot);
         tracing::warn!("signer disconnected");
+    }
+
+    pub fn set_events(&self, tx: mpsc::Sender<blindbook_ledger::delta::LogEvent>) {
+        *self.events.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+    }
+
+    fn forward(&self, text: &str) {
+        if let Ok(FromSigner::Event { event }) = serde_json::from_str::<FromSigner>(text) {
+            let tx = self
+                .events
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Some(tx) = tx {
+                let _ = tx.try_send(event);
+            }
+        }
     }
 
     pub async fn connected(&self) -> bool {

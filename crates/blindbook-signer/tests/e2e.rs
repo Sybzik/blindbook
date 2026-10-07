@@ -361,19 +361,49 @@ fn signer_and_api_replica_end_to_end() {
     w.receive(&applied, &sigs);
     assert_eq!(w.balance(Keyset::Credit), before + left);
 
-    // Withdraw 0.1 TAZ; a replayed withdrawal finds its slips spent.
+    // Withdraw 0.1 TAZ to a sealed address. An address that doesn't open is refused before
+    // any CREDIT is spent; a real one is queued for the next payout.
+    let (seal_sk, seal_pk) = blindbook_seal::keygen();
+    pair.signer.set_seal_key(seal_sk, true);
     let inputs = w.take_all(Keyset::Credit);
     let sum: u64 = inputs.iter().map(|s| s.proof.amount).sum();
-    let op = Op::Withdraw {
+    let junk = Op::Withdraw {
         inputs: inputs.clone(),
         amount: 10_000,
         change: w.blank(Keyset::Credit),
         commitment: H32(sha256(b"address || salt")),
-        sealed: "sealed-box".into(),
+        sealed: "bbseal1:AAAA".into(),
+    };
+    let (refused, _, invalid) = pair.run(&junk);
+    assert_eq!(refused, Applied::Refused(Reject::InvalidSlip));
+    assert_eq!(invalid, vec![0]);
+    const PAYEE: &str = "utest166fy5luckyz2fnztzsznh6rwt5pe0va4mpnqm6axfklss87w53fw50aqg3rwmt2stt5nnmnzgteckxjquxx2yjuk4rmrntds7gtghekc";
+    let (sealed, commitment) = blindbook_seal::seal(&seal_pk, PAYEE);
+    let op = Op::Withdraw {
+        inputs: inputs.clone(),
+        amount: 10_000,
+        change: w.blank(Keyset::Credit),
+        commitment: H32(commitment),
+        sealed,
     };
     let (applied, sigs, _) = pair.run(&op);
     w.receive(&applied, &sigs);
     assert_eq!(w.balance(Keyset::Credit), sum - 10_000 - WITHDRAWAL_FEE);
+    assert_eq!(pair.signer.payout_queue().len(), 1);
+    assert_eq!(pair.signer.payout_queue()[0].address, PAYEE);
+    // A payout event is recorded only if the treasury reported it.
+    let event = blindbook_ledger::delta::LogEvent::PayoutSent {
+        txid: "bb".repeat(32),
+        commitments: vec![H32(commitment)],
+    };
+    let (refused, _, _) = pair.run(&Op::Record {
+        event: event.clone(),
+    });
+    assert_eq!(refused, Applied::Refused(Reject::InvalidClaim));
+    pair.signer.report_event(event.clone());
+    let (done, _, _) = pair.run(&Op::Record { event });
+    assert_eq!(done, Applied::Done);
+    assert!(pair.signer.payout_queue().is_empty(), "paid");
     let (replayed, _, _) = pair.run(&op);
     assert_eq!(replayed, Applied::Refused(Reject::Spent));
     assert_eq!(

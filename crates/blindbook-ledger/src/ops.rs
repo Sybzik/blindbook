@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::delta::{ChainStats, IssuedRecord, LogBuilder, LogEvent};
 use crate::hex::H32;
+use crate::keysets::Keyset;
 use crate::ledger::{
     BatchResult, Effects, Ledger, MarketEntry, MarketInputs, Reject, TradeOutcome, TradeRequest,
 };
@@ -56,6 +58,12 @@ pub enum Op {
         commitment: H32,
         sealed: String,
     },
+    /// Close the open block of the public log at this chain height. Both sides build the same
+    /// delta; the signer answers with its own root, which must equal the API's.
+    Close { height: u64, chain: ChainStats },
+    /// A chain transaction the signer made (payout, sweep, anchor), entered in the log. The
+    /// signer accepts only events it reported itself.
+    Record { event: LogEvent },
     /// The payout vector both Polygon RPCs agreed on, with where it was read (for the log).
     Resolve {
         market: H32,
@@ -117,6 +125,9 @@ pub struct Reply {
     pub invalid: Vec<usize>,
     /// One signature per job of [`Applied::jobs`], same order.
     pub signatures: Vec<BlindSignature>,
+    /// For `Close`: the root of the signer's own log after the block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub root: Option<H32>,
 }
 
 /// Apply an operation to a ledger replica, leaving out what the signer found invalid.
@@ -174,7 +185,8 @@ fn apply_inner(l: &mut Ledger, op: &Op, invalid: &[usize]) -> Applied {
                 outcomes,
             })
         }
-        Op::Credit { .. } if refused => Applied::Refused(Reject::InvalidClaim),
+        Op::Credit { .. } | Op::Record { .. } if refused => Applied::Refused(Reject::InvalidClaim),
+        Op::Close { .. } | Op::Record { .. } => Applied::Done,
         _ if refused => Applied::Refused(Reject::InvalidSlip),
         Op::Swap { inputs, outputs } => match l.swap(inputs, outputs) {
             Ok(e) => Applied::Effects(e),
@@ -217,7 +229,101 @@ pub fn inputs_of(op: &Op) -> Vec<&[Input]> {
         Op::Swap { inputs, .. } | Op::Redeem { inputs, .. } | Op::Withdraw { inputs, .. } => {
             vec![inputs.as_slice()]
         }
-        Op::ListMarket { .. } | Op::Credit { .. } | Op::Resolve { .. } => Vec::new(),
+        Op::ListMarket { .. }
+        | Op::Credit { .. }
+        | Op::Resolve { .. }
+        | Op::Close { .. }
+        | Op::Record { .. } => Vec::new(),
+    }
+}
+
+/// The issuance records of an applied operation: its jobs with their signatures.
+pub fn issued_records(applied: &Applied, sigs: &[BlindSignature]) -> Vec<IssuedRecord> {
+    applied
+        .jobs()
+        .into_iter()
+        .zip(sigs)
+        .map(|(j, s)| IssuedRecord {
+            id: s.id.clone(),
+            amount: s.amount,
+            b: j.b.clone(),
+            c: s.c.clone(),
+            dleq: s.dleq.clone(),
+        })
+        .collect()
+}
+
+/// Enter an applied operation in the open block of the log (normative: the API and the signer
+/// both do this, so their roots agree). `Close` itself is handled by the caller.
+pub fn record_applied(
+    log: &mut LogBuilder,
+    l: &Ledger,
+    op: &Op,
+    applied: &Applied,
+    sigs: &[BlindSignature],
+) {
+    for r in issued_records(applied, sigs) {
+        log.issued(r);
+    }
+    log.spent(applied.spent().into_iter().cloned());
+    let event = match (op, applied) {
+        (Op::ListMarket { entry, keysets }, Applied::Done) => Some(LogEvent::MarketListed {
+            market: entry.id,
+            params: entry.params,
+            event_start_ms: entry.event_start_ms,
+            end_ms: entry.end_ms,
+            keysets: keysets.clone(),
+        }),
+        (Op::Credit { amount, claim, .. }, Applied::Effects(_)) => Some(match claim {
+            CreditClaim::Topup { .. } => LogEvent::TopupCredited { amount: *amount },
+            CreditClaim::Voucher { .. } => LogEvent::VoucherRedeemed { amount: *amount },
+        }),
+        (Op::Redeem { inputs, .. }, Applied::Redeemed { paid, .. }) => {
+            match inputs.first().and_then(|i| l.keysets.kind(&i.proof.id)) {
+                Some(Keyset::Outcome { market, outcome }) => Some(LogEvent::Redeemed {
+                    market,
+                    outcome,
+                    shares: inputs.iter().map(|i| i.proof.amount).sum(),
+                    paid: *paid,
+                }),
+                _ => None,
+            }
+        }
+        (
+            Op::Withdraw {
+                amount, commitment, ..
+            },
+            Applied::Effects(_),
+        ) => Some(LogEvent::WithdrawalQueued {
+            commitment: *commitment,
+            amount: *amount,
+        }),
+        (
+            Op::Resolve {
+                market,
+                den,
+                num,
+                polygon_block,
+                polygon_tx,
+            },
+            Applied::Done,
+        ) => Some(LogEvent::Resolved {
+            market: *market,
+            den: *den,
+            num: *num,
+            polygon_block: *polygon_block,
+            polygon_tx: polygon_tx.clone(),
+        }),
+        (Op::Record { event }, Applied::Done) => Some(event.clone()),
+        _ => None,
+    };
+    if let Some(e) = event {
+        log.event(e);
+    }
+    if let Applied::Trades(res) = applied {
+        for rec in &res.records {
+            log.batch(rec.clone());
+        }
     }
 }
 
@@ -248,7 +354,11 @@ pub fn redact(op: &Op) -> Op {
         Op::Swap { inputs, .. } | Op::Redeem { inputs, .. } | Op::Withdraw { inputs, .. } => {
             redact_inputs(inputs)
         }
-        Op::ListMarket { .. } | Op::Credit { .. } | Op::Resolve { .. } => {}
+        Op::ListMarket { .. }
+        | Op::Credit { .. }
+        | Op::Resolve { .. }
+        | Op::Close { .. }
+        | Op::Record { .. } => {}
     }
     op
 }
@@ -273,7 +383,19 @@ pub struct ToSigner {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum FromSigner {
-    Hello { hello: Hello },
-    Reply { id: u64, reply: Reply },
-    Error { id: u64, error: String },
+    Hello {
+        hello: Hello,
+    },
+    Reply {
+        id: u64,
+        reply: Reply,
+    },
+    Error {
+        id: u64,
+        error: String,
+    },
+    /// Unsolicited: a chain transaction the treasury made. The API answers with `Op::Record`.
+    Event {
+        event: LogEvent,
+    },
 }

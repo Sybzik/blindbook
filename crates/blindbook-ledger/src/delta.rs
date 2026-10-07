@@ -62,6 +62,10 @@ pub enum LogEvent {
         txid: String,
         commitments: Vec<H32>,
     },
+    /// Deposits moved into the reserve.
+    Swept {
+        txid: String,
+    },
     Resolved {
         market: H32,
         den: u64,

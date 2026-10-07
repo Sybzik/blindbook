@@ -19,7 +19,7 @@ use blindbook_ledger::ledger::{
     FillRecord, Ledger, MarketInputs, MarketParams, MarketStatus, Pool, Reject, Side, TradeOutcome,
     TradeRequest,
 };
-use blindbook_ledger::ops::{self, Applied, CreditClaim, Op};
+use blindbook_ledger::ops::{self, Applied, Op};
 use blindbook_ledger::wire::BlindSignature;
 use blindbook_polymarket::MarketInfo;
 use serde::Serialize;
@@ -117,7 +117,12 @@ pub struct OpDone {
 pub enum Cmd {
     Trade(TradeRequest, oneshot::Sender<Result<TradeDone, ApiError>>),
     Op(Op, oneshot::Sender<Result<OpDone, ApiError>>),
-    Close { height: u64, chain: ChainStats },
+    Close {
+        height: u64,
+        chain: ChainStats,
+    },
+    /// A chain transaction the signer's treasury reported.
+    Event(LogEvent),
 }
 
 /// The market inputs for a batch: reference snapshot and Polymarket's flags.
@@ -160,22 +165,6 @@ pub struct Sequencer {
     /// Sent, unanswered: re-sent before anything else (the signer answers a repeat from its
     /// cache, so it is applied exactly once on both sides).
     in_doubt: Option<Op>,
-}
-
-/// Turn an operation's jobs and signatures into issuance records.
-fn issued_records(applied: &Applied, sigs: &[BlindSignature]) -> Vec<IssuedRecord> {
-    applied
-        .jobs()
-        .into_iter()
-        .zip(sigs)
-        .map(|(j, s)| IssuedRecord {
-            id: s.id.clone(),
-            amount: s.amount,
-            b: j.b.clone(),
-            c: s.c.clone(),
-            dleq: s.dleq.clone(),
-        })
-        .collect()
 }
 
 impl Sequencer {
@@ -223,6 +212,9 @@ impl Sequencer {
                     // at_ms 0: replayed fills are not "recent".
                     s.record(&op, &applied, &signatures, 0);
                     s.applied_ops += 1;
+                    if let Op::Close { height, chain } = op {
+                        s.close_block(height, chain, false)?;
+                    }
                 }
                 Entry::Close { height, chain } => {
                     s.close_block(height, chain, false)?;
@@ -254,68 +246,8 @@ impl Sequencer {
 
     /// Record an applied operation in the open block and the views.
     fn record(&mut self, op: &Op, applied: &Applied, sigs: &[BlindSignature], at_ms: u64) {
-        let issued = issued_records(applied, sigs);
-        self.all_issued.extend(issued.iter().cloned());
-        for r in issued {
-            self.log.issued(r);
-        }
-        self.log.spent(applied.spent().into_iter().cloned());
-        let event = match (op, applied) {
-            (Op::ListMarket { entry, keysets }, Applied::Done) => Some(LogEvent::MarketListed {
-                market: entry.id,
-                params: entry.params,
-                event_start_ms: entry.event_start_ms,
-                end_ms: entry.end_ms,
-                keysets: keysets.clone(),
-            }),
-            (Op::Credit { amount, claim, .. }, Applied::Effects(_)) => Some(match claim {
-                CreditClaim::Topup { .. } => LogEvent::TopupCredited { amount: *amount },
-                CreditClaim::Voucher { .. } => LogEvent::VoucherRedeemed { amount: *amount },
-            }),
-            (Op::Redeem { inputs, .. }, Applied::Redeemed { paid, .. }) => {
-                match inputs
-                    .first()
-                    .and_then(|i| self.ledger.keysets.kind(&i.proof.id))
-                {
-                    Some(Keyset::Outcome { market, outcome }) => Some(LogEvent::Redeemed {
-                        market,
-                        outcome,
-                        shares: inputs.iter().map(|i| i.proof.amount).sum(),
-                        paid: *paid,
-                    }),
-                    _ => None,
-                }
-            }
-            (
-                Op::Withdraw {
-                    amount, commitment, ..
-                },
-                Applied::Effects(_),
-            ) => Some(LogEvent::WithdrawalQueued {
-                commitment: *commitment,
-                amount: *amount,
-            }),
-            (
-                Op::Resolve {
-                    market,
-                    den,
-                    num,
-                    polygon_block,
-                    polygon_tx,
-                },
-                Applied::Done,
-            ) => Some(LogEvent::Resolved {
-                market: *market,
-                den: *den,
-                num: *num,
-                polygon_block: *polygon_block,
-                polygon_tx: polygon_tx.clone(),
-            }),
-            _ => None,
-        };
-        if let Some(e) = event {
-            self.log.event(e);
-        }
+        self.all_issued.extend(ops::issued_records(applied, sigs));
+        ops::record_applied(&mut self.log, &self.ledger, op, applied, sigs);
         if let (Op::Trades { batch_id, reqs, .. }, Applied::Trades(res)) = (op, applied) {
             self.batch_id = self.batch_id.max(*batch_id);
             let mut recent = self
@@ -337,10 +269,6 @@ impl Sequencer {
             }
             while recent.front().is_some_and(|f| f.at_ms + RECENT_MS < at_ms) {
                 recent.pop_front();
-            }
-            drop(recent);
-            for rec in &res.records {
-                self.log.batch(rec.clone());
             }
         }
     }
@@ -452,6 +380,17 @@ impl Sequencer {
                 .store(self.applied_ops, Ordering::SeqCst);
             self.record(&op, &applied, &reply.signatures, now_ms());
             self.publish_views();
+            if let Op::Close { height, chain } = &op {
+                self.close_block(*height, *chain, false)?;
+                if let Some(theirs) = reply.root
+                    && theirs != self.log.head.root
+                {
+                    return Err(self.halt(&format!(
+                        "log root differs from the signer's: ours {}, theirs {theirs}",
+                        self.log.head.root
+                    )));
+                }
+            }
         }
         Ok(OpDone {
             applied,
@@ -587,8 +526,17 @@ impl Sequencer {
                         let _ = reply.send(r);
                     }
                     Some(Cmd::Close { height, chain }) => {
-                        if let Err(e) = self.close_block(height, chain, true) {
+                        if let Err(e) = self.execute(Op::Close { height, chain }).await {
                             tracing::error!(error = %e, "closing the block failed");
+                        }
+                    }
+                    Some(Cmd::Event(event)) => {
+                        match self.execute(Op::Record { event: event.clone() }).await {
+                            Ok(done) if !matches!(done.applied, Applied::Refused(_)) => {
+                                tracing::info!(?event, "treasury event recorded");
+                            }
+                            Ok(_) => {}
+                            Err(e) => tracing::warn!(error = %e, "recording a treasury event failed"),
                         }
                     }
                 },

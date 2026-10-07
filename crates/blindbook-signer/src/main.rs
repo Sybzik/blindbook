@@ -4,6 +4,8 @@
 //! blindbook-signer keygen <key-file>                 new master key; prints M
 //! blindbook-signer vouchers <n> <codes-file> <hashes-file>
 //!                                                    judge voucher codes (give out) and hashes (signer)
+//! blindbook-signer init <dir> <birthday|tip>         seal key + treasury seed in <dir> (kept if
+//!                                                    present); prints what the API and the app pin
 //! blindbook-signer run                               dial the API and serve
 //!     BB_SIGNER_KEY      file with the master secret key (hex)
 //!     BB_API_URL         wss://<api>/v1/signer (ws:// only for local tests)
@@ -11,8 +13,11 @@
 //!     BB_SIGNER_DATA     directory for the journal
 //!     BB_VOUCHERS        optional file of voucher hashes (one hex per line)
 //!     BB_VOUCHER_UNITS   CREDIT units per voucher (default 50,000 = 0.5 TAZ)
-//!     BB_SIGNER_UFVK     file with the deposit account's full viewing key: the signer's own
-//!                        indexer, which every top-up credit is checked against
+//!     BB_TREASURY_DIR    the directory made by `init`: seal key, treasury seed and wallet.
+//!                        Turns on the signer's own indexer (every top-up credit is checked
+//!                        against it), sealed withdrawals, payouts, sweeps and anchors
+//!     BB_SIGNER_UFVK     without a treasury: a deposit full viewing key for the own indexer only
+//!     BB_ANCHOR_EVERY    blocks between anchors (default 48); BB_SWEEP_EVERY likewise
 //!     BB_ZCASH_NET       test (default) | main | regtest[:heights]
 //!     BB_LWD             lightwalletd / Zaino: zecrocks (default) or host:port
 //!     BB_NETWORK         testnet (default) | mainnet: the 0-conf caps
@@ -86,6 +91,79 @@ fn vouchers(n: usize, codes: &Path, hashes: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn read_hex(path: &Path) -> Result<Vec<u8>, String> {
+    let t = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let t = t.trim();
+    (0..t.len())
+        .step_by(2)
+        .map(|i| {
+            u8::from_str_radix(t.get(i..i + 2).unwrap_or("zz"), 16)
+                .map_err(|_| "bad hex".to_string())
+        })
+        .collect()
+}
+
+fn hexs(b: &[u8]) -> String {
+    b.iter().map(|x| format!("{x:02x}")).collect()
+}
+
+async fn open_treasury(
+    dir: &Path,
+    net: Net,
+    server: &str,
+    birthday: Option<u64>,
+) -> Result<blindbook_treasury::Treasury, String> {
+    let seed = read_hex(&dir.join("treasury.seed"))?;
+    let mut c = blindbook_indexer::follow::connect(server)
+        .await
+        .map_err(|e| e.to_string())?;
+    let tip = blindbook_indexer::follow::tip(&mut c)
+        .await
+        .map_err(|e| e.to_string())?;
+    blindbook_treasury::Treasury::open(
+        &dir.join("wallet"),
+        net,
+        secrecy::SecretVec::new(seed),
+        birthday.unwrap_or(tip),
+        &mut c,
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
+/// Make (or reuse) the seal key and the treasury seed, and print the public values.
+async fn init(dir: &Path, birthday: &str) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let seal = dir.join("seal.key");
+    if !seal.exists() {
+        let (sk, _) = blindbook_seal::keygen();
+        write_private(&seal, &format!("{}\n", hexs(&sk)))?;
+    }
+    let seed = dir.join("treasury.seed");
+    if !seed.exists() {
+        write_private(
+            &seed,
+            &format!("{}\n", hexs(&SecretKey::generate().to_secret_bytes())),
+        )?;
+    }
+    let net = Net::parse(&std::env::var("BB_ZCASH_NET").unwrap_or_else(|_| "test".into()))?;
+    let server = std::env::var("BB_LWD").unwrap_or_else(|_| "zecrocks".into());
+    let birthday = birthday.parse::<u64>().ok();
+    let mut t = open_treasury(dir, net, &server, birthday).await?;
+    let sk: [u8; 32] = read_hex(&seal)?
+        .try_into()
+        .map_err(|_| "seal key must be 32 bytes")?;
+    let pk = blindbook_seal::public_key(&sk);
+    println!("seal public key (pin in the app):   {}", hexs(&pk));
+    println!("deposit UIVK (API BB_UIVK file):     {}", t.deposit_uivk());
+    println!("reserve UFVK (publish, solvency):    {}", t.reserve_ufvk());
+    println!(
+        "reserve address (buffer funding):    {}",
+        t.reserve_address().map_err(|e| e.to_string())?
+    );
+    Ok(())
+}
+
 async fn serve() -> Result<(), String> {
     let key_hex = std::fs::read_to_string(env("BB_SIGNER_KEY")?).map_err(|e| e.to_string())?;
     let key = SecretKey::from_hex(key_hex.trim()).map_err(|e| e.to_string())?;
@@ -106,13 +184,32 @@ async fn serve() -> Result<(), String> {
     });
     let data = PathBuf::from(env("BB_SIGNER_DATA")?);
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
+    let net = Net::parse(&std::env::var("BB_ZCASH_NET").unwrap_or_else(|_| "test".into()))?;
+    let testnet = !matches!(net, Net::Main);
+    let server = std::env::var("BB_LWD").unwrap_or_else(|_| "zecrocks".into());
+    let treasury = match std::env::var("BB_TREASURY_DIR") {
+        Ok(dir) => {
+            let dir = PathBuf::from(dir);
+            let sk: [u8; 32] = read_hex(&dir.join("seal.key"))?
+                .try_into()
+                .map_err(|_| "seal key must be 32 bytes")?;
+            signer.set_seal_key(sk, testnet);
+            Some(open_treasury(&dir, net, &server, None).await?)
+        }
+        Err(_) => None,
+    };
     let station = Station::open(signer, &data.join("signer-journal.jsonl"))?;
     let station = Arc::new(Mutex::new(station));
-    if let Ok(path) = std::env::var("BB_SIGNER_UFVK") {
-        let net = Net::parse(&std::env::var("BB_ZCASH_NET").unwrap_or_else(|_| "test".into()))?;
-        let ufvk = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+    let ufvk = match (&treasury, std::env::var("BB_SIGNER_UFVK")) {
+        (Some(t), _) => Some(t.deposit_ufvk()),
+        (None, Ok(path)) => {
+            Some(std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?)
+        }
+        (None, Err(_)) => None,
+    };
+    if let Some(ufvk) = ufvk {
         let keys = Arc::new(DepositKeys::from_ufvk(net, &ufvk).map_err(|e| e.to_string())?);
-        let server = std::env::var("BB_LWD").unwrap_or_else(|_| "zecrocks".into());
+        let server = server.clone();
         let height_file = data.join("signer-scanned-height.txt");
         let scanned: u64 = std::fs::read_to_string(&height_file)
             .ok()
@@ -161,6 +258,25 @@ async fn serve() -> Result<(), String> {
             }
         });
     }
+    if let Some(t) = treasury {
+        let every = |k: &str| {
+            std::env::var(k)
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(48)
+        };
+        tokio::spawn(blindbook_signer::payouts::run(
+            t,
+            station.clone(),
+            blindbook_signer::payouts::Schedule {
+                server: server.clone(),
+                data: data.clone(),
+                anchor_every: every("BB_ANCHOR_EVERY"),
+                sweep_every: every("BB_SWEEP_EVERY"),
+            },
+        ));
+        tracing::info!("treasury running: payouts, sweeps, anchors");
+    }
     {
         let s = station.lock().unwrap_or_else(|e| e.into_inner());
         tracing::info!(m = %s.signer.public_key().to_hex(), applied = s.applied, "signer ready");
@@ -188,9 +304,10 @@ async fn main() {
             Ok(n) => vouchers(n, Path::new(codes), Path::new(hashes)),
             Err(_) => Err("n must be a number".into()),
         },
+        ["init", dir, birthday] => init(Path::new(dir), birthday).await,
         ["run"] => serve().await,
         _ => Err(
-            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> | run".into(),
+            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> | init <dir> <birthday|tip> | run".into(),
         ),
     };
     if let Err(e) = r {

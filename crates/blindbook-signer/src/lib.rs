@@ -23,6 +23,7 @@ use blindbook_mint::cashu::PublicKey;
 use blindbook_mint::{KeysetKind, MasterKey, SecretKeyset, y_hex};
 
 pub mod link;
+pub mod payouts;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -43,6 +44,37 @@ pub struct Deposit {
     pub txid: String,
     /// Mined (at least one confirmation).
     pub confirmed: bool,
+}
+
+/// A withdrawal waiting for the next payout transaction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingPayout {
+    pub commitment: H32,
+    /// The unified address, opened from the sealed blob (only ever in the signer's memory).
+    pub address: String,
+    /// CREDIT units (the payout sends units × 1,000 zatoshi).
+    pub amount: u64,
+}
+
+/// Payouts go only to unified addresses with an Orchard-protocol receiver on our network
+/// (PROTOCOL section 10).
+pub fn payout_address_ok(address: &str, testnet: bool) -> bool {
+    use zcash_address::unified::{self, Container, Encoding};
+    match unified::Address::decode(address) {
+        Ok((net, _, ua)) => {
+            let net_ok = match net {
+                zcash_protocol::consensus::NetworkType::Main => !testnet,
+                zcash_protocol::consensus::NetworkType::Test
+                | zcash_protocol::consensus::NetworkType::Regtest => testnet,
+            };
+            net_ok
+                && ua
+                    .items()
+                    .iter()
+                    .any(|r| matches!(r, unified::Receiver::Orchard(_)))
+        }
+        Err(_) => false,
+    }
 }
 
 /// How much may be credited before a confirmation (PROTOCOL section 1, THREAT_MODEL I9).
@@ -78,6 +110,12 @@ pub struct Signer {
     /// Credited before their first confirmation, by txid (units).
     unconfirmed: HashMap<String, u64>,
     zero_conf: ZeroConf,
+    /// X25519 secret for sealed withdrawal addresses, and whether we run on testnet.
+    seal: Option<([u8; 32], bool)>,
+    /// Withdrawals applied and not paid out yet, in order.
+    payouts: Vec<PendingPayout>,
+    /// Chain transactions the treasury made and wants in the log.
+    events: Vec<blindbook_ledger::delta::LogEvent>,
 }
 
 fn kind_of(k: Keyset) -> KeysetKind {
@@ -106,6 +144,9 @@ impl Signer {
             credited: Default::default(),
             unconfirmed: HashMap::new(),
             zero_conf: ZeroConf::TESTNET,
+            seal: None,
+            payouts: Vec::new(),
+            events: Vec::new(),
         })
     }
 
@@ -130,6 +171,34 @@ impl Signer {
 
     pub fn set_zero_conf(&mut self, z: ZeroConf) {
         self.zero_conf = z;
+    }
+
+    /// The X25519 secret that opens sealed withdrawal addresses.
+    pub fn set_seal_key(&mut self, secret: [u8; 32], testnet: bool) {
+        self.seal = Some((secret, testnet));
+    }
+
+    /// Withdrawals waiting for a payout, oldest first.
+    pub fn payout_queue(&self) -> &[PendingPayout] {
+        &self.payouts
+    }
+
+    /// The treasury made a chain transaction: it goes into the log once the API records it.
+    pub fn report_event(&mut self, e: blindbook_ledger::delta::LogEvent) {
+        if !self.events.contains(&e) {
+            self.events.push(e);
+        }
+    }
+
+    /// Events reported and not recorded yet.
+    pub fn pending_events(&self) -> &[blindbook_ledger::delta::LogEvent] {
+        &self.events
+    }
+
+    fn open_sealed(&self, sealed: &str, commitment: &H32) -> Option<String> {
+        let (sk, testnet) = self.seal?;
+        let address = blindbook_seal::open(&sk, sealed, &commitment.0).ok()?;
+        payout_address_ok(&address, testnet).then_some(address)
     }
 
     /// Record a payment the signer's own indexer saw (again when it is mined).
@@ -190,9 +259,25 @@ impl Signer {
                 let ok = inputs.iter().all(|i| self.input_ok(i)) && Self::outputs_ok(outputs);
                 if ok { vec![] } else { vec![0] }
             }
-            Op::Withdraw { inputs, change, .. } => {
-                let ok = inputs.iter().all(|i| self.input_ok(i)) && Self::outputs_ok(change);
+            Op::Withdraw {
+                inputs,
+                change,
+                commitment,
+                sealed,
+                ..
+            } => {
+                // The address must open and be payable before any CREDIT is spent.
+                let ok = inputs.iter().all(|i| self.input_ok(i))
+                    && Self::outputs_ok(change)
+                    && self.open_sealed(sealed, commitment).is_some();
                 if ok { vec![] } else { vec![0] }
+            }
+            Op::Record { event } => {
+                if self.events.contains(event) {
+                    vec![]
+                } else {
+                    vec![0]
+                }
             }
             Op::Credit {
                 amount,
@@ -214,7 +299,7 @@ impl Signer {
                     vec![0]
                 }
             }
-            Op::ListMarket { .. } | Op::Resolve { .. } => vec![],
+            Op::ListMarket { .. } | Op::Resolve { .. } | Op::Close { .. } => vec![],
         }
     }
 
@@ -260,8 +345,33 @@ impl Signer {
         Ok(())
     }
 
-    /// A used voucher or credited deposit can't be claimed again.
+    /// What an applied operation changes outside the ledger: claims used up, withdrawals
+    /// queued, payouts done, events recorded.
     fn consume_claim(&mut self, op: &Op, applied: &Applied) {
+        if let (
+            Op::Withdraw {
+                amount,
+                commitment,
+                sealed,
+                ..
+            },
+            Applied::Effects(_),
+        ) = (op, applied)
+            && let Some(address) = self.open_sealed(sealed, commitment)
+        {
+            self.payouts.push(PendingPayout {
+                commitment: *commitment,
+                address,
+                amount: *amount,
+            });
+        }
+        if let (Op::Record { event }, Applied::Done) = (op, applied) {
+            self.events.retain(|e| e != event);
+            if let blindbook_ledger::delta::LogEvent::PayoutSent { commitments, .. } = event {
+                self.payouts
+                    .retain(|p| !commitments.contains(&p.commitment));
+            }
+        }
         if let (Op::Credit { claim, .. }, Applied::Effects(_)) = (op, applied) {
             match claim {
                 CreditClaim::Voucher { code_hash } => {
@@ -295,6 +405,7 @@ impl Signer {
             Reply {
                 invalid,
                 signatures,
+                root: None,
             },
             applied,
         ))

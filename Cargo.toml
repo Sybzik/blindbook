@@ -8,6 +8,7 @@ members = [
   "crates/blindbook-ledger",
   "crates/blindbook-mint",
   "crates/blindbook-polymarket",
+  "crates/blindbook-seal",
   "crates/blindbook-signer",
   "crates/blindbook-treasury",
 ]

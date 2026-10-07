@@ -9,6 +9,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use blindbook_ledger::H32;
+use blindbook_ledger::delta::{GENESIS_ROOT, Head, LogBuilder};
 use blindbook_ledger::ops::{self, Applied, FromSigner, Hello, Op, Reply, ToSigner};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -72,6 +74,24 @@ pub struct Station {
     pub applied: u64,
     /// Digest of the last applied operation (redacted) and its reply.
     last: Option<([u8; 32], Reply)>,
+    /// The signer's own copy of the public log: it computes every root itself, and anchors its
+    /// own root on-chain, not one the API hands it.
+    pub log: LogBuilder,
+}
+
+/// Enter an applied operation in the log; for `Close`, close the block and return the root.
+fn enter(
+    log: &mut LogBuilder,
+    signer: &Signer,
+    op: &Op,
+    applied: &Applied,
+    sigs: &[blindbook_ledger::wire::BlindSignature],
+) -> Option<H32> {
+    ops::record_applied(log, &signer.ledger, op, applied, sigs);
+    match op {
+        Op::Close { height, chain } => log.close(*height, *chain).ok().map(|(_, head)| head.root),
+        _ => None,
+    }
 }
 
 fn digest(op: &Op) -> [u8; 32] {
@@ -84,15 +104,22 @@ impl Station {
         let (journal, entries) = Journal::open(journal_path).map_err(|e| e.to_string())?;
         let applied = entries.len() as u64;
         let mut last = None;
+        let mut log = LogBuilder::new(Head {
+            height: 0,
+            seq: 0,
+            root: GENESIS_ROOT,
+        });
         for e in entries {
-            signer
+            let applied = signer
                 .replay(&e.op, &e.invalid)
                 .map_err(|e| e.to_string())?;
+            let root = enter(&mut log, &signer, &e.op, &applied, &e.signatures);
             last = Some((
                 digest(&e.op),
                 Reply {
                     invalid: e.invalid,
                     signatures: e.signatures,
+                    root,
                 },
             ));
         }
@@ -101,6 +128,7 @@ impl Station {
             journal,
             applied,
             last,
+            log,
         })
     }
 
@@ -113,8 +141,9 @@ impl Station {
             // The API lost our answer and asks again: same answer, applied once.
             return Ok(reply.clone());
         }
-        let (reply, applied) = self.signer.handle(op).map_err(|e| e.to_string())?;
+        let (mut reply, applied) = self.signer.handle(op).map_err(|e| e.to_string())?;
         if !matches!(applied, Applied::Refused(_)) {
+            reply.root = enter(&mut self.log, &self.signer, op, &applied, &reply.signatures);
             self.journal
                 .append(&Entry {
                     op: ops::redact(op),
@@ -202,7 +231,30 @@ async fn session(ws: Ws, station: &Mutex<Station>) -> String {
     if let Err(e) = tx.send(Message::Text(msg.into())).await {
         return format!("hello failed: {e}");
     }
-    while let Some(msg) = rx.next().await {
+    let mut announce = tokio::time::interval(Duration::from_secs(3));
+    loop {
+        let msg = tokio::select! {
+            m = rx.next() => match m {
+                Some(m) => m,
+                None => break,
+            },
+            _ = announce.tick() => {
+                // Events the API hasn't recorded yet (re-sent until it does).
+                let events = station
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .signer
+                    .pending_events()
+                    .to_vec();
+                for event in events {
+                    let msg = serde_json::to_string(&FromSigner::Event { event }).expect("serializable");
+                    if let Err(e) = tx.send(Message::Text(msg.into())).await {
+                        return format!("write error: {e}");
+                    }
+                }
+                continue;
+            }
+        };
         let text = match msg {
             Ok(Message::Text(t)) => t,
             Ok(Message::Close(_)) => return "closed by the API".into(),

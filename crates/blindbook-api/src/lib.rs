@@ -94,6 +94,17 @@ pub fn start(
     )?;
     let (tx, rx) = mpsc::channel(1_024);
     tokio::spawn(seq.run(rx));
+    // The treasury's events (payouts, sweeps, anchors) become `Op::Record` in the sequence.
+    let (ev_tx, mut ev_rx) = mpsc::channel(64);
+    remote.set_events(ev_tx);
+    let fwd = tx.clone();
+    tokio::spawn(async move {
+        while let Some(e) = ev_rx.recv().await {
+            if fwd.send(Cmd::Event(e)).await.is_err() {
+                break;
+            }
+        }
+    });
     let live_bytes = Arc::new(RwLock::new(b"{}".to_vec()));
     tokio::spawn(live::run(shared.clone(), refs, live_bytes.clone()));
     let public = cfg.data_dir.join("public").join("v1");

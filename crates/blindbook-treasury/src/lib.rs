@@ -359,7 +359,7 @@ impl Treasury {
         })
     }
 
-    async fn broadcast(
+    async fn broadcast_all(
         &mut self,
         client: &mut Client,
         txids: NonEmpty<TxId>,
@@ -367,7 +367,11 @@ impl Treasury {
         if txids.len() > 1 {
             return Err(Error("a multi-transaction proposal".into()));
         }
-        let txid = *txids.first();
+        self.broadcast(client, *txids.first()).await
+    }
+
+    /// Send a transaction the wallet built (again, if needed: a repeat is harmless).
+    pub async fn broadcast(&mut self, client: &mut Client, txid: TxId) -> Result<TxId, Error> {
         let tx = self
             .db
             .get_transaction(txid)
@@ -380,7 +384,7 @@ impl Treasury {
             .await
             .map_err(err)?
             .into_inner();
-        if r.error_code != 0 {
+        if r.error_code != 0 && !r.error_message.to_lowercase().contains("already") {
             return Err(Error(format!(
                 "rejected: {} {}",
                 r.error_code, r.error_message
@@ -445,22 +449,17 @@ impl Treasury {
             None,
         )
         .map_err(err)?;
-        self.broadcast(client, txids).await.map(Some)
+        self.broadcast_all(client, txids).await.map(Some)
     }
 
-    /// A payout: up to 7 recipients, padded to exactly 7 outputs with zero-value notes to
-    /// throwaway addresses, plus one change note: 8 Ironwood actions, outgoing viewing key
-    /// discarded.
-    pub async fn payout(
-        &mut self,
-        client: &mut Client,
-        recipients: &[(ZcashAddress, u64)],
-    ) -> Result<TxId, Error> {
+    /// Build and store a payout without broadcasting it: up to 7 recipients, padded to exactly
+    /// 7 outputs with zero-value notes to throwaway addresses, plus one change note = 8 Ironwood
+    /// actions, outgoing viewing key discarded. The caller records the txid, then broadcasts it
+    /// with [`Treasury::broadcast`], so a crash in between can never pay twice.
+    pub fn build_payout(&mut self, recipients: &[(ZcashAddress, u64)]) -> Result<TxId, Error> {
         if recipients.is_empty() || recipients.len() > PAYOUT_OUTPUTS {
             return Err(Error(format!("{} recipients", recipients.len())));
         }
-        let lock = self.lock.clone();
-        let _g = lock.lock().await;
         let mut payments = Vec::with_capacity(PAYOUT_OUTPUTS);
         for (addr, zat) in recipients {
             payments.push(Payment::without_memo(
@@ -475,8 +474,23 @@ impl Treasury {
             ));
         }
         let request = TransactionRequest::new(payments).map_err(err)?;
-        self.send(client, self.reserve, request, OvkPolicy::Discard)
-            .await
+        let txids = self.create(self.reserve, request, OvkPolicy::Discard)?;
+        if txids.len() > 1 {
+            return Err(Error("a multi-transaction proposal".into()));
+        }
+        Ok(*txids.first())
+    }
+
+    /// Build and broadcast a payout in one go (tools and tests).
+    pub async fn payout(
+        &mut self,
+        client: &mut Client,
+        recipients: &[(ZcashAddress, u64)],
+    ) -> Result<TxId, Error> {
+        let lock = self.lock.clone();
+        let _g = lock.lock().await;
+        let txid = self.build_payout(recipients)?;
+        self.broadcast(client, txid).await
     }
 
     /// Write `memo` (e.g. `bb1:anchor:<height>:<root>`) on-chain with a zero-value payment to the
@@ -494,13 +508,12 @@ impl Treasury {
             .await
     }
 
-    async fn send(
+    fn create(
         &mut self,
-        client: &mut Client,
         from: zcash_client_sqlite::AccountUuid,
         request: TransactionRequest,
         ovk: OvkPolicy,
-    ) -> Result<TxId, Error> {
+    ) -> Result<NonEmpty<TxId>, Error> {
         let usk = if from == self.reserve {
             self.usk_reserve.clone()
         } else {
@@ -520,14 +533,7 @@ impl Treasury {
         )
         .map_err(err)?;
         let mut rng = OsRng;
-        let txids = create_proposed_transactions::<
-            _,
-            _,
-            std::convert::Infallible,
-            _,
-            std::convert::Infallible,
-            _,
-        >(
+        create_proposed_transactions::<_, _, std::convert::Infallible, _, std::convert::Infallible, _>(
             &mut self.db,
             &self.net,
             &SystemClock,
@@ -539,8 +545,18 @@ impl Treasury {
             &proposal,
             None,
         )
-        .map_err(err)?;
-        self.broadcast(client, txids).await
+        .map_err(err)
+    }
+
+    async fn send(
+        &mut self,
+        client: &mut Client,
+        from: zcash_client_sqlite::AccountUuid,
+        request: TransactionRequest,
+        ovk: OvkPolicy,
+    ) -> Result<TxId, Error> {
+        let txids = self.create(from, request, ovk)?;
+        self.broadcast_all(client, txids).await
     }
 }
 

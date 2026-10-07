@@ -84,24 +84,19 @@ function integrityPlugin(): Plugin {
     name: 'blindbook-integrity',
     apply: 'build',
     enforce: 'post',
-    generateBundle(_, bundle) {
-      const sri = (name: string) => {
-        const f = bundle[name.replace(/^\//, '')];
-        if (!f) return null;
-        const data = f.type === 'chunk' ? f.code : f.source;
-        return 'sha384-' + createHash('sha384').update(data).digest('base64');
-      };
-      for (const f of Object.values(bundle)) {
-        if (f.type !== 'asset' || !f.fileName.endsWith('.html')) continue;
-        f.source = String(f.source).replace(/<(script|link)([^>]*?)(src|href)="(\/assets\/[^"]+\.(?:js|css))"([^>]*)>/g, (m, tag, a, attr, url, b) => {
-          const h = sri(url);
-          return h && !m.includes('integrity=') ? `<${tag}${a}${attr}="${url}" integrity="${h}"${b}>` : m;
-        });
-      }
-    },
     closeBundle() {
-      // Every file in dist, the copied public/ files included.
+      // On the files as written (the last plugin has run), so the hashes are the served bytes.
       const dir = 'dist';
+      for (const html of ['index.html', 'tunnel.html']) {
+        const path = join(dir, html);
+        const text = readFileSync(path, 'utf8').replace(/<(script|link)([^>]*?)(src|href)="\/(assets\/[^"]+\.(?:js|css))"([^>]*)>/g, (m, tag, a, attr, file, b) => {
+          if (m.includes('integrity=')) return m;
+          const h = 'sha384-' + createHash('sha384').update(readFileSync(join(dir, file))).digest('base64');
+          return `<${tag}${a}${attr}="/${file}" integrity="${h}"${b}>`;
+        });
+        writeFileSync(path, text);
+      }
+      // Every file in dist, the copied public/ files included.
       const walk = (d: string): string[] =>
         readdirSync(join(dir, d), { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name).replace(/\\/g, '/')]));
       const lines = walk('')

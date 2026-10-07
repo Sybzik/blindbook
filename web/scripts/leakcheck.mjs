@@ -50,7 +50,8 @@ try {
   page.on('request', (r) => requests.push(r.url()));
   page.on('console', (m) => {
     if (/Refused to|violates the following Content Security Policy/i.test(m.text())) violations.push(m.text());
-    else if (m.type() === 'error' && /Maximum update depth|getSnapshot should be cached|Uncaught|TypeError|ReferenceError/i.test(m.text())) errors.push(m.text());
+    // API calls fail here (no API behind the preview): only code and integrity errors count.
+    else if (m.type() === 'error' && !/^Failed to load resource: the server responded with a status of/.test(m.text())) errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   await page.evaluateOnNewDocument(() => {
@@ -73,6 +74,7 @@ try {
   await wait(7000);
   await click('look around first');
   await wait(500);
+  if (!(await page.evaluate(() => document.querySelectorAll('.bb-dicon').length))) errors.push('the desk never appeared');
   // Every page and app on the desk: the desktop icons, then the START menu for the rest.
   for (const item of ['MARKETS', 'SLIPS', 'CAGE', 'VERIFY', 'HOW', 'NULLIFIER SNAKE', 'ODDS CALC', 'REDACT-A-TRACKER', 'DEAD DROP', 'BLOCK RADIO']) {
     if (!(await click(item, '.bb-dicon'))) console.warn(`icon not found: ${item}`);

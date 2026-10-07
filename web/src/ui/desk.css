@@ -169,3 +169,19 @@
  .bb-pass,.bb-called__card{max-width:100%}
 }
 @media (max-width:760px){.ld-tr{top:auto;bottom:calc(24px + env(safe-area-inset-bottom))}}
+
+/* ── The 3D booth (landing) ───────────────────────────────────────────────────────────── */
+.bd{cursor:grab}
+.bd-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.bd-keys{position:absolute;z-index:3;left:32px;bottom:calc(28px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.bd-keys button{min-height:40px;padding:0 14px;background:color-mix(in srgb,var(--void) 70%,transparent);border:1px solid var(--phosphor-mid);color:var(--phosphor);font-family:var(--font-ui);font-size:13px;letter-spacing:.08em;cursor:pointer}
+.bd-keys button:first-child{background:var(--phosphor);color:var(--void);border-color:var(--phosphor-hi)}
+.bd-keys button:hover,.bd-keys button:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
+.bd-hint{position:absolute;z-index:3;right:32px;bottom:calc(28px + env(safe-area-inset-bottom));margin:0;opacity:.7;pointer-events:none}
+.bd-tip{position:fixed;z-index:5;padding:3px 8px;background:var(--void);border:1px solid var(--phosphor-mid);color:var(--phosphor-hi);pointer-events:none;white-space:nowrap}
+.bd-egg{position:fixed;z-index:6;width:280px;padding:12px 14px;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--phosphor-mid);box-shadow:0 8px 30px rgba(0,0,0,.6);cursor:pointer}
+.bd-egg p{margin:0 0 6px}
+.bd-steam{animation:bd-steam 2.4s ease-out both}
+@keyframes bd-steam{from{opacity:0;transform:translateY(16px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+@media (max-width:760px){.bd-hint{display:none}.bd-keys{left:16px;right:16px;flex-direction:row;flex-wrap:wrap;justify-content:center;bottom:calc(20px + env(safe-area-inset-bottom))}}
+@media (max-width:760px){.bd .ld-tr{bottom:calc(116px + env(safe-area-inset-bottom))}}

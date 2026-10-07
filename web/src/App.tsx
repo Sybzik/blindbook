@@ -1,7 +1,7 @@
 // Landing (the booth) → boot → the desk. A proof link ("#p=…") skips straight to the verifier,
 // and the address bar is cleaned at once so the proof never stays in history.
 
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BootSequence } from './ds';
 import { Landing } from './ui/Landing.jsx';
 import { Desk } from './ui/Desk';
@@ -11,6 +11,21 @@ import { COIN, config } from './app/config';
 import { ui } from './ui/uistate';
 import { play } from './ui/sound';
 
+// The 3D booth is its own lazy chunk; the 2D booth is the fallback (no WebGL, CLEAN SIGNAL,
+// data saver, low memory, or if the 3D scene fails).
+const Booth3D = lazy(() => import('./booth/Booth3D'));
+function want3d(): boolean {
+  const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
+  if (nav.connection?.saveData || (nav.deviceMemory !== undefined && nav.deviceMemory < 3)) return false;
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
+const CAN_3D = want3d();
+
 const initialProof = location.hash.startsWith('#p=') ? location.hash : undefined;
 if (location.hash || location.search) history.replaceState(null, '', location.pathname);
 
@@ -19,6 +34,8 @@ export function App() {
   const [phase, setPhase] = useState<'landing' | 'boot' | 'desk'>(proof ? 'desk' : 'landing');
   const [intro, setIntro] = useState(0);
   const [initial, setInitial] = useState<string | undefined>(undefined);
+  const [failed3d, setFailed3d] = useState(false);
+  const block = useStore(app, (s) => s.live?.block);
   const head = useStore(app, (s) => s.head);
   const markets = useStore(app, (s) => s.markets);
   const live = useStore(app, (s) => s.live);
@@ -68,6 +85,40 @@ export function App() {
         }
       : undefined;
 
+  const enterFromLanding = (to?: string) => {
+    setInitial(to);
+    play('boot');
+    setPhase('boot');
+  };
+  const flat = (
+    <Landing
+      key={intro}
+      block={head?.height ?? 0}
+      markets={markets.length}
+      link={config.mixnet ? link : 'off'}
+      coin={COIN}
+      prices={prices}
+      onEnter={enterFromLanding}
+    />
+  );
+  const resolvedMarket = markets.find((m) => m.resolved);
+  if (phase === 'landing' && CAN_3D && !clean && !failed3d)
+    return (
+      <Suspense fallback={flat}>
+        <Booth3D
+          key={intro}
+          data={{ block: head?.height ?? 0, markets: markets.length, coin: COIN, prices }}
+          facts={{
+            block: head?.height ?? 0,
+            shieldedActions: block?.shielded_actions ?? null,
+            resolved: resolvedMarket ? `Latest settled: ${resolvedMarket.page} · ${resolvedMarket.question}.` : null,
+          }}
+          link={config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'}
+          onEnter={enterFromLanding}
+          onFail={() => setFailed3d(true)}
+        />
+      </Suspense>
+    );
   if (phase === 'landing')
     return (
       <div data-signal={clean ? 'clean' : undefined}>

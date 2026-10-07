@@ -25,6 +25,8 @@ export interface ThermalReceiptProps {
   /** shortened: u1qz7x…k3d8 */
   address?: string;
   qrSeed?: string;
+  /** A real QR (the payment request) instead of the decorative pattern. */
+  qr?: React.ReactNode;
   lines?: ReceiptLine[];
   status?: 'awaiting' | 'seen' | 'credited';
   /** line-by-line print reveal */

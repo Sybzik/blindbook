@@ -107,6 +107,8 @@ export interface Live {
   block: { height: number; shielded_actions: number } | null;
   markets: LiveMarket[];
   recent: RecentFill[];
+  /** Payouts of the last 30 minutes and the withdrawal commitments each paid. */
+  payouts: { at_ms: number; txid: string; commitments: string[] }[];
 }
 
 export interface SignedAnswer {

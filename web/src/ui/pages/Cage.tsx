@@ -10,7 +10,8 @@ import { app, actions, setLocal, walletWords } from '../../app/services';
 import { WordCheck, WordList } from '../WordCheck';
 import { useStore } from '../../app/store';
 import { COIN, TOPUP_ZAT, WITHDRAWAL_FEE_UNITS, WITHDRAW_UNITS, ZERO_CONF_ZAT, config } from '../../app/config';
-import { coin, coinLabel, height, zat } from '../../app/format';
+import { coin, coinLabel, height, utc, zat } from '../../app/format';
+import { Shredder } from '../Shredder';
 import type { TopupRecord } from '../../core/wallet';
 
 type Check = 'ok' | 'fail';
@@ -157,10 +158,22 @@ function TopUp() {
       <div className="col" style={{ gap: 12 }}>
         {step === 'receipt' && rec ? (
           <>
-            <ThermalReceipt key={rec.id} kind="TOP UP" amount={zat(rec.amount_zat)} unit={COIN} address={rec.address.slice(0, 10) + '…' + rec.address.slice(-6)} status={status} printing footer={`blk ${height(head?.height ?? 0)}`} />
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <Qr value={uri} size={200} paper title="Payment request" />
-            </div>
+            <ThermalReceipt
+              key={rec.id}
+              kind="CAGE · TOP-UP"
+              amount={zat(rec.amount_zat)}
+              unit={COIN}
+              address={rec.address.slice(0, 10) + '…' + rec.address.slice(-6)}
+              status={status}
+              printing
+              qr={<Qr value={uri} size={184} paper title={`Payment request for ${zat(rec.amount_zat)} ${COIN}`} />}
+              lines={[
+                { label: 'ORDER Nº', value: rec.id.slice(0, 8).toUpperCase() },
+                { label: 'BLOCK', value: height(head?.height ?? 0) },
+                { label: 'VALID UNTIL', value: 'blk ' + height(rec.expires_height) },
+              ]}
+              footer="pay from your shielded balance"
+            />
           </>
         ) : (
           <p className="bb-text bb-dim" style={{ margin: 0 }}>
@@ -200,7 +213,36 @@ function Withdraw() {
   const options = WITHDRAW_UNITS.map((u) => coin(u, 2));
   const [amt, setAmt] = useState(options[0]!);
   const [sent, setSent] = useState<string | null>(null);
+  const [shred, setShred] = useState<string | null>(null);
+  const history = useStore(app, (s) => s.history);
+  const payouts = useStore(app, (s) => s.live?.payouts);
+  const paidSeen = useStore(app, (s) => s.local.paid);
   const units = WITHDRAW_UNITS[options.indexOf(amt)] ?? WITHDRAW_UNITS[0]!;
+  // Our own withdrawals, from the vault, and whether a payout in the public live feed paid them.
+  const mine = history
+    .filter((h) => h.kind === 'withdraw' && typeof h.stored.commitment === 'string')
+    .slice(-5)
+    .reverse()
+    .map((h) => {
+      const c = h.stored.commitment as string;
+      const paid = paidSeen?.[c] ?? payouts?.find((p) => p.commitments.includes(c))?.txid;
+      return { c, at: h.at_ms, amount: Number(h.stored.amount ?? 0), paid };
+    });
+  // Remember a payout once seen, in the vault: the live feed only keeps 30 minutes.
+  useEffect(() => {
+    const fresh = mine.filter((w) => w.paid && !paidSeen?.[w.c]);
+    if (fresh.length) void setLocal({ paid: { ...paidSeen, ...Object.fromEntries(fresh.map((w) => [w.c, w.paid!])) } });
+  }, [payouts]);
+  const withdraw = () =>
+    actions
+      .withdraw(units, addr)
+      .then((c) => {
+        setSent(c);
+        // The address is sealed and sent; drop it from this page as well, visibly.
+        setShred(addr);
+        setAddr('');
+      })
+      .catch(() => undefined);
   const prefix = config.network === 'mainnet' ? 'u1' : 'utest1';
   const st = !addr ? undefined : addr.startsWith('t') || addr.startsWith('tm') ? 'invalid' : (addr.startsWith(prefix) || addr.startsWith('z' + prefix)) && addr.length > 60 ? 'valid' : addr.length > 4 ? 'invalid' : undefined;
   const msg =
@@ -224,15 +266,26 @@ function Withdraw() {
           <LeaderRow label="ARRIVES" value="in the next payout, about one block" />
         </div>
         <div>
-          <KeyButton disabled={st !== 'valid' || !!sent || !enough || !!busy} loading={busy === 'WITHDRAWING'} onClick={() => actions.withdraw(units, addr).then((c) => setSent(c)).catch(() => undefined)}>
-            {sent ? 'QUEUED' : busy === 'WITHDRAWING' ? 'WAITING · PRIVACY DELAY' : 'WITHDRAW'}
+          <KeyButton disabled={st !== 'valid' || !enough || !!busy} loading={busy === 'WITHDRAWING'} onClick={withdraw}>
+            {busy === 'WITHDRAWING' ? 'WAITING · PRIVACY DELAY' : 'WITHDRAW'}
           </KeyButton>
           {!enough && <p className="bb-conditions">Not enough balance for {amt} {COIN} plus the fee.</p>}
-          {sent && <p className="bb-conditions">Queued for the next payout. The address was sealed to the signer; we only keep the commitment {sent.slice(0, 12)}…: ADDRESS SHREDDED.</p>}
+          {sent && <p className="bb-conditions">Queued for the next payout. The address was sealed to the signer, who forgets it once paid; the server keeps only the commitment {sent.slice(0, 12)}….</p>}
           {error && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{error}</p>}
         </div>
       </div>
-      <div />
+      <div className="col" style={{ gap: 12 }}>
+        {shred && <Shredder key={shred} text={shred} />}
+        {mine.length > 0 && (
+          <div>
+            <p className="bb-label bb-hi" style={{ margin: 0 }}>YOUR WITHDRAWALS</p>
+            {mine.map((w) => (
+              <LeaderRow key={w.c} label={`${coin(w.amount, 2)} ${COIN} · ${utc(w.at)}`} value={w.paid ? `PAID ✓ ${w.paid.slice(0, 8)}…` : 'QUEUED · next payout'} tone={w.paid ? 'hi' : 'default'} />
+            ))}
+            <p className="bb-conditions">Status comes from the payouts every visitor sees; nothing about you is asked for.</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

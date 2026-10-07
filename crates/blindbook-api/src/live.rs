@@ -11,7 +11,7 @@ use blindbook_ledger::delta::Head;
 use blindbook_ledger::ledger::MarketStatus;
 use serde::Serialize;
 
-use crate::sequencer::{ChainBlock, RecentFill, RefFn, Shared, now_ms};
+use crate::sequencer::{ChainBlock, RecentFill, RecentPayout, RefFn, Shared, now_ms};
 
 #[derive(Serialize)]
 pub struct LiveReference {
@@ -41,6 +41,7 @@ pub struct Live {
     pub block: Option<ChainBlock>,
     pub markets: Vec<LiveMarket>,
     pub recent: Vec<RecentFill>,
+    pub payouts: Vec<RecentPayout>,
 }
 
 pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
@@ -105,6 +106,14 @@ pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
             .unwrap_or_else(|e| e.into_inner())
             .iter()
             .filter(|f| f.at_ms + crate::sequencer::RECENT_MS >= at_ms)
+            .cloned()
+            .collect(),
+        payouts: shared
+            .payouts
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|p| p.at_ms + crate::sequencer::PAYOUTS_MS >= at_ms)
             .cloned()
             .collect(),
     }

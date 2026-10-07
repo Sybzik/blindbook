@@ -57,6 +57,27 @@
 .tk-bars__cells i{flex:1;background:var(--line)}
 .tk-bars__cells i.is-on{background:var(--phosphor)}
 
+/* P350 shredder */
+.tk-shred{position:relative;display:flex;flex-direction:column;align-items:center;gap:8px;padding:12px 0 8px;min-height:150px;overflow:hidden}
+.tk-shred__slot{width:min(320px,90%);height:10px;background:#000;border:1px solid var(--phosphor-mid);box-shadow:0 2px 0 var(--line);position:relative;z-index:2;margin-top:64px}
+.tk-shred__paper{position:absolute;top:12px;left:50%;width:min(300px,86%);height:56px;translate:-50% 0;z-index:1}
+.tk-shred__strip{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:0 8px;background:var(--paper);color:var(--ink);font-family:var(--font-ui);font-size:11px;word-break:break-all;line-height:1.2;overflow:hidden;animation:tk-feed 700ms var(--ease-mech) forwards,tk-fall 900ms ease-in forwards}
+@keyframes tk-feed{to{transform:translateY(58px)}}
+@keyframes tk-fall{0%{transform:translateY(58px)}100%{transform:translate(var(--dx),150px);opacity:0}}
+.tk-shred__label{margin:0;animation:tk-label 1.6s steps(1) both}
+@keyframes tk-label{0%,60%{opacity:0}100%{opacity:1}}
+[data-signal="clean"] .tk-shred__strip{animation:none;display:none}
+[data-signal="clean"] .tk-shred__label{animation:none}
+
+/* P300 burn and fold */
+.tk-burn{animation:tk-burn 900ms steps(9) forwards;pointer-events:none}
+@keyframes tk-burn{0%{opacity:1;filter:none}30%{filter:brightness(1.8) sepia(1) hue-rotate(70deg)}100%{opacity:0;filter:blur(3px) brightness(2);clip-path:inset(0 0 100% 0);transform:translateY(-12px)}}
+.tk-fold{transform-origin:50% 0;animation:tk-fold 420ms var(--ease-mech) forwards}
+@keyframes tk-fold{to{transform:perspective(600px) rotateX(88deg);opacity:0}}
+.tk-unfold{animation:tk-unfold 360ms var(--ease-mech) 380ms both}
+@keyframes tk-unfold{from{transform:scale(.4);opacity:0}to{transform:none;opacity:1}}
+[data-signal="clean"] .tk-burn,[data-signal="clean"] .tk-fold,[data-signal="clean"] .tk-unfold{animation:none}
+
 /* P300 */
 .tk-outrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
 .tk-scan{display:flex;flex-direction:column;gap:12px;max-width:420px;margin-top:16px}

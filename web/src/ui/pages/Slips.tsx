@@ -2,7 +2,7 @@
 // settlement, hand over as a code, print as bearer paper, take over a code (typed or scanned),
 // and take back a code nobody has used yet.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BettingSlip, KeyButton, LeaderRow, TeletextHeader, TextInput, Wordmark } from '../../ds';
 import { Qr } from '../Qr';
 import { Scan } from '../Scan';
@@ -55,6 +55,17 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
   const [incoming, setIncoming] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  // A slip that leaves the vault (sold, handed over, cashed in) burns into phosphor pixels.
+  const [burning, setBurning] = useState<Position[]>([]);
+  const prev = useRef<Position[]>(positions);
+  useEffect(() => {
+    const gone = prev.current.filter((p) => !positions.some((q) => q.keyset === p.keyset));
+    prev.current = positions;
+    if (!gone.length) return;
+    setBurning((b) => [...b, ...gone]);
+    const t = setTimeout(() => setBurning((b) => b.filter((x) => !gone.includes(x))), 950);
+    return () => clearTimeout(t);
+  }, [positions]);
 
   if (vault !== 'unlocked')
     return (
@@ -82,7 +93,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
     return (
       <Win title="P300 · HAND OVER" onClose={() => setHanded(null)} maxWidth={560} style={{ alignSelf: 'center', width: '100%' }}>
         <p className="bb-label" style={{ margin: 0 }}>{handed.title}</p>
-        <div style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
+        <div className="tk-unfold" style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
           <Qr value={handed.code} size={240} title="Slip code" />
         </div>
         <p className="bb-ui" style={{ wordBreak: 'break-all' }}>{handed.code}</p>
@@ -155,6 +166,14 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
         />
       )}
       <div className="tk-slips">
+        {burning.map((p) => {
+          const m = markets.find((x) => x.id === p.market);
+          return (
+            <div className="tk-slipcell tk-burn" key={'burn-' + p.keyset} aria-hidden="true">
+              <BettingSlip serial={p.keyset.slice(2, 8).toUpperCase()} market={m?.question} outcome={m?.outcomes[p.outcome].toUpperCase()} side={p.outcome === 0 ? 'a' : 'b'} shares={coin(p.units)} status="open" />
+            </div>
+          );
+        })}
         {positions.map((p: Position) => {
           const m = markets.find((x) => x.id === p.market);
           const lm = live?.markets.find((x) => x.id === p.market);

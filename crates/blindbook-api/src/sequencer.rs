@@ -32,6 +32,8 @@ use crate::link::{LinkError, SignerLink};
 pub const BATCH_EVERY: Duration = Duration::from_secs(2);
 /// How long recent fills stay in `/v1/live`.
 pub const RECENT_MS: u64 = 120_000;
+/// Payouts stay in the live JSON for 30 minutes, so a browser that was away still sees its own.
+pub const PAYOUTS_MS: u64 = 1_800_000;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
@@ -69,6 +71,14 @@ pub struct RecentFill {
     pub fill: FillRecord,
 }
 
+/// A payout transaction and the withdrawal commitments it paid (public in the log anyway).
+#[derive(Clone, Debug, Serialize)]
+pub struct RecentPayout {
+    pub at_ms: u64,
+    pub txid: String,
+    pub commitments: Vec<H32>,
+}
+
 /// State shared with the HTTP handlers and the live-price task.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct ChainBlock {
@@ -80,6 +90,8 @@ pub struct Shared {
     pub head: RwLock<Head>,
     /// The last chain block closed into the log, with its shielded activity (BLOCK RADIO).
     pub block: RwLock<Option<ChainBlock>>,
+    /// Payouts of the last 30 minutes: every browser polls them alike and finds its own.
+    pub payouts: RwLock<VecDeque<RecentPayout>>,
     pub markets: RwLock<BTreeMap<H32, MarketView>>,
     pub recent: RwLock<VecDeque<RecentFill>>,
     pub catalog: RwLock<BTreeMap<H32, MarketInfo>>,
@@ -101,6 +113,7 @@ impl Shared {
                 root: GENESIS_ROOT,
             }),
             block: RwLock::new(None),
+            payouts: RwLock::default(),
             markets: RwLock::default(),
             recent: RwLock::default(),
             catalog: RwLock::default(),
@@ -281,6 +294,27 @@ impl Sequencer {
             }
             while recent.front().is_some_and(|f| f.at_ms + RECENT_MS < at_ms) {
                 recent.pop_front();
+            }
+        }
+        if let Op::Record {
+            event: LogEvent::PayoutSent { txid, commitments },
+        } = op
+            && at_ms > 0
+        {
+            let mut p = self
+                .shared
+                .payouts
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            if !p.iter().any(|x| x.txid == *txid) {
+                p.push_back(RecentPayout {
+                    at_ms,
+                    txid: txid.clone(),
+                    commitments: commitments.clone(),
+                });
+            }
+            while p.front().is_some_and(|f| f.at_ms + PAYOUTS_MS < at_ms) {
+                p.pop_front();
             }
         }
     }

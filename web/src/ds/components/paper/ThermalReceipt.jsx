@@ -16,7 +16,7 @@ const RECEIPT_LINES = [
 ];
 
 /* Thermal receipt: paper/ink, perforated edges, QR, amount, short address. */
-export function ThermalReceipt({ kind = 'CAGE · TOP-UP', amount = '0.0500', unit = 'ZEC', address = 'u1qz7x…k3d8', qrSeed = 'topup-4118', lines = RECEIPT_LINES, status = 'awaiting', printing = false, footer = 'pay from your Ironwood balance', width, className = '' }) {
+export function ThermalReceipt({ kind = 'CAGE · TOP-UP', amount = '0.0500', unit = 'ZEC', address = 'u1qz7x…k3d8', qrSeed = 'topup-4118', qr, lines = RECEIPT_LINES, status = 'awaiting', printing = false, footer = 'pay from your Ironwood balance', width, className = '' }) {
   return (
     <div className={'bb-receipt bb-paper bb-perf bb-grain' + (printing ? ' is-printing' : '') + ' ' + className} style={{ width }}>
       <div className="bb-receipt__head"><Logo size={27} variant="paper" /><Wordmark height={14} color="var(--ink)" /></div>
@@ -26,7 +26,7 @@ export function ThermalReceipt({ kind = 'CAGE · TOP-UP', amount = '0.0500', uni
       <p className="bb-receipt__amt">{amount} {unit}</p>
       <p className="bb-receipt__lab">TO <span className="bb-receipt__addr">{address}</span></p>
       <div className="bb-receipt__qr">
-        <QRCode seed={qrSeed} size={168} bg="var(--paper)" title={'Payment QR for ' + amount + ' ' + unit} />
+        {qr || <QRCode seed={qrSeed} size={168} bg="var(--paper)" title={'Payment QR for ' + amount + ' ' + unit} />}
         {(status === 'seen' || status === 'credited') && <Stamp size="lg" rotate={-12} slam worn={false} className="bb-receipt__stamp">SEEN</Stamp>}
       </div>
       {lines.map((l) => <LeaderRow key={l.label} label={l.label} value={l.value} medium="paper" />)}

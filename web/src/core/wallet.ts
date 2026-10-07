@@ -67,6 +67,8 @@ export interface LocalData {
   notes?: string;
   stamps?: string[];
   best?: Record<string, number>;
+  /** Our withdrawals seen paid: commitment → payout txid. */
+  paid?: Record<string, string>;
 }
 
 export function newWalletData(seed: Uint8Array): WalletData {
@@ -274,7 +276,6 @@ export class Wallet {
     return sealed.commitment;
   }
 
-  /** Hand slips of a keyset worth at least `amount` to someone: exact change first, then a code. */
   /** Hand over `amount` of a keyset as a bearer code; it stays in the outbox until taken back. */
   async send(id: string, amount: number, paper = false): Promise<string> {
     const ks = this.known.get(id);

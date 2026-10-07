@@ -238,6 +238,22 @@ Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with
 3. A redeem request of `a` share-units of outcome i pays `floor(a · num_i / den)` CREDIT units. A 50-50 result (`[1,1]`) pays half per share. Losing keysets become worthless.
 4. Redemption never expires.
 
+### 7.1 Blind duels
+
+A challenge between two people who never learn who the other is, with no house on either side.
+
+| Step | Request | What happens |
+|---|---|---|
+| Open | `POST /v1/duel/open {duel, market, outcome, shares, price_bp, inputs[], change_outputs[], outputs[], cancel}` | `duel` is 32 random bytes from the challenger; `cancel = SHA256(secret)`. The stake `ceil(shares · price_bp / 10 000)` CREDIT is spent into escrow, the rest returns on `change_outputs`; the 31 blank `outputs` (the challenger's outcome keyset) wait with the offer. `price_bp` 100–9 900, `shares` 1–10 000 000. Log: `duel_opened {duel, market, outcome, shares, price_bp, stake}` |
+| Take | `POST /v1/duel/take {duel, outcome, shares, price_bp, inputs[], outputs[], change_outputs[]}` | The taker restates the terms they saw (refused with `duel_terms` if they differ) and pays `shares − stake`. In one operation: `shares` of the other outcome on the taker's `outputs`, the change, and `shares` of the challenger's outcome on the outputs left at opening. Log: `duel_taken {duel}`; all the signatures are in the delta |
+| Cancel | `POST /v1/duel/cancel {duel, secret, outputs[]}` | Only while untaken; the stake returns as CREDIT. Log: `duel_cancelled {duel}` |
+
+- **A complete set.** `shares` CREDIT in (stake + the taker's part), `shares` of each outcome out; whichever wins pays exactly `shares`. The pool and the exposure invariant are untouched: the house neither wins nor loses. No fee.
+- **Trading window.** Opening and taking need the market open (the live state, so Polymarket's own halts count) and the time before the event start and the end date; the signer refuses a time more than two minutes from its own clock. Cancelling works any time.
+- **How the challenger gets their shares without asking.** The taker's answer carries only the taker's signatures. The challenger's are in the public log like every issuance, and `/v1/live` lists open duels and the challenger signatures of duels taken in the last 30 minutes, the same JSON every visitor polls; the challenger's browser picks its own by output index. After 30 minutes it finds them by its own `B_` in the deltas, which anyone can download.
+- **Solvency.** Stakes of open duels are liabilities until taken (then they are shares) or cancelled (then CREDIT); the verifiers add them from the log's duel events.
+- **Links.** `#d=<duel id>` after the `#`, so it never reaches a server; the app clears it from the address bar on arrival.
+
 ## 8. Public data (read path)
 
 Every visitor downloads **the same files in the same order**, through the mixnet.

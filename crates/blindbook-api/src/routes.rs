@@ -102,9 +102,11 @@ fn sig_outs(
     applied_jobs: Vec<&blindbook_ledger::ledger::SignJob>,
     sigs: Vec<BlindSignature>,
 ) -> Vec<SigOut> {
+    // A duel challenger's signatures go to the public record, not to whoever took the duel.
     applied_jobs
         .into_iter()
         .zip(sigs)
+        .filter(|(j, _)| j.list != OutputList::Duel)
         .map(|(j, sig)| SigOut {
             list: j.list,
             index: j.index,
@@ -255,6 +257,143 @@ pub async fn redeem(State(state): State<AppState>, Json(body): Json<Value>) -> R
     .await
     {
         Ok(done) => op_answer(done, json!({ "kind": "redeem", "shares": shares })),
+        Err(r) => r,
+    }
+}
+
+/// Refuse a duel on a market the live feed shows halted (Polymarket closed, stale reference,
+/// event started): the ledger itself checks the schedule again.
+fn market_halt(state: &AppState, market: &H32) -> Option<String> {
+    let live = state.live.read().unwrap_or_else(|e| e.into_inner());
+    let v: Value = serde_json::from_slice(&live).ok()?;
+    let m = v["markets"]
+        .as_array()?
+        .iter()
+        .find(|m| m["id"].as_str() == Some(&market.to_string()))?;
+    (m["state"] != "open").then(|| m["halt"].as_str().unwrap_or("closed").to_owned())
+}
+
+#[derive(Deserialize)]
+struct DuelOpenBody {
+    duel: H32,
+    market: H32,
+    outcome: u8,
+    shares: u64,
+    price_bp: u32,
+    inputs: Vec<Proof>,
+    change_outputs: Vec<BlindedMessage>,
+    outputs: Vec<BlindedMessage>,
+    cancel: H32,
+}
+
+pub async fn duel_open(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
+    let b: DuelOpenBody = match parse(body, state.pow.light) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    if let Some(h) = market_halt(&state, &b.market) {
+        return answer(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "error": "trading_closed", "detail": h }),
+        );
+    }
+    let inputs = match with_y(b.inputs) {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let stored = json!({ "kind": "duel_open", "duel": b.duel, "market": b.market, "outcome": b.outcome, "shares": b.shares, "price_bp": b.price_bp });
+    let op = Op::DuelOpen {
+        duel: b.duel,
+        market: b.market,
+        outcome: b.outcome,
+        shares: b.shares,
+        price_bp: b.price_bp,
+        now_ms: crate::sequencer::now_ms(),
+        inputs,
+        change: b.change_outputs,
+        outputs: b.outputs,
+        cancel: b.cancel,
+    };
+    match submit(&state, op).await {
+        Ok(done) => op_answer(done, stored),
+        Err(r) => r,
+    }
+}
+
+#[derive(Deserialize)]
+struct DuelTakeBody {
+    duel: H32,
+    outcome: u8,
+    shares: u64,
+    price_bp: u32,
+    inputs: Vec<Proof>,
+    outputs: Vec<BlindedMessage>,
+    change_outputs: Vec<BlindedMessage>,
+}
+
+pub async fn duel_take(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
+    let b: DuelTakeBody = match parse(body, state.pow.light) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    let market = state
+        .shared
+        .duels
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .find(|d| d.duel == b.duel)
+        .map(|d| d.market);
+    if let Some(h) = market.and_then(|m| market_halt(&state, &m)) {
+        return answer(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            json!({ "error": "trading_closed", "detail": h }),
+        );
+    }
+    let inputs = match with_y(b.inputs) {
+        Ok(i) => i,
+        Err(r) => return r,
+    };
+    let stored = json!({ "kind": "duel_take", "duel": b.duel, "outcome": 1 - b.outcome.min(1), "shares": b.shares, "price_bp": 10_000 - b.price_bp.min(10_000) });
+    let op = Op::DuelTake {
+        duel: b.duel,
+        outcome: b.outcome,
+        shares: b.shares,
+        price_bp: b.price_bp,
+        now_ms: crate::sequencer::now_ms(),
+        inputs,
+        outputs: b.outputs,
+        change: b.change_outputs,
+    };
+    match submit(&state, op).await {
+        Ok(done) => op_answer(done, stored),
+        Err(r) => r,
+    }
+}
+
+#[derive(Deserialize)]
+struct DuelCancelBody {
+    duel: H32,
+    secret: String,
+    outputs: Vec<BlindedMessage>,
+}
+
+pub async fn duel_cancel(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
+    let b: DuelCancelBody = match parse(body, state.pow.light) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    if b.secret.len() != 64 {
+        return bad("malformed secret");
+    }
+    let stored = json!({ "kind": "duel_cancel", "duel": b.duel });
+    let op = Op::DuelCancel {
+        duel: b.duel,
+        secret: b.secret,
+        outputs: b.outputs,
+    };
+    match submit(&state, op).await {
+        Ok(done) => op_answer(done, stored),
         Err(r) => r,
     }
 }

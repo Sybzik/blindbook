@@ -49,13 +49,17 @@ const START_PAGES = [
   { id: 'how', fkey: 'F5', label: 'HOW IT WORKS', icon: 'how' },
 ];
 
-/* START menu: every page, APPS, CONSOLE, REPLAY INTRO, CLEAN SIGNAL, SOUND, LOCK VAULT. */
-export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onApp, onConsole, onReplayIntro, clean = false, onToggleClean, sound = false, onToggleSound, onLock, className = '', style }) {
-  const Item = ({ icon, label, kbd, onClick }) => (
+/* One START menu entry (top level, so it doesn't remount on every render of the menu). */
+function Item({ icon, label, kbd, onClick }) {
+  return (
     <button type="button" role="menuitem" className="bb-start__item" onClick={onClick}>
       <PixelIcon name={icon} size={14} /><span className="bb-start__label">{label}</span>{kbd && <span className="bb-start__kbd">{kbd}</span>}
     </button>
   );
+}
+
+/* START menu: every page, APPS, CONSOLE, REPLAY INTRO, CLEAN SIGNAL, SOUND, LOCK VAULT. */
+export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onApp, onConsole, onReplayIntro, clean = false, onToggleClean, sound = false, onToggleSound, onLock, className = '', style }) {
   return (
     <div className={'bb-start__menu ' + className} role="menu" aria-label="Start" style={style}>
       <div className="bb-start__head"><span className="bb-start__title"><span className="bb-diamond" aria-hidden="true" />BLINDBOOK</span></div>

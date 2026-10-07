@@ -34,6 +34,8 @@ interface LogEvent {
   height?: number;
   reserve_zat?: number;
   unswept_zat?: number;
+  duel?: string;
+  stake?: number;
 }
 
 interface Delta {
@@ -110,6 +112,7 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms'> {
   const markets = new Set<string>();
   const resolved = new Map<string, { den: number; num: [number, number] }>();
   const queued = new Map<string, number>();
+  const duels = new Map<string, number>();
   let reserve: Result['reserve'] = null;
   let solventOk = true;
   let owed = 0;
@@ -123,9 +126,10 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms'> {
       const a = out(m + ':A');
       const b = out(m + ':B');
       const r = resolved.get(m);
-      units += r && r.den > 0 ? Math.floor((a * r.num[0] + b * r.num[1]) / r.den) : Math.max(a, b);
+      units += r && r.den > 0 ? Math.ceil((a * r.num[0] + b * r.num[1]) / r.den) : Math.max(a, b);
     }
     for (const v of queued.values()) units += v;
+    for (const v of duels.values()) units += v;
     return units * ZAT_PER_UNIT;
   };
   const add = (name: string, i: 0 | 1, n: number) => {
@@ -147,6 +151,8 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms'> {
       else if (e.type === 'payout_sent') for (const c of e.commitments ?? []) queued.delete(c);
       else if (e.type === 'resolved' && e.market && e.den !== undefined && e.num) resolved.set(e.market, { den: e.den, num: e.num });
       else if (e.type === 'reserve_reported') reports.push(e);
+      else if (e.type === 'duel_opened' && e.duel) duels.set(e.duel, e.stake ?? 0);
+      else if ((e.type === 'duel_taken' || e.type === 'duel_cancelled') && e.duel) duels.delete(e.duel);
     }
     for (const s of d.issued) {
       sigs++;
@@ -346,7 +352,7 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
               <Bars label="RESERVE" value={res.reserve.reserveZat + res.reserve.unsweptZat} max={Math.max(res.reserve.reserveZat + res.reserve.unsweptZat, res.reserve.owedZat)} />
               <Bars label="LIABILITIES" value={res.reserve.owedZat} max={Math.max(res.reserve.reserveZat + res.reserve.unsweptZat, res.reserve.owedZat)} />
               <p className="bb-conditions">
-                Liabilities: every CREDIT slip outstanding, the most either outcome of each market can pay, and withdrawals not paid yet, all from the log above.
+                Liabilities: every CREDIT slip outstanding, the most either outcome of each market can pay, withdrawals not paid yet and stakes held by open duels, all from the log above.
                 The reserve figure ({zat(res.reserve.reserveZat)} {COIN}{res.reserve.unsweptZat ? ` + ${zat(res.reserve.unsweptZat)} not swept yet` : ''}) is the signer's report. The reserve's viewing key is public: the command-line verifier below, with --chain, syncs it from the chain and checks the real balance.
               </p>
             </>

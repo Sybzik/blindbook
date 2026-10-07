@@ -109,6 +109,20 @@ export interface Live {
   recent: RecentFill[];
   /** Payouts of the last 30 minutes and the withdrawal commitments each paid. */
   payouts: { at_ms: number; txid: string; commitments: string[] }[];
+  /** Open blind duels anyone can take. */
+  duels: OpenDuel[];
+  /** Challengers' signatures from duels taken in the last 30 minutes. */
+  duel_fills: { at_ms: number; duel: string; signatures: { index: number; amount: number; id: string; C_: string; dleq: { e: string; s: string } }[] }[];
+}
+
+export interface OpenDuel {
+  duel: string;
+  market: string;
+  outcome: 0 | 1;
+  shares: number;
+  price_bp: number;
+  stake: number;
+  opened_ms: number;
 }
 
 export interface SignedAnswer {
@@ -210,5 +224,17 @@ export class Api {
 
   withdraw(inputs: Proof[], amount: number, change_outputs: BlindedMessage[], address_sealed: string, address_commitment: string) {
     return this.post<SignedAnswer>('/v1/withdraw', { inputs, amount, change_outputs, address_sealed, address_commitment }, 'heavy');
+  }
+
+  duelOpen(req: { duel: string; market: string; outcome: 0 | 1; shares: number; price_bp: number; inputs: Proof[]; change_outputs: BlindedMessage[]; outputs: BlindedMessage[]; cancel: string }) {
+    return this.post<SignedAnswer>('/v1/duel/open', req, 'light');
+  }
+
+  duelTake(req: { duel: string; outcome: 0 | 1; shares: number; price_bp: number; inputs: Proof[]; outputs: BlindedMessage[]; change_outputs: BlindedMessage[] }) {
+    return this.post<SignedAnswer>('/v1/duel/take', req, 'light');
+  }
+
+  duelCancel(duel: string, secret: string, outputs: BlindedMessage[]) {
+    return this.post<SignedAnswer>('/v1/duel/cancel', { duel, secret, outputs }, 'light');
   }
 }

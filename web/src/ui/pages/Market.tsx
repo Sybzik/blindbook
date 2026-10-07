@@ -28,7 +28,7 @@ import { calledItSecret, encodeProof } from '../../core/codes';
 import { currentWallet, earnStamp } from '../../app/services';
 import { Qr } from '../Qr';
 import { drawCalledIt, savePng } from '../cards';
-import { ui } from '../uistate';
+import { openWindow, ui } from '../uistate';
 import { play } from '../sound';
 
 export interface FilledSlip {
@@ -222,6 +222,10 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
         )}
         {error && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{error}</p>}
       </div>
+      <button type="button" className="bb-link" style={{ alignSelf: 'flex-start' }} onClick={() => openWindow('duels', { market: meta.id, side })}
+        data-hint="Challenge anyone with a link: they take the other side anonymously. No house, no fee.">
+        or challenge someone: BLIND DUEL on {label} ▸
+      </button>
     </div>
   );
 }

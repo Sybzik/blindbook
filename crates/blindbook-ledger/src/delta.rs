@@ -99,6 +99,24 @@ pub enum LogEvent {
         reserve_zat: u64,
         unswept_zat: u64,
     },
+    /// A blind duel offered: anyone can take the other side at this price. `stake` is the
+    /// challenger's CREDIT now in escrow.
+    DuelOpened {
+        duel: H32,
+        market: H32,
+        outcome: u8,
+        shares: u64,
+        price_bp: u32,
+        stake: u64,
+    },
+    /// Taken: both sides' shares were issued (in this delta's signatures).
+    DuelTaken {
+        duel: H32,
+    },
+    /// Cancelled by the challenger: the stake came back as CREDIT.
+    DuelCancelled {
+        duel: H32,
+    },
 }
 
 /// Public chain statistics for the block (Block Radio).

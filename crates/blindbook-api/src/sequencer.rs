@@ -16,8 +16,8 @@ use blindbook_ledger::H32;
 use blindbook_ledger::delta::{ChainStats, GENESIS_ROOT, Head, IssuedRecord, LogBuilder, LogEvent};
 use blindbook_ledger::keysets::{Keyset, KeysetIds};
 use blindbook_ledger::ledger::{
-    FillRecord, Ledger, MarketInputs, MarketParams, MarketStatus, Pool, Reject, Side, TradeOutcome,
-    TradeRequest,
+    FillRecord, Ledger, MarketInputs, MarketParams, MarketStatus, OutputList, Pool, Reject, Side,
+    TradeOutcome, TradeRequest,
 };
 use blindbook_ledger::ops::{self, Applied, Op};
 use blindbook_ledger::wire::BlindSignature;
@@ -71,6 +71,34 @@ pub struct RecentFill {
     pub fill: FillRecord,
 }
 
+/// An open blind duel as everyone sees it (the challenger's outputs and cancel hash stay out).
+#[derive(Clone, Debug, Serialize)]
+pub struct OpenDuel {
+    pub duel: H32,
+    pub market: H32,
+    pub outcome: u8,
+    pub shares: u64,
+    pub price_bp: u32,
+    pub stake: u64,
+    pub opened_ms: u64,
+}
+
+/// The challenger's signatures from a taken duel, by output index: public in the log anyway,
+/// listed here so the challenger's browser finds them in the feed everyone polls.
+#[derive(Clone, Debug, Serialize)]
+pub struct DuelFill {
+    pub at_ms: u64,
+    pub duel: H32,
+    pub signatures: Vec<DuelSig>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct DuelSig {
+    pub index: usize,
+    #[serde(flatten)]
+    pub sig: BlindSignature,
+}
+
 /// A payout transaction and the withdrawal commitments it paid (public in the log anyway).
 #[derive(Clone, Debug, Serialize)]
 pub struct RecentPayout {
@@ -92,6 +120,9 @@ pub struct Shared {
     pub block: RwLock<Option<ChainBlock>>,
     /// Payouts of the last 30 minutes: every browser polls them alike and finds its own.
     pub payouts: RwLock<VecDeque<RecentPayout>>,
+    /// Open duels, and the challengers' signatures of duels taken in the last 30 minutes.
+    pub duels: RwLock<Vec<OpenDuel>>,
+    pub duel_fills: RwLock<VecDeque<DuelFill>>,
     pub markets: RwLock<BTreeMap<H32, MarketView>>,
     pub recent: RwLock<VecDeque<RecentFill>>,
     pub catalog: RwLock<BTreeMap<H32, MarketInfo>>,
@@ -114,6 +145,8 @@ impl Shared {
             }),
             block: RwLock::new(None),
             payouts: RwLock::default(),
+            duels: RwLock::default(),
+            duel_fills: RwLock::default(),
             markets: RwLock::default(),
             recent: RwLock::default(),
             catalog: RwLock::default(),
@@ -317,6 +350,33 @@ impl Sequencer {
                 p.pop_front();
             }
         }
+        if let (Op::DuelTake { duel, .. }, Applied::Effects(e)) = (op, applied)
+            && at_ms > 0
+        {
+            let signatures = e
+                .jobs
+                .iter()
+                .zip(sigs)
+                .filter(|(j, _)| j.list == OutputList::Duel)
+                .map(|(j, s)| DuelSig {
+                    index: j.index,
+                    sig: s.clone(),
+                })
+                .collect();
+            let mut f = self
+                .shared
+                .duel_fills
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            f.push_back(DuelFill {
+                at_ms,
+                duel: *duel,
+                signatures,
+            });
+            while f.front().is_some_and(|x| x.at_ms + PAYOUTS_MS < at_ms) {
+                f.pop_front();
+            }
+        }
     }
 
     fn publish_views(&self) {
@@ -361,6 +421,20 @@ impl Sequencer {
             .markets
             .write()
             .unwrap_or_else(|e| e.into_inner()) = views;
+        *self.shared.duels.write().unwrap_or_else(|e| e.into_inner()) = self
+            .ledger
+            .duels
+            .iter()
+            .map(|(id, d)| OpenDuel {
+                duel: *id,
+                market: d.market,
+                outcome: d.outcome,
+                shares: d.shares,
+                price_bp: d.price_bp,
+                stake: d.stake,
+                opened_ms: d.opened_ms,
+            })
+            .collect();
     }
 
     /// Re-send the operation in doubt, if any. Nothing else runs until it has an answer.

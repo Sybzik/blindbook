@@ -12,6 +12,8 @@ export interface UiState {
   verbose: boolean;
   /** BLOCK RADIO playing (its window must be open). */
   radio: boolean;
+  /** A window another window asks the desk to open (with a duel draft for P150). */
+  request: { id: string; n: number; duel?: { market?: string; side?: 'a' | 'b' } } | null;
   /** Set by ODDS CALC "USE IN BET" or the console's buy command; the bet panel takes it once. */
   prefill: { market?: string; side?: 'a' | 'b'; units?: number; maxCents?: number } | null;
 }
@@ -41,6 +43,7 @@ export const ui = createStore<UiState>({
   theme: load<Theme>('bb-theme', 'green'),
   verbose: false,
   radio: false,
+  request: null,
   prefill: null,
 });
 
@@ -49,3 +52,9 @@ ui.subscribe(() => {
   keep('bb-clean', s.clean);
   keep('bb-theme', s.theme);
 });
+
+let asks = 0;
+/** Ask the desk to open a window (from inside another window). */
+export function openWindow(id: string, duel?: { market?: string; side?: 'a' | 'b' }) {
+  ui.set({ request: { id, n: ++asks, duel } });
+}

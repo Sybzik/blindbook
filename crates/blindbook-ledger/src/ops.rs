@@ -64,6 +64,36 @@ pub enum Op {
     /// A chain transaction the signer made (payout, sweep, anchor), entered in the log. The
     /// signer accepts only events it reported itself.
     Record { event: LogEvent },
+    /// Open a blind duel (PROTOCOL section 7.1). `duel` is a fresh random id from the challenger.
+    DuelOpen {
+        duel: H32,
+        market: H32,
+        outcome: u8,
+        shares: u64,
+        price_bp: u32,
+        now_ms: u64,
+        inputs: Vec<Input>,
+        change: Vec<BlindedMessage>,
+        outputs: Vec<BlindedMessage>,
+        cancel: H32,
+    },
+    /// Take an open duel on the terms the taker saw (refused if they differ).
+    DuelTake {
+        duel: H32,
+        outcome: u8,
+        shares: u64,
+        price_bp: u32,
+        now_ms: u64,
+        inputs: Vec<Input>,
+        outputs: Vec<BlindedMessage>,
+        change: Vec<BlindedMessage>,
+    },
+    /// Cancel an untaken duel with its secret (hex); the stake returns as CREDIT.
+    DuelCancel {
+        duel: H32,
+        secret: String,
+        outputs: Vec<BlindedMessage>,
+    },
     /// The payout vector both Polygon RPCs agreed on, with where it was read (for the log).
     Resolve {
         market: H32,
@@ -218,6 +248,51 @@ fn apply_inner(l: &mut Ledger, op: &Op, invalid: &[usize]) -> Applied {
             Ok(()) => Applied::Done,
             Err(r) => Applied::Refused(r),
         },
+        Op::DuelOpen {
+            duel,
+            market,
+            outcome,
+            shares,
+            price_bp,
+            now_ms,
+            inputs,
+            change,
+            outputs,
+            cancel,
+        } => match l.duel_open(
+            *duel, *market, *outcome, *shares, *price_bp, *now_ms, inputs, change, outputs, *cancel,
+        ) {
+            Ok(e) => Applied::Effects(e),
+            Err(r) => Applied::Refused(r),
+        },
+        Op::DuelTake {
+            duel,
+            outcome,
+            shares,
+            price_bp,
+            now_ms,
+            inputs,
+            outputs,
+            change,
+        } => match l.duel_take(
+            *duel,
+            (*outcome, *shares, *price_bp),
+            *now_ms,
+            inputs,
+            outputs,
+            change,
+        ) {
+            Ok(e) => Applied::Effects(e),
+            Err(r) => Applied::Refused(r),
+        },
+        Op::DuelCancel {
+            duel,
+            secret,
+            outputs,
+        } => match l.duel_cancel(*duel, secret, outputs) {
+            Ok(e) => Applied::Effects(e),
+            Err(r) => Applied::Refused(r),
+        },
     }
 }
 
@@ -226,14 +301,17 @@ fn apply_inner(l: &mut Ledger, op: &Op, invalid: &[usize]) -> Applied {
 pub fn inputs_of(op: &Op) -> Vec<&[Input]> {
     match op {
         Op::Trades { reqs, .. } => reqs.iter().map(|r| r.inputs.as_slice()).collect(),
-        Op::Swap { inputs, .. } | Op::Redeem { inputs, .. } | Op::Withdraw { inputs, .. } => {
-            vec![inputs.as_slice()]
-        }
+        Op::Swap { inputs, .. }
+        | Op::Redeem { inputs, .. }
+        | Op::Withdraw { inputs, .. }
+        | Op::DuelOpen { inputs, .. }
+        | Op::DuelTake { inputs, .. } => vec![inputs.as_slice()],
         Op::ListMarket { .. }
         | Op::Credit { .. }
         | Op::Resolve { .. }
         | Op::Close { .. }
-        | Op::Record { .. } => Vec::new(),
+        | Op::Record { .. }
+        | Op::DuelCancel { .. } => Vec::new(),
     }
 }
 
@@ -315,6 +393,30 @@ pub fn record_applied(
             polygon_tx: polygon_tx.clone(),
         }),
         (Op::Record { event }, Applied::Done) => Some(event.clone()),
+        (
+            Op::DuelOpen {
+                duel,
+                market,
+                outcome,
+                shares,
+                price_bp,
+                ..
+            },
+            Applied::Effects(_),
+        ) => Some(LogEvent::DuelOpened {
+            duel: *duel,
+            market: *market,
+            outcome: *outcome,
+            shares: *shares,
+            price_bp: *price_bp,
+            stake: crate::ledger::duel_stake(*shares, *price_bp),
+        }),
+        (Op::DuelTake { duel, .. }, Applied::Effects(_)) => {
+            Some(LogEvent::DuelTaken { duel: *duel })
+        }
+        (Op::DuelCancel { duel, .. }, Applied::Effects(_)) => {
+            Some(LogEvent::DuelCancelled { duel: *duel })
+        }
         _ => None,
     };
     if let Some(e) = event {
@@ -351,14 +453,18 @@ pub fn redact(op: &Op) -> Op {
                 redact_inputs(&mut r.inputs);
             }
         }
-        Op::Swap { inputs, .. } | Op::Redeem { inputs, .. } | Op::Withdraw { inputs, .. } => {
-            redact_inputs(inputs)
-        }
+        Op::Swap { inputs, .. }
+        | Op::Redeem { inputs, .. }
+        | Op::Withdraw { inputs, .. }
+        | Op::DuelOpen { inputs, .. }
+        | Op::DuelTake { inputs, .. } => redact_inputs(inputs),
+        // A used cancel secret opens nothing (the duel is gone), and replay checks it again.
         Op::ListMarket { .. }
         | Op::Credit { .. }
         | Op::Resolve { .. }
         | Op::Close { .. }
-        | Op::Record { .. } => {}
+        | Op::Record { .. }
+        | Op::DuelCancel { .. } => {}
     }
     op
 }

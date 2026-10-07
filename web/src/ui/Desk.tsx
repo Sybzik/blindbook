@@ -16,6 +16,7 @@ import { HowPage } from './pages/How';
 import { RecordPage } from './pages/Record';
 import { PassPage } from './pages/Pass';
 import { AppWindow } from './pages/Apps';
+import { DuelsPage } from './pages/Duels';
 import { VaultWindow } from './pages/Vault';
 import { Console } from './Console';
 import { Screensaver } from './Screensaver';
@@ -34,9 +35,21 @@ const TITLES: Record<string, string> = {
   verify: 'P400 · VERIFY',
   how: 'P500 · HOW IT WORKS',
   record: 'P600 · WHAT WE KNOW',
+  duels: 'P150 · BLIND DUELS',
   pass: 'P601 · NOBODY PASS',
 };
 for (const a of APP_ICONS as { id: string; page: string; label: string }[]) TITLES[a.id] = `${a.page} · ${a.label}`;
+
+const START_PAGES = [
+  { id: 'markets', fkey: 'F1', label: 'MARKETS', icon: 'markets' },
+  { id: 'slips', fkey: 'F2', label: 'SLIPS', icon: 'slips' },
+  { id: 'cage', fkey: 'F3', label: 'CAGE', icon: 'cage' },
+  { id: 'verify', fkey: 'F4', label: 'VERIFY', icon: 'verify' },
+  { id: 'how', fkey: 'F5', label: 'HOW IT WORKS', icon: 'how' },
+  { id: 'duels', fkey: '150', label: 'BLIND DUELS', icon: 'stamp' },
+  { id: 'record', fkey: '600', label: 'WHAT WE KNOW', icon: 'eye' },
+  { id: 'pass', fkey: '601', label: 'NOBODY PASS', icon: 'stamp' },
+];
 
 const TELETEXT: Record<string, [string, string]> = {
   '404': ['PAGE NOT FOUND', 'page not found. neither are you.'],
@@ -44,7 +57,7 @@ const TELETEXT: Record<string, [string, string]> = {
   '0': ['CREDITS', 'Built on Zcash and librustzcash, the Nym mixnet, Cashu\'s blind signatures, Polymarket\'s public data and Polygon. Thank you to everyone who keeps shielded money honest, including the researchers who find the bugs.'],
 };
 
-export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: string; onIntro: () => void }) {
+export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proof?: string; duel?: string; onIntro: () => void }) {
   const vault = useStore(app, (s) => s.vault);
   const link = useStore(app, (s) => s.link);
   const head = useStore(app, (s) => s.head);
@@ -53,7 +66,9 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
   const markets = useStore(app, (s) => s.markets);
   const clean = useStore(ui, (s) => s.clean);
   const sound = useStore(ui, (s) => s.sound);
-  const first = initial ?? (proof ? 'verify' : 'markets');
+  const first = initial ?? (proof ? 'verify' : duel ? 'duels' : 'markets');
+  const [duelDraft, setDuelDraft] = useState<{ market?: string; side?: 'a' | 'b' } | undefined>(undefined);
+  const request = useStore(ui, (s) => s.request);
   const [open, setOpen] = useState<string[]>([first]);
   const [page, setPage] = useState(first);
   const [mid, setMid] = useState<string | null>(null);
@@ -69,7 +84,7 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
   const [con, setCon] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   // Someone opening a proof link came to check it, not to open a vault.
-  const [vaultWin, setVaultWin] = useState(vault !== 'unlocked' && !proof);
+  const [vaultWin, setVaultWin] = useState(vault !== 'unlocked' && !proof && !duel);
   const firstVault = useRef(true);
   const [idle, setIdle] = useState(false);
   const [insider, setInsider] = useState(false);
@@ -91,7 +106,7 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
     if (vault === 'checking') return;
     const first = firstVault.current;
     firstVault.current = false;
-    if (first && proof) return;
+    if (first && (proof || duel)) return;
     if (vault === 'locked' || vault === 'none') setVaultWin(true);
   }, [vault]);
   useEffect(() => {
@@ -99,6 +114,18 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
     setVaultWin(false);
     go('verify');
   }, [proof]);
+  useEffect(() => {
+    if (!duel) return;
+    setVaultWin(false);
+    go('duels');
+  }, [duel]);
+  // A window asked for another one (the bet panel's CHALLENGE, for example).
+  useEffect(() => {
+    if (!request) return;
+    if (request.duel) setDuelDraft(request.duel);
+    setVaultWin(false);
+    go(request.id);
+  }, [request?.n]);
   // The split-flap block clock clacks on every new block (when sound is on).
   const lastHeight = useRef(0);
   useEffect(() => {
@@ -267,6 +294,7 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
     if (id === 'how') return <HowPage onClose={onClose} onOpen={go} />;
     if (id === 'record') return <RecordPage onClose={onClose} />;
     if (id === 'pass') return <PassPage onClose={onClose} />;
+    if (id === 'duels') return <DuelsPage key={(duel ?? '') + JSON.stringify(duelDraft ?? {})} onClose={onClose} focus={duel} initial={duelDraft} />;
     if (id.startsWith('tt:')) {
       const [t, msg] = TELETEXT[id.slice(3)]!;
       return (
@@ -314,6 +342,7 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
       { id: 'how', label: 'HOW IT WORKS', icon: 'how' },
       { id: 'record', label: 'WHAT WE KNOW', icon: 'eye' },
       { id: 'pass', label: 'NOBODY PASS', icon: 'stamp' },
+      { id: 'duels', label: 'BLIND DUELS', icon: 'slips' },
     ];
     return (
       <div className="pg-app bb-crt" data-signal={clean ? 'clean' : undefined}>
@@ -473,6 +502,7 @@ export function Desk({ initial, proof, onIntro }: { initial?: string; proof?: st
         onStartToggle={setStartOpen}
         startMenu={
           <StartMenu
+            pages={START_PAGES}
             onSelect={(id: string) => { setVaultWin(false); go(id); }}
             onApp={(id: string) => { setVaultWin(false); go(id); }}
             onReplayIntro={() => { setStartOpen(false); onIntro(); }}

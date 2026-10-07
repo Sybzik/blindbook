@@ -58,6 +58,18 @@ pub enum Reject {
     BadBlankOutputs,
     #[error("inputs and outputs don't balance")]
     Unbalanced,
+    #[error("no open duel with that id")]
+    DuelUnknown,
+    #[error("a duel with that id exists")]
+    DuelExists,
+    #[error("the duel's terms are not the ones offered")]
+    DuelTerms,
+    #[error("duel shares must be 1..=10,000,000 units at a price of 1..=99 cents")]
+    BadDuel,
+    #[error("trading has closed for this market")]
+    TradingClosed,
+    #[error("wrong cancel secret")]
+    BadCancel,
     #[error("the amount must be above 0 and at most the inputs' total")]
     BadAmount,
     #[error("nothing to redeem: this outcome pays 0")]
@@ -190,6 +202,9 @@ pub struct SignJob {
 pub enum OutputList {
     Outputs,
     Change,
+    /// A duel challenger's outputs, sent when the duel opened and signed when it is taken: the
+    /// signatures reach the challenger through the public record, not the taker's answer.
+    Duel,
 }
 
 /// What an accepted request did: slips spent and outputs to sign.
@@ -305,6 +320,32 @@ pub struct BatchResult {
     pub outcomes: Vec<TradeOutcome>,
 }
 
+/// The most share-units on each side of one duel (100 coins).
+pub const MAX_DUEL_SHARES: u64 = 10_000_000;
+
+/// A blind duel waiting for a taker (PROTOCOL section 7.1). The challenger's stake is in escrow
+/// and the blank outputs for their shares are already here, so a taker completes the set while
+/// the challenger is offline: `shares` of the challenger's outcome and `shares` of the other one
+/// for exactly `shares` CREDIT paid in by both, so the house carries no risk.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Duel {
+    pub market: H32,
+    pub outcome: u8,
+    pub shares: u64,
+    pub price_bp: u32,
+    /// The challenger's CREDIT in escrow: `ceil(shares · price_bp / 10 000)`.
+    pub stake: u64,
+    pub opened_ms: u64,
+    pub outputs: Vec<BlindedMessage>,
+    /// `SHA256(secret)`: whoever knows the secret (the challenger) can cancel an untaken duel.
+    pub cancel: H32,
+}
+
+/// What the challenger pays for `shares` at `price_bp`; the taker pays the rest of `shares`.
+pub fn duel_stake(shares: u64, price_bp: u32) -> u64 {
+    (u128::from(shares) * u128::from(price_bp)).div_ceil(10_000) as u64
+}
+
 /// A queued withdrawal: the payout address stays sealed to the signer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Withdrawal {
@@ -330,6 +371,9 @@ pub struct Ledger {
     /// withdrawals stop until the operator investigates (PROTOCOL section 9, supply guard).
     #[serde(default)]
     pub supply_alarm: bool,
+    /// Open blind duels by id.
+    #[serde(default)]
+    pub duels: BTreeMap<H32, Duel>,
     #[serde(skip)]
     pub keysets: KeysetIds,
 }
@@ -756,6 +800,135 @@ impl Ledger {
         Ok(effects)
     }
 
+    /// Can the market still be traded at `now_ms` (open, before the event start and the end)?
+    fn trading_open(&self, market: H32, now_ms: u64) -> Result<&MarketEntry, Reject> {
+        let m = self.markets.get(&market).ok_or(Reject::UnknownMarket)?;
+        if m.status != MarketStatus::Open {
+            return Err(Reject::MarketResolved);
+        }
+        if m.event_start_ms.is_some_and(|s| now_ms >= s) || now_ms >= m.end_ms {
+            return Err(Reject::TradingClosed);
+        }
+        Ok(m)
+    }
+
+    /// Open a duel: escrow the challenger's stake, keep their blank outputs for the shares.
+    #[allow(clippy::too_many_arguments)]
+    pub fn duel_open(
+        &mut self,
+        duel: H32,
+        market: H32,
+        outcome: u8,
+        shares: u64,
+        price_bp: u32,
+        now_ms: u64,
+        inputs: &[Input],
+        change: &[BlindedMessage],
+        outputs: &[BlindedMessage],
+        cancel: H32,
+    ) -> Result<Effects, Reject> {
+        if self.duels.contains_key(&duel) {
+            return Err(Reject::DuelExists);
+        }
+        self.trading_open(market, now_ms)?;
+        if outcome > 1 {
+            return Err(Reject::BadOutcome);
+        }
+        if !(100..=9_900).contains(&price_bp) || shares == 0 || shares > MAX_DUEL_SHARES {
+            return Err(Reject::BadDuel);
+        }
+        let credit = self.keyset_id(Keyset::Credit)?;
+        let position = self.keyset_id(Keyset::Outcome { market, outcome })?;
+        Self::check_blank(change, &credit)?;
+        Self::check_blank(outputs, &position)?;
+        let sum = self.check_inputs(inputs, &credit, &HashSet::new())?;
+        let stake = duel_stake(shares, price_bp);
+        if stake == 0 || stake >= shares || sum < stake {
+            return Err(Reject::Unbalanced);
+        }
+        let mut effects = Effects::default();
+        self.spend(inputs, &mut effects);
+        self.fill_blank(change, OutputList::Change, sum - stake, &mut effects);
+        self.duels.insert(
+            duel,
+            Duel {
+                market,
+                outcome,
+                shares,
+                price_bp,
+                stake,
+                opened_ms: now_ms,
+                outputs: outputs.to_vec(),
+                cancel,
+            },
+        );
+        Ok(effects)
+    }
+
+    /// Take a duel: pay the rest of the set, get the other outcome's shares now; the
+    /// challenger's shares are signed at the same time on the outputs they left.
+    #[allow(clippy::too_many_arguments)]
+    pub fn duel_take(
+        &mut self,
+        duel: H32,
+        terms: (u8, u64, u32),
+        now_ms: u64,
+        inputs: &[Input],
+        outputs: &[BlindedMessage],
+        change: &[BlindedMessage],
+    ) -> Result<Effects, Reject> {
+        let d = self.duels.get(&duel).ok_or(Reject::DuelUnknown)?.clone();
+        if (d.outcome, d.shares, d.price_bp) != terms {
+            return Err(Reject::DuelTerms);
+        }
+        self.trading_open(d.market, now_ms)?;
+        let credit = self.keyset_id(Keyset::Credit)?;
+        let other = self.keyset_id(Keyset::Outcome {
+            market: d.market,
+            outcome: 1 - d.outcome,
+        })?;
+        Self::check_blank(outputs, &other)?;
+        Self::check_blank(change, &credit)?;
+        let sum = self.check_inputs(inputs, &credit, &HashSet::new())?;
+        let cost = d.shares - d.stake;
+        if sum < cost {
+            return Err(Reject::Unbalanced);
+        }
+        let mut effects = Effects::default();
+        self.spend(inputs, &mut effects);
+        self.fill_blank(outputs, OutputList::Outputs, d.shares, &mut effects);
+        self.fill_blank(change, OutputList::Change, sum - cost, &mut effects);
+        self.fill_blank(&d.outputs, OutputList::Duel, d.shares, &mut effects);
+        self.duels.remove(&duel);
+        Ok(effects)
+    }
+
+    /// Cancel an untaken duel: the stake comes back to the challenger as CREDIT.
+    pub fn duel_cancel(
+        &mut self,
+        duel: H32,
+        secret: &str,
+        outputs: &[BlindedMessage],
+    ) -> Result<Effects, Reject> {
+        use sha2::{Digest, Sha256};
+        let d = self.duels.get(&duel).ok_or(Reject::DuelUnknown)?.clone();
+        let raw = crate::hex::decode(secret).ok_or(Reject::BadCancel)?;
+        if raw.len() != 32 || Sha256::digest(&raw).as_slice() != d.cancel.0 {
+            return Err(Reject::BadCancel);
+        }
+        let credit = self.keyset_id(Keyset::Credit)?;
+        Self::check_blank(outputs, &credit)?;
+        let mut effects = Effects::default();
+        self.fill_blank(outputs, OutputList::Outputs, d.stake, &mut effects);
+        self.duels.remove(&duel);
+        Ok(effects)
+    }
+
+    /// CREDIT held in escrow by open duels (owed back, or turned into shares when taken).
+    pub fn duel_escrow(&self) -> u64 {
+        self.duels.values().map(|d| d.stake).sum()
+    }
+
     /// Record a market's on-chain result.
     pub fn resolve(&mut self, market: H32, den: u64, num: [u64; 2]) -> Result<(), Reject> {
         let m = self.markets.get_mut(&market).ok_or(Reject::UnknownMarket)?;
@@ -778,7 +951,7 @@ impl Ledger {
     /// CREDIT outstanding, plus for each open market the payout if its larger side wins, plus for
     /// each resolved market what its unredeemed winning shares pay.
     pub fn required_reserve(&self) -> u64 {
-        let mut total = self.outstanding(Keyset::Credit);
+        let mut total = self.outstanding(Keyset::Credit) + self.duel_escrow();
         for m in self.markets.values() {
             let out = |outcome| {
                 self.outstanding(Keyset::Outcome {

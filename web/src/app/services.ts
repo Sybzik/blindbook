@@ -2,7 +2,8 @@
 // identically (head, live, catalog), the vault and the wallet.
 
 import { Api, ApiError, DirectTransport, type Head, type Live, type Transport } from '../core/api';
-import { Wallet, newWalletData, type HistoryEntry, type LocalData, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
+import { Wallet, newWalletData, type HistoryEntry, type LocalData, type MyDuel, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
+import { blankOutputs } from '../core/blind';
 import { restore, type DeltaLike, type Snapshot } from '../core/restore';
 import { yOf } from '../core/blind';
 import { IdbStore, Vault, newMnemonic, seedFromMnemonic, type Wrap } from '../vault/vault';
@@ -57,6 +58,7 @@ export interface AppState {
   /** Device-only back-room state from the vault (notes, stamps, scores). */
   local: LocalData;
   outbox: Outgoing[];
+  duels: MyDuel[];
   busy: string | null;
   notice: string | null;
   error: string | null;
@@ -74,6 +76,7 @@ export const app = createStore<AppState>({
   topups: [],
   local: {},
   outbox: [],
+  duels: [],
   busy: null,
   notice: null,
   error: null,
@@ -90,7 +93,7 @@ export function getApi(): Api {
 
 function refreshWallet() {
   if (!wallet) {
-    app.set({ balance: 0, positions: [], history: [], topups: [], local: {}, outbox: [] });
+    app.set({ balance: 0, positions: [], history: [], topups: [], local: {}, outbox: [], duels: [] });
     return;
   }
   const positions: Position[] = [];
@@ -108,6 +111,7 @@ function refreshWallet() {
     topups: [...wallet.data.topups],
     local: { ...wallet.data.local },
     outbox: [...(wallet.data.outbox ?? [])],
+    duels: [...(wallet.data.duels ?? [])],
   });
 }
 
@@ -121,6 +125,7 @@ async function pollLive() {
       series[m.id] = s.slice(-240);
     }
     app.set({ live, series });
+    void claimDuels(live);
   } catch {
     // The lamp shows the link state; a missed poll is retried.
   }
@@ -306,6 +311,45 @@ export function plainError(e: ApiError): string {
   }
 }
 
+/** Our taken duels: the challenger's signatures are in the feed every visitor polls. */
+let claiming = false;
+async function claimDuels(live: Live) {
+  if (!wallet || claiming || !live.duel_fills?.length) return;
+  const open = (wallet.data.duels ?? []).filter((d) => d.status === 'open');
+  const fills = live.duel_fills.filter((f) => open.some((d) => d.duel === f.duel));
+  if (!fills.length) return;
+  claiming = true;
+  try {
+    for (const f of fills) await wallet.duelClaim(f.duel, f.signatures);
+    refreshWallet();
+  } catch {
+    /* retried on the next poll */
+  } finally {
+    claiming = false;
+  }
+}
+
+/** A duel taken while we were away (older than the live feed): find our shares in the public
+ *  log, the same files every visitor can download, by our own blinded outputs. */
+export async function recoverDuel(duel: string): Promise<number> {
+  const d = wallet?.data.duels?.find((x) => x.duel === duel && x.status === 'open');
+  if (!wallet || !d) return 0;
+  const pending = blankOutputs(wallet.seed, d.keyset, d.counter).pending;
+  const index = new Map(pending.map((p, i) => [p.B_, i]));
+  const head = await api.head();
+  for (let seq = head.seq; seq >= 1; seq--) {
+    const delta = await api.json<{ issued: { id: string; amount: number; B_: string; C_: string; dleq: { e: string; s: string } }[]; events: { type: string; duel?: string }[] }>(`/v1/delta/${seq}.json.gz`);
+    const mine = delta.issued.filter((s) => index.has(s.B_));
+    if (mine.length) {
+      const n = await wallet.duelClaim(duel, mine.map((s) => ({ index: index.get(s.B_)!, amount: s.amount, id: s.id, C_: s.C_, dleq: s.dleq })));
+      refreshWallet();
+      return n;
+    }
+    if (delta.events.some((e) => e.type === 'duel_opened' && e.duel === duel)) break;
+  }
+  return 0;
+}
+
 export const actions = {
   voucher: (code: string) => act('REDEEMING CODE', (w) => w.voucher(code)),
   buy: (market: string, outcome: 0 | 1, units: number, limitBp: number) =>
@@ -317,6 +361,9 @@ export const actions = {
   redeem: (market: string, outcome: 0 | 1) => act('CASHING IN', (w) => w.redeem(market, outcome)),
   send: (keyset: string, units: number, paper = false) => act('PREPARING SLIPS', (w) => w.send(keyset, units, paper)),
   reclaim: (code: string) => act('TAKING BACK', (w) => w.reclaim(code)),
+  duelOpen: (market: string, outcome: 0 | 1, shares: number, priceBp: number) => act('OPENING THE DUEL', (w) => w.duelOpen(market, outcome, shares, priceBp)),
+  duelTake: (d: { duel: string; market: string; outcome: 0 | 1; shares: number; price_bp: number; stake: number }) => act('TAKING THE DUEL', (w) => w.duelTake(d)),
+  duelCancel: (duel: string) => act('CANCELLING', (w) => w.duelCancel(duel)),
   receive: (code: string) =>
     act('TAKING OVER SLIPS', (w) => w.receiveCode(code)).then(async (n) => {
       await earnStamp('PASSED IN THE DARK');

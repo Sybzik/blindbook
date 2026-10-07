@@ -23,12 +23,14 @@ export interface DeskApi {
 const HELP = [
   'markets · open 201 · buy 201 yes 0.01 --max 0.65 · sell 201 yes all · slips · balance',
   'verify · status · verbose on|off · trace · ping polymarket · ironwood · turnstile',
-  'play snake|redact · calc 0.45 · radio on|off · record · pass · cage · lock · intro',
+  'duels · duel 201 yes 0.01 --at 0.45 · take <duel id> · play snake|redact · calc 0.45',
+  'radio on|off · record · pass · cage · lock · intro',
   'theme green|amber|paper · clean on|off · sound on|off · whoami · history · clear · exit',
 ];
 
 const PAGES: Record<string, string> = {
   '100': 'markets',
+  '150': 'duels',
   '300': 'slips',
   '350': 'cage',
   '400': 'verify',
@@ -257,6 +259,34 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
       ui.set({ sound: on });
       setSound(on);
       return out(`sound ${on ? 'on' : 'off'}`);
+    }
+    case 'duels':
+      desk.open('duels');
+      return out((s.live?.duels ?? []).map((d) => {
+        const m = s.markets.find((x) => x.id === d.market);
+        return `${d.duel.slice(0, 8)}  ${m?.page ?? '?'} ${m ? m.outcomes[d.outcome].toUpperCase() : d.outcome} at ${Math.round(d.price_bp / 100)}¢ · ${coin(d.shares)} shares · take for ${coin(d.shares - d.stake)}`;
+      }).concat(s.live?.duels.length ? [] : ['no open challenges']));
+    case 'duel': {
+      const m = marketByPage(args[1]);
+      if (!m) return out('usage: duel 201 yes 0.01 --at 0.45', 'err');
+      const o = outcomeIndex(m, args[2]);
+      if (o === null) return out(`outcome is ${m.outcomes[0].toLowerCase()} or ${m.outcomes[1].toLowerCase()}`, 'err');
+      if (s.vault !== 'unlocked') return out('open your vault first', 'err');
+      const units = Math.round(parseFloat(args[3] ?? '') * 100_000);
+      if (!BET_UNITS.includes(units)) return out(`standard stakes only: ${BET_UNITS.map((u) => coin(u, 2)).join(' · ')} ${COIN}`, 'err');
+      const at = flag(args, '--at');
+      const cents = Math.min(99, Math.max(1, at !== undefined ? Math.round(at < 1 ? at * 100 : at) : Math.round(priceOf(m.id, o))));
+      const shares = Math.floor((units * 100) / cents);
+      const d = await actions.duelOpen(m.id, o, shares, cents * 100);
+      return out([`duel open: ${m.outcomes[o].toUpperCase()} at ${cents}¢ · ${coin(shares)} shares · stake ${coin(d.stake)} in escrow`, `${location.origin}/#d=${d.duel}`]);
+    }
+    case 'take': {
+      const id = (args[1] ?? '').toLowerCase();
+      const d = id.length >= 6 ? s.live?.duels.find((x) => x.duel.startsWith(id)) : undefined;
+      if (!d) return out('usage: take <duel id, at least 6 characters> (see "duels")', 'err');
+      if (s.vault !== 'unlocked') return out('open your vault first', 'err');
+      const n = await actions.duelTake(d);
+      return out(`taken: ${coin(n)} shares of the other side are in your slips`);
     }
     case 'record':
       desk.open('record');

@@ -11,7 +11,7 @@
 //! 5. per keyset, nothing was spent beyond what was issued; the outstanding supply is reported;
 //! 6. at every reserve report, the reserve (plus top-ups not swept yet) covers the liabilities:
 //!    CREDIT outstanding + per market the most either outcome can pay + withdrawals not paid
-//!    yet. The reserve figure itself is checkable on-chain with the public reserve viewing key.
+//!    yet + stakes held by open blind duels. The reserve figure itself is checkable on-chain with the public reserve viewing key.
 
 use std::collections::BTreeMap;
 use std::str::FromStr;
@@ -150,9 +150,9 @@ pub fn liabilities(
         let a = out(&format!("{m}:A"));
         let b = out(&format!("{m}:B"));
         units += match resolved.get(m) {
-            Some((den, num)) if *den > 0 => {
-                ((a as u128 * num[0] as u128 + b as u128 * num[1] as u128) / *den as u128) as u64
-            }
+            Some((den, num)) if *den > 0 => (a as u128 * num[0] as u128
+                + b as u128 * num[1] as u128)
+                .div_ceil(*den as u128) as u64,
             _ => a.max(b),
         };
     }
@@ -194,6 +194,7 @@ pub fn audit(m: &PublicKey, deltas: &[Delta], head: Option<Head>) -> Report {
     let mut pools: BTreeMap<H32, Pool> = BTreeMap::new();
     let mut resolved: BTreeMap<H32, (u64, [u64; 2])> = BTreeMap::new();
     let mut queued: BTreeMap<H32, u64> = BTreeMap::new();
+    let mut duels: BTreeMap<H32, u64> = BTreeMap::new();
     let mut reports: Vec<(u64, u64, u64)> = Vec::new();
     for d in deltas {
         for e in &d.events {
@@ -241,6 +242,12 @@ pub fn audit(m: &PublicKey, deltas: &[Delta], head: Option<Head>) -> Report {
                     reserve_zat,
                     unswept_zat,
                 } => reports.push((*height, *reserve_zat, *unswept_zat)),
+                LogEvent::DuelOpened { duel, stake, .. } => {
+                    duels.insert(*duel, *stake);
+                }
+                LogEvent::DuelTaken { duel } | LogEvent::DuelCancelled { duel } => {
+                    duels.remove(duel);
+                }
                 _ => {}
             }
         }
@@ -302,7 +309,8 @@ pub fn audit(m: &PublicKey, deltas: &[Delta], head: Option<Head>) -> Report {
             }
         }
         // Reserve reports are checked against the liabilities after this delta.
-        let owed = liabilities(&r.supply, &pools, &resolved, &queued);
+        let owed = liabilities(&r.supply, &pools, &resolved, &queued)
+            + duels.values().sum::<u64>() * ZAT_PER_UNIT;
         for (height, reserve, unswept) in reports.drain(..) {
             if reserve + unswept < owed {
                 r.failures.push(format!(

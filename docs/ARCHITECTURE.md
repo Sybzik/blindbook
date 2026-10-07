@@ -29,7 +29,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **Verify in your browser** | the browser replays the whole market and checks solvency against the public reserve | don't trust us; check us |
 | **What we know about you** | page P600 shows the exact record our server stored for each of your requests (every write response returns it; the app keeps them in your vault) next to the fields it doesn't have (IP, account, balance, other bets) | privacy you can see, not just read about |
 | **Paper slips** | print a position as a thermal-style slip with a QR; scanning it imports it and immediately re-issues it | a bearer bet you can hold in your hand, gift or hide |
-| *Blind duels (stretch)* | challenge anyone with a link; the other side takes it anonymously; it's matched as a complete set and settled by Polymarket's result | peer-to-peer and zero house risk; spreads by link |
+| *Blind duels* | challenge anyone with a link; the other side takes it anonymously; it's matched as a complete set and settled by Polymarket's result (PROTOCOL 7.1) | peer-to-peer and zero house risk; spreads by link |
 
 ## The five layers
 
@@ -302,7 +302,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | D9 | judge vouchers on testnet; the mainnet proof shown in the video with tx evidence | decided |
 | D10 | one mixnet tunnel for browsing and betting with a fresh connection per write (server closes connections, no TLS resumption); a separate tunnel in its own frame for top-ups and withdrawals, plus a random delay | decided; Spike A (Oct 6): frames hold independent tunnels and identities; a fresh connection costs ~2 s, so the poll pre-opens the next write's connection |
 | D11 | "Called it" receipts (tag per trade, reveal by choice) as the signature feature | decided |
-| D12 | Blind duels | stretch |
+| D12 | Blind duels | built (Oct 8): escrowed stake, complete set on take, cancel by secret |
 | D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase only; the 12-word phrase is the backup | decided (core) |
 | D14 | Zcash crates: the NU7 pre-release set, pinned exactly (testnet activated NU7 on Oct 5) | decided (Oct 6, `spikes/c-deposits`) |
 | D15 | Every mixnet tunnel lives in a disposable frame; two race at boot; dead routes are replaced, never bypassed | decided (Oct 6, `spikes/a-mixnet`) |

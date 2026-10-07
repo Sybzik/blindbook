@@ -432,3 +432,212 @@ async fn http_end_to_end_and_restart() {
     w.receive(&resp, &outputs, &change);
     let _ = std::fs::remove_dir_all(&data);
 }
+
+async fn list_market(tx: &tokio::sync::mpsc::Sender<Cmd>, m: &PublicKey) {
+    let (rtx, rrx) = oneshot::channel();
+    tx.send(Cmd::Op(
+        Op::ListMarket {
+            entry: MarketEntry {
+                id: MARKET,
+                params: MarketParams::testnet(),
+                event_start_ms: None,
+                end_ms: u64::MAX,
+                pool: Pool::default(),
+                status: MarketStatus::Open,
+            },
+            keysets: outcome_ids(m, MARKET),
+        },
+        rtx,
+    ))
+    .await
+    .unwrap();
+    rrx.await.unwrap().unwrap();
+}
+
+async fn live(c: &reqwest::Client, base: &str) -> Value {
+    tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
+    c.get(format!("{base}/v1/live"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_blind_duel() {
+    let data = std::env::temp_dir().join(format!("bb-api-duel-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let mut signer = Signer::new(master()).unwrap();
+    let m = signer.public_key();
+    signer.add_vouchers(
+        [H32(sha256(b"DUEL-0001")), H32(sha256(b"DUEL-0002"))],
+        50_000,
+    );
+    let signer = Arc::new(Mutex::new(signer));
+    let (base, tx) = serve(&data, signer.clone(), m).await;
+    blindbook_polymarket::net::install_crypto_provider();
+    let c = reqwest::Client::builder().no_proxy().build().unwrap();
+    list_market(&tx, &m).await;
+    let credit = KeysetKind::Credit;
+    let a = KeysetKind::Outcome {
+        market_id: MARKET.0,
+        outcome: 0,
+    };
+    let b = KeysetKind::Outcome {
+        market_id: MARKET.0,
+        outcome: 1,
+    };
+    // Two strangers, each with a judge code.
+    let mut alice = Wallet::new(&m);
+    let mut bob = Wallet::new(&m);
+    // The toy wallet's secrets come from a counter: keep the two wallets' counters apart.
+    bob.n = 1_000_000;
+    for (w, code) in [(&mut alice, "DUEL-0001"), (&mut bob, "DUEL-0002")] {
+        let outs = w.blank(credit);
+        let (status, resp, _) = post(
+            &c,
+            &base,
+            "/v1/voucher",
+            with_pow(json!({ "code": code, "outputs": outs }), BITS.heavy),
+        )
+        .await;
+        assert_eq!(status, 200, "{resp}");
+        w.receive(&resp, &outs, &[]);
+    }
+
+    // Alice bets A at 40¢ for 10,000 shares: 4,000 in escrow, her A outputs left with the offer.
+    let duel = H32([0xd1; 32]);
+    let secret = [0x5e_u8; 32];
+    let inputs = alice.take(credit);
+    let change = alice.blank(credit);
+    let alice_outs = alice.blank(a);
+    let (status, resp, _) = post(
+        &c,
+        &base,
+        "/v1/duel/open",
+        with_pow(
+            json!({ "duel": duel, "market": MARKET, "outcome": 0, "shares": 10_000, "price_bp": 4_000,
+                    "inputs": inputs, "change_outputs": change, "outputs": alice_outs,
+                    "cancel": H32(sha256(&secret)) }),
+            BITS.light,
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{resp}");
+    alice.receive(&resp, &[], &change);
+    assert_eq!(alice.balance(credit), 46_000);
+    let l = live(&c, &base).await;
+    assert_eq!(l["duels"][0]["duel"], json!(duel));
+    assert_eq!(l["duels"][0]["stake"], 4_000);
+
+    // Bob takes it on other terms: refused. On the offered terms: 10,000 B for 6,000.
+    let take = |w: &mut Wallet, price: u32| {
+        let inputs = w.take(credit);
+        let outs = w.blank(b);
+        let chg = w.blank(credit);
+        let body = json!({ "duel": duel, "outcome": 0, "shares": 10_000, "price_bp": price,
+                           "inputs": inputs.clone(), "outputs": outs, "change_outputs": chg });
+        (inputs, outs, chg, body)
+    };
+    let (back, _, _, body) = take(&mut bob, 3_900);
+    let (status, resp, _) = post(&c, &base, "/v1/duel/take", with_pow(body, BITS.light)).await;
+    assert_eq!((status, resp["error"].as_str()), (422, Some("duel_terms")));
+    bob.slips.extend(back);
+    let (_, outs, chg, body) = take(&mut bob, 4_000);
+    let (status, resp, _) = post(&c, &base, "/v1/duel/take", with_pow(body, BITS.light)).await;
+    assert_eq!(status, 200, "{resp}");
+    assert!(
+        resp["signatures"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s["list"] != "duel"),
+        "Alice's signatures never reach Bob"
+    );
+    bob.receive(&resp, &outs, &chg);
+    assert_eq!(bob.balance(b), 10_000);
+    assert_eq!(bob.balance(credit), 44_000);
+
+    // Alice finds her signatures in the feed everyone polls and unblinds 10,000 A.
+    let l = live(&c, &base).await;
+    assert!(l["duels"].as_array().unwrap().is_empty());
+    let fill = &l["duel_fills"][0];
+    assert_eq!(fill["duel"], json!(duel));
+    let sigs: Vec<Value> = fill["signatures"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| {
+            let mut s = s.clone();
+            s["list"] = json!("outputs");
+            s
+        })
+        .collect();
+    alice.receive(&json!({ "signatures": sigs }), &alice_outs, &[]);
+    assert_eq!(alice.balance(a), 10_000);
+
+    // A second duel, cancelled with the secret: the stake comes back.
+    let duel2 = H32([0xd2; 32]);
+    let inputs = alice.take(credit);
+    let change = alice.blank(credit);
+    let outs2 = alice.blank(b);
+    let (status, resp, _) = post(
+        &c,
+        &base,
+        "/v1/duel/open",
+        with_pow(
+            json!({ "duel": duel2, "market": MARKET, "outcome": 1, "shares": 5_000, "price_bp": 6_000,
+                    "inputs": inputs, "change_outputs": change, "outputs": outs2,
+                    "cancel": H32(sha256(&secret)) }),
+            BITS.light,
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{resp}");
+    alice.receive(&resp, &[], &change);
+    assert_eq!(alice.balance(credit), 43_000);
+    let refund = alice.blank(credit);
+    let (status, resp, _) = post(
+        &c,
+        &base,
+        "/v1/duel/cancel",
+        with_pow(
+            json!({ "duel": duel2, "secret": blindbook_ledger::hex::encode(&[1u8; 32]), "outputs": refund }),
+            BITS.light,
+        ),
+    )
+    .await;
+    assert_eq!((status, resp["error"].as_str()), (422, Some("bad_cancel")));
+    let (status, resp, _) = post(
+        &c,
+        &base,
+        "/v1/duel/cancel",
+        with_pow(
+            json!({ "duel": duel2, "secret": blindbook_ledger::hex::encode(&secret), "outputs": refund }),
+            BITS.light,
+        ),
+    )
+    .await;
+    assert_eq!(status, 200, "{resp}");
+    alice.receive(&resp, &refund, &[]);
+    assert_eq!(alice.balance(credit), 46_000);
+
+    // The block closes; the public log audits clean, and nothing is left in escrow.
+    tx.send(Cmd::Close {
+        height: 7,
+        chain: ChainStats::default(),
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let delta: Delta =
+        serde_json::from_slice(&gunzip_get(&c, &format!("{base}/v1/delta/1.json.gz")).await)
+            .unwrap();
+    let audit = blindbook_verify::audit(&m, std::slice::from_ref(&delta), None);
+    assert!(audit.ok(), "{:?}", audit.failures);
+    // CREDIT 46,000 + 44,000 outstanding, A and B 10,000 each (a complete set).
+    assert_eq!(audit.liabilities_zat, (46_000 + 44_000 + 10_000) * 1_000);
+    let _ = std::fs::remove_dir_all(&data);
+}

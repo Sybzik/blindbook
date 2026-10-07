@@ -31,8 +31,9 @@ const WHO: [string, string][] = [
 
 export function HowPage({ onClose, onOpen }: { onClose: () => void; onOpen?: (id: string) => void }) {
   const [tab, setTab] = useState<'steps' | 'public' | 'layers' | 'who'>('steps');
-  const Tab = ({ id, children }: { id: typeof tab; children: React.ReactNode }) => (
-    <KeyButton variant={tab === id ? 'primary' : 'secondary'} size="sm" onClick={() => setTab(id)} aria-pressed={tab === id}>
+  // A function, not a component: a component declared here would remount on every render.
+  const tabKey = (id: typeof tab, children: React.ReactNode) => (
+    <KeyButton key={id} variant={tab === id ? 'primary' : 'secondary'} size="sm" onClick={() => setTab(id)} aria-pressed={tab === id}>
       {children}
     </KeyButton>
   );
@@ -40,10 +41,10 @@ export function HowPage({ onClose, onOpen }: { onClose: () => void; onOpen?: (id
     <Win title="P500 · HOW IT WORKS" onClose={onClose}>
       <TeletextHeader page="P500" title="THE PRICE IS PUBLIC. YOU ARE NOT." />
       <div className="row" style={{ gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
-        <Tab id="steps">FOUR STEPS</Tab>
-        <Tab id="public">PUBLIC · HIDDEN</Tab>
-        <Tab id="layers">FIVE LAYERS</Tab>
-        <Tab id="who">WHO SEES WHAT</Tab>
+        {tabKey('steps', 'FOUR STEPS')}
+        {tabKey('public', 'PUBLIC · HIDDEN')}
+        {tabKey('layers', 'FIVE LAYERS')}
+        {tabKey('who', 'WHO SEES WHAT')}
       </div>
       {tab === 'steps' && (
         <div className="tk-how">

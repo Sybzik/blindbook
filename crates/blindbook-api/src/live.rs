@@ -11,7 +11,9 @@ use blindbook_ledger::delta::Head;
 use blindbook_ledger::ledger::MarketStatus;
 use serde::Serialize;
 
-use crate::sequencer::{ChainBlock, RecentFill, RecentPayout, RefFn, Shared, now_ms};
+use crate::sequencer::{
+    ChainBlock, DuelFill, OpenDuel, RecentFill, RecentPayout, RefFn, Shared, now_ms,
+};
 
 #[derive(Serialize)]
 pub struct LiveReference {
@@ -42,6 +44,9 @@ pub struct Live {
     pub markets: Vec<LiveMarket>,
     pub recent: Vec<RecentFill>,
     pub payouts: Vec<RecentPayout>,
+    /// Open blind duels anyone can take, and the challengers' signatures of recent takes.
+    pub duels: Vec<OpenDuel>,
+    pub duel_fills: Vec<DuelFill>,
 }
 
 pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
@@ -114,6 +119,19 @@ pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
             .unwrap_or_else(|e| e.into_inner())
             .iter()
             .filter(|p| p.at_ms + crate::sequencer::PAYOUTS_MS >= at_ms)
+            .cloned()
+            .collect(),
+        duels: shared
+            .duels
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone(),
+        duel_fills: shared
+            .duel_fills
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|f| f.at_ms + crate::sequencer::PAYOUTS_MS >= at_ms)
             .cloned()
             .collect(),
     }

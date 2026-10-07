@@ -7,7 +7,7 @@
 import { fromHex, toHex, randomBytes } from './bytes';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { utf8 } from './bytes';
-import { type Pending, type Proof, BLANK_OUTPUTS, blankOutputs, makeOutputs, receive, split } from './blind';
+import { type Pending, type Proof, type SignatureOut, BLANK_OUTPUTS, blankOutputs, makeOutputs, receive, split } from './blind';
 import { type Keyset, creditKeyset, outcomeKeyset } from './keysets';
 import { calledItSecret, calledItTag, decodeSlips, encodeSlips } from './codes';
 import { seal } from './seal';
@@ -16,7 +16,7 @@ import { short, trace } from './trace';
 
 export interface HistoryEntry {
   at_ms: number;
-  kind: 'voucher' | 'topup' | 'buy' | 'sell' | 'redeem' | 'withdraw' | 'receive' | 'send';
+  kind: 'voucher' | 'topup' | 'buy' | 'sell' | 'redeem' | 'withdraw' | 'receive' | 'send' | 'duel_open' | 'duel_take' | 'duel_cancel' | 'duel_won';
   /** What the server stored about it (P600 "what we know"). */
   stored: Record<string, unknown>;
   /** For trades: the called-it secret index and the market/outcome. */
@@ -51,6 +51,23 @@ export interface WalletData {
   local?: LocalData;
   /** Codes we handed over (or printed) and nobody has taken over yet: they can be taken back. */
   outbox?: Outgoing[];
+  /** Blind duels we opened: the counter of the blank outputs left for our shares, the cancel
+   *  secret, and where it stands. */
+  duels?: MyDuel[];
+}
+
+export interface MyDuel {
+  duel: string;
+  market: string;
+  outcome: 0 | 1;
+  shares: number;
+  price_bp: number;
+  stake: number;
+  keyset: string;
+  counter: number;
+  secret: string;
+  at_ms: number;
+  status: 'open' | 'taken' | 'cancelled';
 }
 
 export interface Outgoing {
@@ -344,6 +361,71 @@ export class Wallet {
       await this.save(this.data);
     }
     return total;
+  }
+
+  /** Offer a blind duel: `outcome` at `priceBp` for `shares`; the stake goes into escrow. */
+  async duelOpen(market: string, outcome: 0 | 1, shares: number, priceBp: number): Promise<MyDuel> {
+    const pos = this.keysetOf(market, outcome);
+    const stake = Math.ceil((shares * priceBp) / 10_000);
+    const inputs = select(this.data.slips.filter((s) => s.id === this.credit.id), stake);
+    if (!inputs) throw new Error('not enough CREDIT');
+    const chg = await this.blank(this.credit);
+    const counter = await this.reserve(pos.id, BLANK_OUTPUTS);
+    const outs = blankOutputs(this.seed, pos.id, counter);
+    const duel = toHex(randomBytes(32));
+    const secret = toHex(randomBytes(32));
+    const d: MyDuel = { duel, market, outcome, shares, price_bp: priceBp, stake, keyset: pos.id, counter, secret, at_ms: Date.now(), status: 'open' };
+    // Saved before the request leaves: the cancel secret must never be lost.
+    this.data.duels = [...(this.data.duels ?? []), d];
+    await this.save(this.data);
+    trace(() => `duel   offer ${shares} shares at ${priceBp / 100}¢ · stake ${stake} in escrow · ${BLANK_OUTPUTS} blank outputs left for our shares`);
+    try {
+      const r = await this.api.duelOpen({ duel, market, outcome, shares, price_bp: priceBp, inputs, change_outputs: chg.msgs, outputs: outs.msgs, cancel: toHex(sha256(fromHex(secret))) });
+      const got = receive(r.signatures, { change: chg.pending }, this.keysets(this.credit));
+      await this.commit(inputs, got, { at_ms: Date.now(), kind: 'duel_open', stored: r.stored_record });
+      return d;
+    } catch (e) {
+      this.data.duels = (this.data.duels ?? []).filter((x) => x.duel !== duel);
+      await this.save(this.data);
+      throw e;
+    }
+  }
+
+  /** Take the other side of an open duel on the terms shown. */
+  async duelTake(d: { duel: string; market: string; outcome: 0 | 1; shares: number; price_bp: number; stake: number }) {
+    const mine = this.keysetOf(d.market, d.outcome === 0 ? 1 : 0);
+    const cost = d.shares - d.stake;
+    const inputs = select(this.data.slips.filter((s) => s.id === this.credit.id), cost);
+    if (!inputs) throw new Error('not enough CREDIT');
+    const outs = await this.blank(mine);
+    const chg = await this.blank(this.credit);
+    const r = await this.api.duelTake({ duel: d.duel, outcome: d.outcome, shares: d.shares, price_bp: d.price_bp, inputs, outputs: outs.msgs, change_outputs: chg.msgs });
+    const got = receive(r.signatures, { outputs: outs.pending, change: chg.pending }, this.keysets(mine, this.credit));
+    await this.commit(inputs, got, { at_ms: Date.now(), kind: 'duel_take', stored: r.stored_record });
+    return got.filter((p) => p.id === mine.id).reduce((n, p) => n + p.amount, 0);
+  }
+
+  /** Cancel one of our untaken duels: the stake comes back as CREDIT. */
+  async duelCancel(duel: string): Promise<number> {
+    const d = this.data.duels?.find((x) => x.duel === duel);
+    if (!d) throw new Error('not one of our duels');
+    const outs = await this.blank(this.credit);
+    const r = await this.api.duelCancel(duel, d.secret, outs.msgs);
+    const got = receive(r.signatures, { outputs: outs.pending }, this.keysets(this.credit));
+    d.status = 'cancelled';
+    await this.commit([], got, { at_ms: Date.now(), kind: 'duel_cancel', stored: r.stored_record });
+    return got.reduce((n, p) => n + p.amount, 0);
+  }
+
+  /** A taken duel's signatures (from the public live feed): unblind our shares. */
+  async duelClaim(duel: string, sigs: Omit<SignatureOut, 'list'>[]): Promise<number> {
+    const d = this.data.duels?.find((x) => x.duel === duel && x.status === 'open');
+    if (!d) return 0;
+    const ks = this.keysetOf(d.market, d.outcome);
+    const got = receive(sigs.map((s) => ({ ...s, list: 'duel' as const })), { duel: blankOutputs(this.seed, ks.id, d.counter).pending }, this.keysets(ks));
+    d.status = 'taken';
+    await this.commit([], got, { at_ms: Date.now(), kind: 'duel_won', stored: { kind: 'duel_taken', duel } });
+    return got.reduce((n, p) => n + p.amount, 0);
   }
 
   pendingFor(id: string, counter: number): Pending[] {

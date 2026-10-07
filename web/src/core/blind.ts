@@ -39,7 +39,7 @@ export interface Pending {
 }
 
 export interface SignatureOut {
-  list: 'outputs' | 'change';
+  list: 'outputs' | 'change' | 'duel';
   index: number;
   amount: number;
   id: string;
@@ -85,7 +85,7 @@ export class SignatureError extends Error {}
  */
 export function receive(
   sigs: SignatureOut[],
-  lists: Partial<Record<'outputs' | 'change', Pending[]>>,
+  lists: Partial<Record<'outputs' | 'change' | 'duel', Pending[]>>,
   keysets: Map<string, Keyset>,
 ): Proof[] {
   const seen = new Set<string>();

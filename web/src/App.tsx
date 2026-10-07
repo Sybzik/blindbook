@@ -27,11 +27,13 @@ function want3d(): boolean {
 const CAN_3D = want3d();
 
 const initialProof = location.hash.startsWith('#p=') ? location.hash : undefined;
+const initialDuel = /^#d=[0-9a-f]{64}$/.test(location.hash) ? location.hash.slice(3) : undefined;
 if (location.hash || location.search) history.replaceState(null, '', location.pathname);
 
 export function App() {
   const [proof, setProof] = useState(initialProof);
-  const [phase, setPhase] = useState<'landing' | 'boot' | 'desk'>(proof ? 'desk' : 'landing');
+  const [duel, setDuel] = useState(initialDuel);
+  const [phase, setPhase] = useState<'landing' | 'boot' | 'desk'>(proof || duel ? 'desk' : 'landing');
   const [intro, setIntro] = useState(0);
   const [initial, setInitial] = useState<string | undefined>(undefined);
   const [failed3d, setFailed3d] = useState(false);
@@ -47,8 +49,9 @@ export function App() {
     void start();
     // A proof link pasted into an open tab: take it, clean the address bar, check it.
     const onHash = () => {
-      if (!location.hash.startsWith('#p=')) return;
-      setProof(location.hash);
+      if (location.hash.startsWith('#p=')) setProof(location.hash);
+      else if (/^#d=[0-9a-f]{64}$/.test(location.hash)) setDuel(location.hash.slice(3));
+      else return;
       history.replaceState(null, '', location.pathname);
       setPhase('desk');
     };
@@ -147,6 +150,7 @@ export function App() {
     <Desk
       initial={initial}
       proof={proof}
+      duel={duel}
       onIntro={() => {
         setIntro((i) => i + 1);
         setPhase('landing');

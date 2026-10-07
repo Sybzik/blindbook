@@ -128,6 +128,14 @@ fn kind_of(k: Keyset) -> KeysetKind {
     }
 }
 
+/// A time the API puts in an operation must be within two minutes of the signer's own clock.
+fn clock_ok(now_ms: u64) -> bool {
+    let mine = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64);
+    mine.abs_diff(now_ms) <= 120_000
+}
+
 impl Signer {
     pub fn new(master: MasterKey) -> Result<Self, Error> {
         let credit = master.keyset(KeysetKind::Credit)?;
@@ -294,6 +302,40 @@ impl Signer {
                     } => self.topup_claim_ok(*diversifier_index, txid, *amount),
                 };
                 if claim_ok && Self::outputs_ok(outputs) {
+                    vec![]
+                } else {
+                    vec![0]
+                }
+            }
+            Op::DuelOpen {
+                inputs,
+                change,
+                outputs,
+                now_ms,
+                ..
+            } => {
+                let ok = inputs.iter().all(|i| self.input_ok(i))
+                    && Self::outputs_ok(change)
+                    && Self::outputs_ok(outputs)
+                    && clock_ok(*now_ms);
+                if ok { vec![] } else { vec![0] }
+            }
+            Op::DuelTake {
+                inputs,
+                outputs,
+                change,
+                now_ms,
+                ..
+            } => {
+                // The time decides whether trading is still open: the API can't backdate a take.
+                let ok = inputs.iter().all(|i| self.input_ok(i))
+                    && Self::outputs_ok(outputs)
+                    && Self::outputs_ok(change)
+                    && clock_ok(*now_ms);
+                if ok { vec![] } else { vec![0] }
+            }
+            Op::DuelCancel { outputs, .. } => {
+                if Self::outputs_ok(outputs) {
                     vec![]
                 } else {
                     vec![0]

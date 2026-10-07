@@ -426,6 +426,131 @@ enum Op {
     Withdraw(usize),
 }
 
+#[test]
+fn blind_duels_complete_a_set_and_cancel() {
+    use blindbook_ledger::ledger::{OutputList, duel_stake};
+    let mut w = World::new();
+    w.topup(50_000);
+    let issued_credit_before = w.l.issued[CREDIT];
+    // The challenger bets A at 40¢ for 10,000 share-units: stake 4,000 in escrow.
+    let duel = H32([1; 32]);
+    let secret = [9u8; 32];
+    let cancel = H32(sha256(&secret));
+    let inputs = w.take(CREDIT, 4_000).unwrap();
+    let paid: u64 = inputs.iter().map(|i| i.proof.amount).sum();
+    let change = w.blank(CREDIT);
+    let challenger_outs = w.blank(POS[0]);
+    let e =
+        w.l.duel_open(
+            duel,
+            M,
+            0,
+            10_000,
+            4_000,
+            500,
+            &inputs,
+            &change,
+            &challenger_outs,
+            cancel,
+        )
+        .unwrap();
+    assert_eq!(duel_stake(10_000, 4_000), 4_000);
+    assert_eq!(e.jobs.iter().map(|j| j.amount).sum::<u64>(), paid - 4_000);
+    w.receive(&e);
+    assert_eq!(w.l.duel_escrow(), 4_000);
+    w.check_solvency();
+    // Same id again, wrong terms, and after the event start: refused, nothing spent.
+    let again = w.take(CREDIT, 1).unwrap();
+    let c2 = w.blank(CREDIT);
+    let o2 = w.blank(POS[0]);
+    assert_eq!(
+        w.l.duel_open(duel, M, 0, 10_000, 4_000, 500, &again, &c2, &o2, cancel),
+        Err(Reject::DuelExists)
+    );
+    w.put_back(again);
+    let tin = w.take(CREDIT, 6_000).unwrap();
+    let tout = w.blank(POS[1]);
+    let tchg = w.blank(CREDIT);
+    assert_eq!(
+        w.l.duel_take(duel, (0, 10_000, 4_100), 600, &tin, &tout, &tchg),
+        Err(Reject::DuelTerms)
+    );
+    assert_eq!(
+        w.l.duel_take(duel, (0, 10_000, 4_000), 1_000_000, &tin, &tout, &tchg),
+        Err(Reject::TradingClosed)
+    );
+    // Taken: the taker pays 6,000 and gets 10,000 B now; the challenger's 10,000 A are signed
+    // on the outputs left at opening.
+    let taker_paid: u64 = tin.iter().map(|i| i.proof.amount).sum();
+    let e =
+        w.l.duel_take(duel, (0, 10_000, 4_000), 600, &tin, &tout, &tchg)
+            .unwrap();
+    let sum = |list: OutputList| -> u64 {
+        e.jobs
+            .iter()
+            .filter(|j| j.list == list)
+            .map(|j| j.amount)
+            .sum()
+    };
+    assert_eq!(sum(OutputList::Outputs), 10_000);
+    assert_eq!(sum(OutputList::Duel), 10_000);
+    assert_eq!(sum(OutputList::Change), taker_paid - 6_000);
+    assert!(
+        e.jobs
+            .iter()
+            .filter(|j| j.list == OutputList::Duel)
+            .all(|j| j.id == POS[0])
+    );
+    w.receive(&e);
+    assert_eq!(w.l.duel_escrow(), 0);
+    assert!(w.l.duels.is_empty());
+    // A complete set: 10,000 CREDIT out, 10,000 of each outcome in; the house holds no risk.
+    assert_eq!(
+        w.l.outstanding(Keyset::Outcome {
+            market: M,
+            outcome: 0
+        }),
+        10_000
+    );
+    assert_eq!(
+        w.l.outstanding(Keyset::Outcome {
+            market: M,
+            outcome: 1
+        }),
+        10_000
+    );
+    assert_eq!(
+        w.l.issued[CREDIT] - issued_credit_before,
+        (paid - 4_000) + (taker_paid - 6_000)
+    );
+    w.check_solvency();
+    assert_eq!(
+        w.l.duel_take(duel, (0, 10_000, 4_000), 600, &[], &tout, &tchg),
+        Err(Reject::DuelUnknown)
+    );
+
+    // A second duel, cancelled: wrong secret refused, the right one refunds the stake.
+    let duel2 = H32([2; 32]);
+    let inputs = w.take(CREDIT, 3_000).unwrap();
+    let c = w.blank(CREDIT);
+    let o = w.blank(POS[1]);
+    let e =
+        w.l.duel_open(duel2, M, 1, 5_000, 6_000, 700, &inputs, &c, &o, cancel)
+            .unwrap();
+    w.receive(&e);
+    assert_eq!(w.l.duel_escrow(), 3_000);
+    let refund = w.blank(CREDIT);
+    assert_eq!(
+        w.l.duel_cancel(duel2, &encode(&[8u8; 32]), &refund),
+        Err(Reject::BadCancel)
+    );
+    let e = w.l.duel_cancel(duel2, &encode(&secret), &refund).unwrap();
+    assert_eq!(e.jobs.iter().map(|j| j.amount).sum::<u64>(), 3_000);
+    w.receive(&e);
+    assert_eq!(w.l.duel_escrow(), 0);
+    w.check_solvency();
+}
+
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
         (1u64..40_000).prop_map(Op::Topup),

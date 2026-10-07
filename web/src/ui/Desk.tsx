@@ -92,6 +92,18 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const [toast, setToast] = useState<string | null>(null);
   const [degauss, setDegauss] = useState(false);
   const redactClicks = useRef(new WeakMap<Element, number>());
+  // Background events (top-up credited, duel taken, withdrawal paid) as a toast on any page.
+  const notice = useStore(app, (s) => s.notice);
+  useEffect(() => {
+    if (!notice) return;
+    play('stamp');
+    setToast(notice);
+    const t = setTimeout(() => {
+      setToast((x) => (x === notice ? null : x));
+      app.set({ notice: null });
+    }, 5_000);
+    return () => clearTimeout(t);
+  }, [notice]);
   const say = (s: string) => {
     setToast(s);
     setTimeout(() => setToast((t) => (t === s ? null : t)), 2600);
@@ -138,6 +150,11 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     const first = firstVault.current;
     firstVault.current = false;
     if (first && (proof || duel)) return;
+    // A first visit gets the four steps behind the vault window (the first-visit guide).
+    if (first && vault === 'none' && !initial) {
+      setOpen((o) => (o.includes('how') ? o : [...o, 'how']));
+      setPage('how');
+    }
     if (vault === 'locked' || vault === 'none') setVaultWin(true);
   }, [vault]);
   useEffect(() => {

@@ -12,6 +12,7 @@ import { toHex } from '../../core/bytes';
 import { play } from '../sound';
 
 const SLOTS = ['FIRST SLIP', 'CALLED IT', 'PASSED IN THE DARK'];
+const NONE: string[] = [];
 const freshSeed = () => toHex(crypto.getRandomValues(new Uint8Array(8)));
 
 async function svgImage(svg: SVGSVGElement, fill: string): Promise<HTMLImageElement> {
@@ -136,7 +137,7 @@ async function drawPass(card: HTMLElement, stamps: string[], issued: string): Pr
 }
 
 export function PassPage({ onClose }: { onClose: () => void }) {
-  const stamps = useStore(app, (s) => s.local.stamps ?? []);
+  const stamps = useStore(app, (s) => s.local.stamps) ?? NONE;
   const head = useStore(app, (s) => s.head);
   const [seed, setSeed] = useState(freshSeed);
   const [saving, setSaving] = useState(false);

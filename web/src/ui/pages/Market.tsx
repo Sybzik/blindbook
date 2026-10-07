@@ -71,12 +71,29 @@ function outcomesOf(meta: MarketMeta, live: LiveMarket | undefined, series: Poin
 }
 
 export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void; onClose: () => void }) {
-  const markets = useStore(app, (s) => s.markets);
+  const all = useStore(app, (s) => s.markets);
   const live = useStore(app, (s) => s.live);
   const now = Date.now();
+  // Search and sort happen here, on the catalog every visitor has: nothing is asked for.
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState<'closing' | 'volume' | 'page'>('closing');
+  const closes = (m: MarketMeta) => m.eventStartMs ?? m.endMs;
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const markets = all
+    .filter((m) => words.every((w) => `${m.page} ${m.question} ${m.outcomes.join(' ')} ${m.group ?? ''}`.toLowerCase().includes(w)))
+    .sort((a, b) => (sort === 'closing' ? closes(a) - closes(b) : sort === 'volume' ? (b.volume ?? 0) - (a.volume ?? 0) : a.page.localeCompare(b.page)));
   return (
     <Win title="P100 · MARKETS" onClose={onClose}>
       <TeletextHeader page="P100" title="MARKETS · MIRRORED FROM POLYMARKET" />
+      <div className="row tk-idxbar">
+        <input className="tk-search" type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="search markets, teams, outcomes" aria-label="Search markets" />
+        {(['closing', 'volume', 'page'] as const).map((k) => (
+          <KeyButton key={k} size="sm" variant={sort === k ? 'primary' : 'secondary'} onClick={() => setSort(k)} aria-pressed={sort === k}>
+            {k === 'closing' ? 'CLOSING SOON' : k === 'volume' ? 'VOLUME' : 'PAGE'}
+          </KeyButton>
+        ))}
+        <span className="bb-ui bb-dim">{markets.length} of {all.length}</span>
+      </div>
       <div className="tk-idx" role="list">
         <div className="tk-row tk-head bb-label" aria-hidden="true">
           <span>PAGE</span>
@@ -86,7 +103,8 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
           <span>CLOSES IN</span>
           <span className="hide-sm">STATUS</span>
         </div>
-        {markets.length === 0 && <p className="bb-text bb-dim">{config.mixnet ? 'Loading the catalog over the mixnet…' : 'Loading the catalog…'}</p>}
+        {all.length === 0 && <p className="bb-text bb-dim">{config.mixnet ? 'Loading the catalog over the mixnet…' : 'Loading the catalog…'}</p>}
+        {all.length > 0 && markets.length === 0 && <p className="bb-text bb-dim">No market matches “{q}”.</p>}
         {markets.map((m) => {
           const lm = live?.markets.find((x) => x.id === m.id);
           const a = Math.round(priceA(lm));
@@ -121,6 +139,8 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
 
 function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: MarketMeta; live?: LiveMarket; locked: boolean; lockReason: string | null; onCalledIt: (s: FilledSlip) => void }) {
   const balance = useStore(app, (s) => s.balance);
+  const positions = useStore(app, (s) => s.positions);
+  const held = positions.filter((p) => p.market === meta.id);
   const busy = useStore(app, (s) => s.busy);
   const error = useStore(app, (s) => s.error);
   const head = useStore(app, (s) => s.head);
@@ -193,6 +213,12 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
   return (
     <div className="tk-bet">
       <p className="bb-label" style={{ margin: 0 }}>YOUR BET</p>
+      {held.length > 0 && (
+        <p className="bb-ui bb-dim" style={{ margin: 0 }}>
+          You hold {held.map((p) => `${coin(p.units)} ${meta.outcomes[p.outcome].toUpperCase()}`).join(' · ')}.{' '}
+          <button type="button" className="bb-link" onClick={() => openWindow('slips')}>your slips</button>
+        </p>
+      )}
       {(['a', 'b'] as const).map((s) => {
         const p = Math.round(s === 'a' ? a : 100 - a);
         const l = meta.outcomes[s === 'a' ? 0 : 1].toUpperCase();
@@ -223,7 +249,14 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
           </p>
         )}
         {(locked || tooMuch) && vault === 'unlocked' && (
-          <p className="bb-conditions" style={{ color: locked ? 'var(--alarm)' : 'var(--text-dim)' }}>{lockReason ?? 'Not enough balance. Top up in F3 CAGE.'}</p>
+          <p className="bb-conditions" style={{ color: locked ? 'var(--alarm)' : 'var(--text-dim)' }}>
+            {lockReason ?? (
+              <>
+                Not enough balance for {amt} {COIN}.{' '}
+                <button type="button" className="bb-link" onClick={() => openWindow('cage')}>top up in the cage</button>
+              </>
+            )}
+          </p>
         )}
         {error && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{error}</p>}
       </div>

@@ -59,6 +59,8 @@ export interface AppState {
   local: LocalData;
   outbox: Outgoing[];
   duels: MyDuel[];
+  /** A withdrawal waiting out its random privacy delay: when it will be sent. */
+  delayUntil: number | null;
   busy: string | null;
   notice: string | null;
   error: string | null;
@@ -77,6 +79,7 @@ export const app = createStore<AppState>({
   local: {},
   outbox: [],
   duels: [],
+  delayUntil: null,
   busy: null,
   notice: null,
   error: null,
@@ -126,6 +129,8 @@ async function pollLive() {
     }
     app.set({ live, series });
     void claimDuels(live);
+    void notePayouts(live);
+    void pollTopups();
   } catch {
     // The lamp shows the link state; a missed poll is retried.
   }
@@ -291,23 +296,100 @@ async function act<T>(label: string, f: (w: Wallet) => Promise<T>): Promise<T> {
   }
 }
 
+/** Every refusal in plain words. Refusals always happen before anything is spent. */
+const PLAIN: Record<string, string> = {
+  spent: 'Those slips were already spent. Nothing was taken.',
+  duplicate: 'The same slip was sent twice. Nothing was taken.',
+  invalid_slip: "A slip's signature didn't check out. Nothing was taken.",
+  invalid_claim: 'That code was already used, or the payment is not confirmed yet.',
+  bad_limit: 'That price is not allowed (1–99¢).',
+  bad_amount: 'That amount is not allowed.',
+  bad_withdrawal_amount: 'Withdrawals use the standard amounts only.',
+  unbalanced: "The amounts don't add up (not enough balance for this). Nothing was spent.",
+  unknown_market: 'That market is not listed here.',
+  market_resolved: 'This market is resolved: cash in your winning slips instead.',
+  not_resolved: 'This market is not resolved yet: cash-in opens when Polymarket’s result is final.',
+  nothing_to_redeem: 'This outcome lost: those shares pay nothing.',
+  trading_closed: 'Trading has closed for this market (the event started, or Polymarket paused it).',
+  duel_unknown: 'That challenge is no longer open: someone took it, or it was cancelled.',
+  duel_exists: 'That challenge already exists. Try again.',
+  duel_terms: 'The challenge changed since you looked. Check it and take it again.',
+  bad_duel: 'That duel is not allowed: price 1–99¢, and a positive size.',
+  bad_cancel: 'Only the challenger can cancel this duel.',
+  supply_guard: 'Withdrawals are paused while the operator checks the books. Your slips keep their value.',
+  unavailable: 'The service is busy for a moment. Nothing was spent; try again.',
+  'proof-of-work': 'The request was malformed. Nothing was spent.',
+  'malformed request': 'The request was malformed. Nothing was spent.',
+};
+
 export function plainError(e: ApiError): string {
-  switch (e.code) {
-    case 'spent':
-      return 'Those slips were already spent. Nothing was taken.';
-    case 'invalid_claim':
-      return 'That code was already used, or the payment is not confirmed yet.';
-    case 'bad_limit':
-    case 'bad_amount':
-      return 'That amount or price is not allowed.';
-    case 'market_resolved':
-      return 'This market is resolved: redeem instead.';
-    case 'unavailable':
-      return 'The service is busy for a moment. Nothing was spent; try again.';
-    case 'proof-of-work':
-      return 'The request was malformed. Nothing was spent.';
-    default:
-      return `Refused (${e.code}). Nothing was spent.`;
+  return PLAIN[e.code] ?? `Refused (${e.code.replace(/_/g, ' ')}). Nothing was spent.`;
+}
+
+/** One cage per pending top-up: polled in the background (whatever window is open) and
+ *  closed once credited or expired. */
+const cages = new Map<string, Transport & { close(): void }>();
+let polling = false;
+async function pollTopups() {
+  if (!wallet || polling) return;
+  const h = app.get().head?.height ?? 0;
+  const pending = wallet.data.topups.filter((t) => t.status === 'awaiting' || t.status === 'seen');
+  if (!pending.length) return;
+  polling = true;
+  try {
+    for (const t of pending) {
+      if (t.status === 'awaiting' && h > t.expires_height) {
+        // Nothing arrived while the address was valid: it is retired, nothing was lost.
+        t.status = 'expired';
+        cages.get(t.id)?.close();
+        cages.delete(t.id);
+        await vault.save(wallet.data);
+        continue;
+      }
+      let w = wallet;
+      if (config.mixnet) {
+        let cage = cages.get(t.id);
+        if (!cage) {
+          cage = await openCage(config.api, config.ipr);
+          cages.set(t.id, cage);
+        }
+        w = new Wallet(wallet.data, config.m, new Api(cage, powInWorkers), (d) => vault.save(d));
+      }
+      const before = t.status;
+      const rec = await w.topupPoll(t.id);
+      if (rec.status === 'credited' || rec.status === 'confirmed') {
+        cages.get(t.id)?.close();
+        cages.delete(t.id);
+        app.set({ notice: `Top-up credited: +${(rec.amount_zat / 1e8).toFixed(4)} ${config.network === 'mainnet' ? 'ZEC' : 'TAZ'} is in your balance.` });
+      } else if (before === 'awaiting' && rec.status === 'seen') {
+        app.set({ notice: 'Top-up SEEN in the mempool: crediting…' });
+      }
+    }
+    refreshWallet();
+  } catch {
+    /* retried on the next tick */
+  } finally {
+    polling = false;
+  }
+}
+
+/** Our withdrawals paid, from the payouts every visitor polls: remembered in the vault. */
+async function notePayouts(live: Live) {
+  if (!wallet || !live.payouts?.length) return;
+  const paid = { ...(wallet.data.local?.paid ?? {}) };
+  let fresh = 0;
+  for (const h of wallet.data.history) {
+    const c = h.kind === 'withdraw' ? (h.stored.commitment as string | undefined) : undefined;
+    if (!c || paid[c]) continue;
+    const p = live.payouts.find((x) => x.commitments.includes(c));
+    if (p) {
+      paid[c] = p.txid;
+      fresh++;
+    }
+  }
+  if (fresh) {
+    await setLocal({ paid });
+    app.set({ notice: fresh === 1 ? 'Your withdrawal was paid. The address is forgotten.' : `${fresh} withdrawals were paid. The addresses are forgotten.` });
   }
 }
 
@@ -320,8 +402,10 @@ async function claimDuels(live: Live) {
   if (!fills.length) return;
   claiming = true;
   try {
-    for (const f of fills) await wallet.duelClaim(f.duel, f.signatures);
+    let n = 0;
+    for (const f of fills) n += await wallet.duelClaim(f.duel, f.signatures);
     refreshWallet();
+    app.set({ notice: `Your duel was taken: ${(n / 100_000).toFixed(4)} shares are in your slips.` });
   } catch {
     /* retried on the next poll */
   } finally {
@@ -369,24 +453,32 @@ export const actions = {
       await earnStamp('PASSED IN THE DARK');
       return n;
     }),
-  /** Top-ups and withdrawals run over a separate one-off mixnet identity (the cage). */
+  /** A top-up runs over its own mixnet identity (a cage), kept until it is credited: the
+   *  betting tunnel never touches it. */
   async topupStart(amountZat: number) {
     return act('OPENING THE CAGE', async (w) => {
       if (!config.mixnet) return w.topupStart(amountZat);
       const cage = await openCage(config.api, config.ipr);
       try {
-        const cw = new Wallet(w.data, config.m, new Api(cage, powInWorkers), (d) => vault.save(d));
-        return await cw.topupStart(amountZat);
-      } finally {
+        const rec = await new Wallet(w.data, config.m, new Api(cage, powInWorkers), (d) => vault.save(d)).topupStart(amountZat);
+        cages.set(rec.id, cage);
+        return rec;
+      } catch (e) {
         cage.close();
+        throw e;
       }
     });
   },
-  topupPoll: (id: string) => act('CHECKING', (w) => w.topupPoll(id)),
   async withdraw(units: number, address: string) {
     return act('WITHDRAWING', async (w) => {
       // A random 0–60 s privacy delay before sending (PROTOCOL section 1), from a separate identity.
-      await new Promise((r) => setTimeout(r, config.dev ? 500 : Math.random() * 60_000));
+      const ms = config.dev ? 3_000 : Math.random() * 60_000;
+      app.set({ delayUntil: Date.now() + ms });
+      try {
+        await new Promise((r) => setTimeout(r, ms));
+      } finally {
+        app.set({ delayUntil: null });
+      }
       if (!config.mixnet) return w.withdraw(units, address, config.sealPk);
       const cage = await openCage(config.api, config.ipr);
       try {

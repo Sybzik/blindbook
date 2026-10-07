@@ -40,6 +40,7 @@ async function up() {
 
 const requests = [];
 const violations = [];
+const errors = [];
 let failed = false;
 try {
   await up();
@@ -49,7 +50,9 @@ try {
   page.on('request', (r) => requests.push(r.url()));
   page.on('console', (m) => {
     if (/Refused to|violates the following Content Security Policy/i.test(m.text())) violations.push(m.text());
+    else if (m.type() === 'error' && /Maximum update depth|getSnapshot should be cached|Uncaught|TypeError|ReferenceError/i.test(m.text())) errors.push(m.text());
   });
+  page.on('pageerror', (e) => errors.push(String(e)));
   await page.evaluateOnNewDocument(() => {
     document.addEventListener('securitypolicyviolation', (e) => console.error(`Refused to load: CSP ${e.violatedDirective} ${e.blockedURI}`));
   });
@@ -100,7 +103,12 @@ try {
     console.error('CSP VIOLATIONS:');
     for (const v of new Set(violations)) console.error('  ' + v);
   }
-  if (!failed) console.log('LEAK CHECK OK: only same-origin requests, no CSP violations');
+  if (errors.length) {
+    failed = true;
+    console.error('PAGE ERRORS:');
+    for (const v of new Set(errors)) console.error('  ' + v);
+  }
+  if (!failed) console.log('LEAK CHECK OK: only same-origin requests, no CSP violations, no page errors');
 } catch (e) {
   failed = true;
   console.error(e);

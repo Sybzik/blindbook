@@ -44,12 +44,12 @@ export function encodeSlips(slips: Proof[]): string {
 
 export function decodeSlips(text: string): Proof[] {
   const body = text.trim();
-  if (!body.startsWith(SLIP_PREFIX)) throw new Error('not a slip code');
+  if (!body.startsWith(SLIP_PREFIX)) throw new Error('That is not a slip code (they start with bbslip1:).');
   const v = decode(fromBase64url(body.slice(SLIP_PREFIX.length)));
-  if (!Array.isArray(v) || v.length === 0 || v.length > 64) throw new Error('malformed slip code');
+  if (!Array.isArray(v) || v.length === 0 || v.length > 64) throw new Error('That slip code is incomplete or was changed.');
   return v.map((s) => {
     if (!Array.isArray(s) || typeof s[0] !== 'string' || typeof s[1] !== 'number' || typeof s[2] !== 'string' || !(s[3] instanceof Uint8Array) || s[3].length !== 33) {
-      throw new Error('malformed slip');
+      throw new Error('That slip code is incomplete or was changed.');
     }
     return { id: s[0], amount: s[1], secret: s[2], C: toHex(s[3]) };
   });

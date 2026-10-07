@@ -149,9 +149,12 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
         <LeaderRow label="OPEN POSITIONS" value={positions.length} />
       </div>
       <div className="row" style={{ gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-        <KeyButton variant="secondary" size="sm" disabled={balance < 1_000 || !!busy} onClick={() => handOver(creditKeyset(config.m).id, 1_000, `0.01 ${COIN} OF CREDIT`)} data-hint="Hands 0.01 of your balance to someone as a code or QR.">
-          HAND OVER 0.01
-        </KeyButton>
+        {[1_000, 5_000, 10_000].filter((u) => u <= balance).map((u) => (
+          <KeyButton key={u} variant="secondary" size="sm" disabled={!!busy} onClick={() => handOver(creditKeyset(config.m).id, u, `${coin(u, 2)} ${COIN} OF BALANCE`)}
+            data-hint={`Hands ${coin(u, 2)} of your balance to someone as a code or QR. Whoever takes it over first owns it.`}>
+            HAND OVER {coin(u, 2)}
+          </KeyButton>
+        ))}
         <KeyButton variant="secondary" size="sm" icon="qr" disabled={!!busy} onClick={() => setScanning(true)} data-hint="Scan a slip QR from paper or another screen.">
           SCAN A SLIP
         </KeyButton>
@@ -184,6 +187,8 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
           const a = lm?.price_a_ppm ? lm.price_a_ppm / 10_000 : 50;
           const price = Math.round(p.outcome === 0 ? a : 100 - a);
           const bid = lm ? Math.max(1, Math.floor(lm.reference.bid_ppm[p.outcome] / 100) - 300) : 1;
+          // What selling now would roughly bring: our price for this outcome, less the 1% fee.
+          const sellNow = Math.floor((p.units * price) / 100 * 0.99);
           const outcome = m.outcomes[p.outcome].toUpperCase();
           const serial = p.keyset.slice(2, 8).toUpperCase();
           return (
@@ -194,7 +199,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
                 {status === 'won' ? (
                   <KeyButton size="sm" disabled={!!busy} onClick={() => actions.redeem(p.market, p.outcome).then((n) => setMsg(`Cashed in: ${coinLabel(n)} added to your balance.`)).catch(() => undefined)} data-hint="Moves the winnings into your free balance.">CASH IN</KeyButton>
                 ) : (
-                  <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint="Sells the whole slip at the current price (never below Polymarket's bid, minus 3¢ slack).">SELL</KeyButton>
+                  <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint={`Sells the whole slip at the price of the next batch: about ${coin(sellNow)} ${COIN} now, never below Polymarket's bid minus 3¢.`}>SELL · ≈{coin(sellNow, 3)}</KeyButton>
                 )}
                 <KeyButton variant="secondary" size="sm" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`)} data-hint="Hands the slip to someone as a code. No chain transaction, no record of who held it.">HAND OVER</KeyButton>
                 <KeyButton variant="secondary" size="sm" icon="qr" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`, { market: m.question, outcome, shares: coin(p.units), serial })} data-hint="Prints bearer paper. Whoever scans it owns it.">PRINT</KeyButton>

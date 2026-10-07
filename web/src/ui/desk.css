@@ -31,6 +31,12 @@
 /* P100 between phone and full width: the Polymarket column goes first. */
 @container (min-width:681px) and (max-width:1040px){.tk-row{grid-template-columns:56px minmax(0,1fr) 250px 100px 90px;gap:12px}.tk-row>:nth-child(4){display:none}}
 
+/* P100 search and sort */
+.tk-idxbar{gap:8px;margin-top:14px;flex-wrap:wrap}
+.tk-search{flex:1 1 220px;min-height:36px;padding:0 10px;background:var(--glass);border:1px solid var(--phosphor-mid);color:var(--phosphor);font-family:var(--font-ui);font-size:14px}
+.tk-search::placeholder{color:var(--text-dim)}
+.tk-search:focus{outline:2px solid var(--focus-ring);outline-offset:1px}
+
 /* P500 */
 .tk-cols{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-top:16px}
 .tk-list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}

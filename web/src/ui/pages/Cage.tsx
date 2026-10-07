@@ -12,6 +12,7 @@ import { useStore } from '../../app/store';
 import { COIN, TOPUP_ZAT, WITHDRAWAL_FEE_UNITS, WITHDRAW_UNITS, ZERO_CONF_ZAT, config } from '../../app/config';
 import { coin, coinLabel, height, utc, zat } from '../../app/format';
 import { Shredder } from '../Shredder';
+import { openWindow } from '../uistate';
 import type { TopupRecord } from '../../core/wallet';
 
 type Check = 'ok' | 'fail';
@@ -96,22 +97,18 @@ function TopUp() {
   const options = TOPUP_ZAT.map((z) => zat(z, z < 1_000_000 ? 3 : 2));
   const [amt, setAmt] = useState(options[1] ?? options[0]!);
   const [step, setStep] = useState<'amount' | 'preflight' | 'ready' | 'receipt'>('amount');
-  const [rec, setRec] = useState<TopupRecord | null>(null);
-  const amountZat = TOPUP_ZAT[options.indexOf(amt)] ?? TOPUP_ZAT[0]!;
+  // The record lives in the vault and is polled in the background (services), so closing this
+  // window never stalls a top-up; the newest unfinished one reopens here.
+  const topups = useStore(app, (s) => s.topups);
+  const [recId, setRecId] = useState<string | null>(() => [...topups].reverse().find((t) => t.status === 'awaiting' || t.status === 'seen')?.id ?? null);
+  const rec: TopupRecord | null = topups.find((t) => t.id === recId) ?? null;
   useEffect(() => {
-    if (!rec || rec.status === 'credited' || rec.status === 'confirmed') return;
-    const t = setInterval(async () => {
-      try {
-        setRec({ ...(await actions.topupPoll(rec.id)) });
-      } catch {
-        /* retried */
-      }
-    }, 2_000);
-    return () => clearInterval(t);
-  }, [rec]);
+    if (rec && step !== 'receipt') setStep('receipt');
+  }, [recId]);
+  const amountZat = TOPUP_ZAT[options.indexOf(amt)] ?? TOPUP_ZAT[0]!;
   const start = async () => {
     try {
-      setRec(await actions.topupStart(amountZat));
+      setRecId((await actions.topupStart(amountZat)).id);
       setStep('receipt');
     } catch {
       /* shown */
@@ -125,7 +122,7 @@ function TopUp() {
       <div className="tk-steps">
         {S(1, 'PICK A STANDARD AMOUNT', true)}
         <div data-hint="Standard sizes keep you in the crowd.">
-          <AmountChips value={amt} options={options} unit={COIN} onChange={(v: string) => { setAmt(v); setStep('amount'); setRec(null); }} />
+          <AmountChips value={amt} options={options} unit={COIN} onChange={(v: string) => { setAmt(v); setStep('amount'); setRecId(null); }} />
         </div>
         {step === 'amount' && <div><KeyButton onClick={() => setStep('preflight')}>CONTINUE</KeyButton></div>}
         {S(2, 'PRIVACY PREFLIGHT', step !== 'amount')}
@@ -149,7 +146,7 @@ function TopUp() {
               {config.dev && status === 'awaiting' && (
                 <KeyButton variant="secondary" size="sm" onClick={() => fetch(`/dev/pay/${rec.id}`, { method: 'POST' })}>SIMULATE PAYMENT (DEV)</KeyButton>
               )}
-              {status === 'credited' && <KeyButton variant="secondary" size="sm" onClick={() => { setStep('amount'); setRec(null); }}>TOP UP AGAIN</KeyButton>}
+              {(status === 'credited' || rec.status === 'expired') && <KeyButton variant="secondary" size="sm" onClick={() => { setStep('amount'); setRecId(null); }}>TOP UP AGAIN</KeyButton>}
             </div>
           </div>
         )}
@@ -193,11 +190,18 @@ function Code() {
   return (
     <div className="tk-cage">
       <div className="tk-steps" style={{ gap: 16 }}>
-        <TextInput label="JUDGE CODE" placeholder="BB-XXXX-XXXX-…" value={code} onChange={(v: string) => { setCode(v); setDone(null); }} message="A single-use code from the organisers. It never identifies you." />
-        <div>
-          <KeyButton disabled={code.trim().length < 6 || !!busy} loading={busy === 'REDEEMING CODE'} onClick={() => actions.voucher(code.trim()).then(setDone).catch(() => undefined)}>REDEEM</KeyButton>
-        </div>
-        {done !== null && <p className="bb-conditions">Added {coinLabel(done)} to your balance.</p>}
+        <form className="col" style={{ gap: 12 }} onSubmit={(e) => { e.preventDefault(); if (code.trim().length >= 6 && !busy) actions.voucher(code.trim()).then(setDone).catch(() => undefined); }}>
+          <TextInput label="JUDGE CODE" placeholder="BB-XXXX-XXXX-…" value={code} onChange={(v: string) => { setCode(v); setDone(null); }} message="A single-use code from the organisers. Letter case and spaces don't matter. It never identifies you." />
+          <div>
+            <KeyButton type="submit" disabled={code.trim().length < 6 || !!busy} loading={busy === 'REDEEMING CODE'}>REDEEM</KeyButton>
+          </div>
+        </form>
+        {done !== null && (
+          <p className="bb-conditions" role="status">
+            Added {coinLabel(done)} to your balance.{' '}
+            <button type="button" className="bb-link" onClick={() => openWindow('markets')}>pick a market</button>
+          </p>
+        )}
         {error && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{error}</p>}
       </div>
       <div />
@@ -214,6 +218,14 @@ function Withdraw() {
   const [amt, setAmt] = useState(options[0]!);
   const [sent, setSent] = useState<string | null>(null);
   const [shred, setShred] = useState<string | null>(null);
+  const delayUntil = useStore(app, (s) => s.delayUntil);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    if (!delayUntil) return;
+    const t = setInterval(() => tick((n) => n + 1), 500);
+    return () => clearInterval(t);
+  }, [delayUntil]);
+  const secondsLeft = delayUntil ? Math.max(0, Math.ceil((delayUntil - Date.now()) / 1000)) : 0;
   const history = useStore(app, (s) => s.history);
   const payouts = useStore(app, (s) => s.live?.payouts);
   const paidSeen = useStore(app, (s) => s.local.paid);
@@ -228,11 +240,6 @@ function Withdraw() {
       const paid = paidSeen?.[c] ?? payouts?.find((p) => p.commitments.includes(c))?.txid;
       return { c, at: h.at_ms, amount: Number(h.stored.amount ?? 0), paid };
     });
-  // Remember a payout once seen, in the vault: the live feed only keeps 30 minutes.
-  useEffect(() => {
-    const fresh = mine.filter((w) => w.paid && !paidSeen?.[w.c]);
-    if (fresh.length) void setLocal({ paid: { ...paidSeen, ...Object.fromEntries(fresh.map((w) => [w.c, w.paid!])) } });
-  }, [payouts]);
   const withdraw = () =>
     actions
       .withdraw(units, addr)
@@ -267,8 +274,13 @@ function Withdraw() {
         </div>
         <div>
           <KeyButton disabled={st !== 'valid' || !enough || !!busy} loading={busy === 'WITHDRAWING'} onClick={withdraw}>
-            {busy === 'WITHDRAWING' ? 'WAITING · PRIVACY DELAY' : 'WITHDRAW'}
+            {busy === 'WITHDRAWING' ? (delayUntil ? `SENDING IN ${secondsLeft} S` : 'SENDING') : 'WITHDRAW'}
           </KeyButton>
+          {delayUntil && (
+            <p className="bb-conditions" role="status">
+              Waiting a random moment before sending, so the time of this withdrawal can't be matched to anything you did. Keep this page open.
+            </p>
+          )}
           {!enough && <p className="bb-conditions">Not enough balance for {amt} {COIN} plus the fee.</p>}
           {sent && <p className="bb-conditions">Queued for the next payout. The address was sealed to the signer, who forgets it once paid; the server keeps only the commitment {sent.slice(0, 12)}….</p>}
           {error && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{error}</p>}

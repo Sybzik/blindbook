@@ -233,7 +233,7 @@ export class Wallet {
   async buy(market: string, outcome: 0 | 1, amount: number, limitBp: number) {
     const pos = this.keysetOf(market, outcome);
     const inputs = select(this.data.slips.filter((s) => s.id === this.credit.id), amount);
-    if (!inputs) throw new Error('not enough CREDIT');
+    if (!inputs) throw new Error('Not enough balance for this. Top up in F3 CAGE.');
     return this.trade('buy', market, outcome, amount, limitBp, inputs, pos, this.credit);
   }
 
@@ -241,7 +241,7 @@ export class Wallet {
   async sell(market: string, outcome: 0 | 1, shares: number, limitBp: number) {
     const pos = this.keysetOf(market, outcome);
     const inputs = select(this.data.slips.filter((s) => s.id === pos.id), shares);
-    if (!inputs) throw new Error('not enough shares');
+    if (!inputs) throw new Error('You hold fewer shares than that.');
     return this.trade('sell', market, outcome, shares, limitBp, inputs, this.credit, pos);
   }
 
@@ -272,7 +272,7 @@ export class Wallet {
   async redeem(market: string, outcome: 0 | 1): Promise<number> {
     const pos = this.keysetOf(market, outcome);
     const inputs = this.data.slips.filter((s) => s.id === pos.id).slice(0, 64);
-    if (inputs.length === 0) throw new Error('no shares of this outcome');
+    if (inputs.length === 0) throw new Error('You hold no shares of this outcome.');
     const outs = await this.blank(this.credit);
     const r = await this.api.redeem(inputs, outs.msgs);
     const got = receive(r.signatures, { outputs: outs.pending }, this.keysets(this.credit));
@@ -283,7 +283,7 @@ export class Wallet {
   /** Withdraw `amount` units (a standard amount) to an address sealed to the signer. */
   async withdraw(amount: number, address: string, sealPk: string, fee = 20) {
     const inputs = select(this.data.slips.filter((s) => s.id === this.credit.id), amount + fee);
-    if (!inputs) throw new Error('not enough CREDIT');
+    if (!inputs) throw new Error('Not enough balance for this. Top up in F3 CAGE.');
     const chg = await this.blank(this.credit);
     const sealed = await seal(sealPk, address);
     trace(() => `seal   address → X25519 + HKDF + AES-GCM to the signer's pinned key · only the signer can open it · ${sealed.sealed.slice(0, 18)}… · commitment ${short(sealed.commitment)}`);
@@ -298,7 +298,7 @@ export class Wallet {
     const ks = this.known.get(id);
     if (!ks) throw new Error('unknown keyset');
     let picked = select(this.data.slips.filter((s) => s.id === id), amount);
-    if (!picked) throw new Error('not enough');
+    if (!picked) throw new Error('Not enough of that slip to hand over.');
     const total = picked.reduce((n, p) => n + p.amount, 0);
     if (total !== amount) {
       // Swap into exactly `amount` + the rest, so the code carries no more than asked.
@@ -345,9 +345,9 @@ export class Wallet {
   async receiveCode(code: string): Promise<number> {
     const slips = decodeSlips(code);
     const id = slips[0]!.id;
-    if (!slips.every((s) => s.id === id)) throw new Error('mixed keysets in one code');
+    if (!slips.every((s) => s.id === id)) throw new Error('That code mixes different slips; ask for one code per slip.');
     const ks = this.known.get(id);
-    if (!ks) throw new Error("slips of a keyset we don't know");
+    if (!ks) throw new Error('That code is for a market this app does not list (yet).');
     const total = slips.reduce((n, s) => n + s.amount, 0);
     const amounts = split(total);
     const start = await this.reserve(id, amounts.length);
@@ -368,7 +368,7 @@ export class Wallet {
     const pos = this.keysetOf(market, outcome);
     const stake = Math.ceil((shares * priceBp) / 10_000);
     const inputs = select(this.data.slips.filter((s) => s.id === this.credit.id), stake);
-    if (!inputs) throw new Error('not enough CREDIT');
+    if (!inputs) throw new Error('Not enough balance for this. Top up in F3 CAGE.');
     const chg = await this.blank(this.credit);
     const counter = await this.reserve(pos.id, BLANK_OUTPUTS);
     const outs = blankOutputs(this.seed, pos.id, counter);
@@ -396,7 +396,7 @@ export class Wallet {
     const mine = this.keysetOf(d.market, d.outcome === 0 ? 1 : 0);
     const cost = d.shares - d.stake;
     const inputs = select(this.data.slips.filter((s) => s.id === this.credit.id), cost);
-    if (!inputs) throw new Error('not enough CREDIT');
+    if (!inputs) throw new Error('Not enough balance for this. Top up in F3 CAGE.');
     const outs = await this.blank(mine);
     const chg = await this.blank(this.credit);
     const r = await this.api.duelTake({ duel: d.duel, outcome: d.outcome, shares: d.shares, price_bp: d.price_bp, inputs, outputs: outs.msgs, change_outputs: chg.msgs });

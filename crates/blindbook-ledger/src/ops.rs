@@ -107,8 +107,8 @@ impl Applied {
         }
     }
 
-    /// Every spent `Y`.
-    pub fn spent(&self) -> Vec<&String> {
+    /// Every spent slip.
+    pub fn spent(&self) -> Vec<&crate::delta::SpentRecord> {
         match self {
             Applied::Trades(b) => b.outcomes.iter().flat_map(|o| &o.effects.spent).collect(),
             Applied::Effects(e) | Applied::Redeemed { effects: e, .. } => e.spent.iter().collect(),

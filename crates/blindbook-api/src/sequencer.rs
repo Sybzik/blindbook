@@ -144,6 +144,9 @@ struct Snapshot<'a> {
     markets: Vec<MarketView>,
     issued: &'a [IssuedRecord],
     spent: Vec<&'a String>,
+    /// Units issued and spent per keyset id: outstanding = issued − spent (solvency check).
+    issued_total: &'a BTreeMap<String, u64>,
+    spent_total: &'a BTreeMap<String, u64>,
     house: i64,
 }
 
@@ -504,6 +507,8 @@ impl Sequencer {
                     markets,
                     issued: &self.all_issued,
                     spent,
+                    issued_total: &self.ledger.issued,
+                    spent_total: &self.ledger.burned,
                     house: self.ledger.house,
                 },
             )

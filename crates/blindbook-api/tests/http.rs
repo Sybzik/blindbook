@@ -374,6 +374,12 @@ async fn http_end_to_end_and_restart() {
     assert_eq!(delta.batches.len(), 1);
     assert_eq!(delta.batches[0].orders[0].tag, tag);
     assert!(delta.issued.len() > 10 && delta.spent.len() > 3);
+    // The independent audit: chain, replayed batches, pools, DLEQ of every signature, supply.
+    let audit = blindbook_verify::audit(&m, std::slice::from_ref(&delta), Some(got));
+    assert!(audit.ok(), "{:?}", audit.failures);
+    assert_eq!(audit.batches, 1);
+    assert_eq!(audit.signatures as usize, delta.issued.len());
+    assert_eq!(audit.markets, 1);
     let snap: Value = serde_json::from_slice(
         &gunzip_get(&c, &format!("{base}/v1/snapshot/latest.json.gz")).await,
     )

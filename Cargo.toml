@@ -11,6 +11,7 @@ members = [
   "crates/blindbook-seal",
   "crates/blindbook-signer",
   "crates/blindbook-treasury",
+  "crates/blindbook-verify",
 ]
 exclude = ["spikes"]
 

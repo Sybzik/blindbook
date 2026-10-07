@@ -410,6 +410,7 @@ dependencies = [
  "blindbook-polymarket",
  "blindbook-seal",
  "blindbook-signer",
+ "blindbook-verify",
  "flate2",
  "futures-util",
  "reqwest",
@@ -569,6 +570,21 @@ dependencies = [
  "zcash_protocol",
  "zip32",
  "zip321",
+]
+
+[[package]]
+name = "blindbook-verify"
+version = "0.1.0"
+dependencies = [
+ "blindbook-engine",
+ "blindbook-ledger",
+ "blindbook-mint",
+ "flate2",
+ "reqwest",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

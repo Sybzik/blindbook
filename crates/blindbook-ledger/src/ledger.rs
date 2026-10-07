@@ -192,10 +192,10 @@ pub enum OutputList {
     Change,
 }
 
-/// What an accepted request did: slips spent (their `Y`) and outputs to sign.
+/// What an accepted request did: slips spent and outputs to sign.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Effects {
-    pub spent: Vec<String>,
+    pub spent: Vec<crate::delta::SpentRecord>,
     pub jobs: Vec<SignJob>,
 }
 
@@ -349,6 +349,29 @@ fn price_bp(paid: u64, shares: u64) -> u32 {
     }
 }
 
+/// The public record of an engine fill (normative: the verifier rebuilds it the same way).
+pub fn fill_record(tag: H32, side: Side, f: &engine::Fill) -> FillRecord {
+    FillRecord {
+        tag,
+        status: f.status.into(),
+        kept: f.kept,
+        out: f.out,
+        fee: f.fee,
+        refund: f.refund,
+        avg_price_bp: match side {
+            Side::Buy => price_bp(f.kept, f.out),
+            Side::Sell => price_bp(f.out + f.fee, f.kept),
+        },
+    }
+}
+
+impl Pool {
+    /// The engine's market state.
+    pub fn to_engine(&self) -> engine::Market {
+        self.engine()
+    }
+}
+
 impl Ledger {
     pub fn new(keysets: KeysetIds) -> Self {
         Ledger {
@@ -431,7 +454,11 @@ impl Ledger {
         for i in inputs {
             self.spent.insert(i.y.clone());
             *self.burned.entry(i.proof.id.clone()).or_default() += i.proof.amount;
-            effects.spent.push(i.y.clone());
+            effects.spent.push(crate::delta::SpentRecord {
+                y: i.y.clone(),
+                id: i.proof.id.clone(),
+                amount: i.proof.amount,
+            });
         }
     }
 
@@ -566,19 +593,7 @@ impl Ledger {
             let mut fills = Vec::with_capacity(idx.len());
             for (f, &i) in report.fills.iter().zip(&idx) {
                 let r = &reqs[i];
-                let avg = match r.side {
-                    Side::Buy => price_bp(f.kept, f.out),
-                    Side::Sell => price_bp(f.out + f.fee, f.kept),
-                };
-                let fill = FillRecord {
-                    tag: r.tag,
-                    status: f.status.into(),
-                    kept: f.kept,
-                    out: f.out,
-                    fee: f.fee,
-                    refund: f.refund,
-                    avg_price_bp: avg,
-                };
+                let fill = fill_record(r.tag, r.side, f);
                 let mut effects = Effects::default();
                 self.spend(&r.inputs, &mut effects);
                 self.fill_blank(&r.outputs, OutputList::Outputs, f.out, &mut effects);

@@ -33,4 +33,5 @@ tracing-subscriber.workspace = true
 [dev-dependencies]
 blindbook-seal = { path = "../blindbook-seal" }
 blindbook-signer = { path = "../blindbook-signer" }
+blindbook-verify = { path = "../blindbook-verify" }
 tokio-tungstenite.workspace = true

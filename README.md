@@ -115,7 +115,8 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 - [x] API service (sequencer, journal, public log files, live prices) and the signer link with exact-once recovery
 - [x] Indexer: one-time addresses, mempool SEEN and block detection with the incoming viewing key; top-ups credited on testnet in under 2 s
 - [x] Treasury: sealed-address withdrawals paid in 8-action shielded payouts, sweeps, on-chain anchors of the signer's own log root (live on testnet)
-- [ ] Verifier (CLI and browser)
+- [x] Verifier CLI: hash chain, every batch replayed, pools carried over, every signature's DLEQ against keys derived from M, supply per keyset
+- [ ] Browser verifier page
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof
 - [ ] Demo video

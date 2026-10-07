@@ -28,6 +28,18 @@ pub struct IssuedRecord {
     pub dleq: Dleq,
 }
 
+/// One spent slip in the public spent set: its `Y`, keyset and amount. Anyone can then compute
+/// what is still outstanding per keyset (issued − spent), the base of the solvency check; the
+/// amount and keyset were already fixed when the slip was issued, and nothing links a `Y` to its
+/// issuance.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpentRecord {
+    #[serde(rename = "Y")]
+    pub y: String,
+    pub id: String,
+    pub amount: u64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum LogEvent {
@@ -95,7 +107,7 @@ pub struct Delta {
     pub prev_root: H32,
     pub batches: Vec<BatchRecord>,
     pub issued: Vec<IssuedRecord>,
-    pub spent: Vec<String>,
+    pub spent: Vec<SpentRecord>,
     pub events: Vec<LogEvent>,
     pub chain: ChainStats,
 }
@@ -126,7 +138,7 @@ pub struct LogBuilder {
     pub head: Head,
     batches: Vec<BatchRecord>,
     issued: Vec<IssuedRecord>,
-    spent: Vec<String>,
+    spent: Vec<SpentRecord>,
     events: Vec<LogEvent>,
 }
 
@@ -150,8 +162,8 @@ impl LogBuilder {
         self.issued.push(r);
     }
 
-    pub fn spent(&mut self, ys: impl IntoIterator<Item = String>) {
-        self.spent.extend(ys);
+    pub fn spent(&mut self, slips: impl IntoIterator<Item = SpentRecord>) {
+        self.spent.extend(slips);
     }
 
     pub fn event(&mut self, e: LogEvent) {
@@ -163,7 +175,7 @@ impl LogBuilder {
         let mut issued = std::mem::take(&mut self.issued);
         issued.sort_by(|a, b| a.b.cmp(&b.b));
         let mut spent = std::mem::take(&mut self.spent);
-        spent.sort();
+        spent.sort_by(|a, b| a.y.cmp(&b.y));
         let delta = Delta {
             v: DELTA_VERSION,
             seq: self.head.seq + 1,
@@ -198,7 +210,7 @@ pub fn verify_chain(start: Head, deltas: &[Delta]) -> Result<Head, Error> {
         let mut issued = d.issued.clone();
         issued.sort_by(|a, b| a.b.cmp(&b.b));
         let mut spent = d.spent.clone();
-        spent.sort();
+        spent.sort_by(|a, b| a.y.cmp(&b.y));
         if issued != d.issued || spent != d.spent {
             return Err(Error::Chain(format!("delta {} isn't sorted", d.seq)));
         }
@@ -238,11 +250,16 @@ mod tests {
         let mut log = LogBuilder::new(start);
         log.issued(rec("03bb"));
         log.issued(rec("02aa"));
-        log.spent(["03ff".to_string(), "02ee".to_string()]);
+        let sp = |y: &str| SpentRecord {
+            y: y.into(),
+            id: "01aa".into(),
+            amount: 2,
+        };
+        log.spent([sp("03ff"), sp("02ee")]);
         log.event(LogEvent::TopupCredited { amount: 10_000 });
         let (d1, h1) = log.close(101, ChainStats::default()).unwrap();
         assert_eq!(d1.issued[0].b, "02aa", "sorted by B_");
-        assert_eq!(d1.spent, vec!["02ee", "03ff"]);
+        assert_eq!(d1.spent, vec![sp("02ee"), sp("03ff")]);
         assert_eq!(h1.seq, 1);
         let (d2, h2) = log
             .close(

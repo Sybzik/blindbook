@@ -12,7 +12,7 @@
 //! It never signs because the API asked: a compromised API can only send operations the
 //! signer's own replica accepts.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use blindbook_ledger::H32;
 use blindbook_ledger::keysets::{Keyset, KeysetIds};
@@ -43,8 +43,8 @@ pub struct Signer {
     master: MasterKey,
     keysets: HashMap<String, SecretKeyset>,
     pub ledger: Ledger,
-    /// `SHA256(code)` of vouchers not used yet.
-    vouchers: HashSet<H32>,
+    /// `SHA256(code)` → amount, for vouchers not used yet.
+    vouchers: HashMap<H32, u64>,
     /// Payments the signer's indexer saw, by diversifier index, not credited yet.
     deposits: HashMap<u64, Deposit>,
 }
@@ -70,7 +70,7 @@ impl Signer {
             master,
             keysets,
             ledger: Ledger::new(ids),
-            vouchers: HashSet::new(),
+            vouchers: HashMap::new(),
             deposits: HashMap::new(),
         })
     }
@@ -88,9 +88,10 @@ impl Signer {
             .to_owned()
     }
 
-    /// Add judge vouchers (by `SHA256(code)`).
-    pub fn add_vouchers(&mut self, hashes: impl IntoIterator<Item = H32>) {
-        self.vouchers.extend(hashes);
+    /// Add judge vouchers (by `SHA256(code)`), each worth `amount` units.
+    pub fn add_vouchers(&mut self, hashes: impl IntoIterator<Item = H32>, amount: u64) {
+        self.vouchers
+            .extend(hashes.into_iter().map(|h| (h, amount)));
     }
 
     /// Record a payment the signer's own indexer saw.
@@ -142,7 +143,9 @@ impl Signer {
                 claim,
             } => {
                 let claim_ok = match claim {
-                    CreditClaim::Voucher { code_hash } => self.vouchers.contains(code_hash),
+                    CreditClaim::Voucher { code_hash } => {
+                        self.vouchers.get(code_hash) == Some(amount)
+                    }
                     CreditClaim::Topup {
                         diversifier_index,
                         txid,

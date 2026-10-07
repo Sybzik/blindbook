@@ -56,10 +56,13 @@ pub enum Op {
         commitment: H32,
         sealed: String,
     },
+    /// The payout vector both Polygon RPCs agreed on, with where it was read (for the log).
     Resolve {
         market: H32,
         den: u64,
         num: [u64; 2],
+        polygon_block: u64,
+        polygon_tx: Option<String>,
     },
 }
 
@@ -197,7 +200,9 @@ fn apply_inner(l: &mut Ledger, op: &Op, invalid: &[usize]) -> Applied {
             Ok(e) => Applied::Effects(e),
             Err(r) => Applied::Refused(r),
         },
-        Op::Resolve { market, den, num } => match l.resolve(*market, *den, *num) {
+        Op::Resolve {
+            market, den, num, ..
+        } => match l.resolve(*market, *den, *num) {
             Ok(()) => Applied::Done,
             Err(r) => Applied::Refused(r),
         },

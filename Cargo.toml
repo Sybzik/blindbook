@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/blindbook-api",
   "crates/blindbook-engine",
   "crates/blindbook-engine-wasm",
   "crates/blindbook-ledger",

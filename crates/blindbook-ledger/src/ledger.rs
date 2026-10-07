@@ -455,7 +455,14 @@ impl Ledger {
         }
     }
 
-    fn check_trade(&self, r: &TradeRequest, batch_spent: &HashSet<String>) -> Result<u64, Reject> {
+    /// Check a trade request against the current state, `batch_spent` holding the `Y`s already
+    /// claimed by requests waiting for the same batch. Returns the inputs' total. The API runs
+    /// this when a request arrives, so only requests that will clear enter a batch.
+    pub fn check_trade(
+        &self,
+        r: &TradeRequest,
+        batch_spent: &HashSet<String>,
+    ) -> Result<u64, Reject> {
         let m = self.markets.get(&r.market).ok_or(Reject::UnknownMarket)?;
         if m.status != MarketStatus::Open {
             return Err(Reject::MarketResolved);

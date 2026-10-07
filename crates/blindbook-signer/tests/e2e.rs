@@ -205,7 +205,7 @@ fn signer_and_api_replica_end_to_end() {
         api: Ledger::new(ids),
     };
     let voucher = H32(sha256(b"JUDGE-0001"));
-    pair.signer.add_vouchers([voucher]);
+    pair.signer.add_vouchers([voucher], 50_000);
 
     // List the market; a wrong keyset id is refused.
     let entry = MarketEntry {
@@ -347,6 +347,8 @@ fn signer_and_api_replica_end_to_end() {
         market: MARKET,
         den: 1,
         num: [1, 0],
+        polygon_block: 95_078_144,
+        polygon_tx: None,
     });
     let shares = w.take_all(a);
     let left: u64 = shares.iter().map(|s| s.proof.amount).sum();

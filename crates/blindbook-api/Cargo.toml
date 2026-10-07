@@ -1,0 +1,33 @@
+[package]
+name = "blindbook-api"
+description = "Blindbook API: secretless sequencer for trades, swaps, redemptions, top-ups and withdrawals; public log files; live prices. Holds no key, logs no IP."
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+# Run the signer inside the API process: local development and tests only.
+embedded-signer = ["dep:blindbook-signer"]
+
+[dependencies]
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "ws"] }
+blindbook-engine = { path = "../blindbook-engine" }
+blindbook-ledger = { path = "../blindbook-ledger" }
+blindbook-mint = { path = "../blindbook-mint" }
+blindbook-polymarket = { path = "../blindbook-polymarket" }
+blindbook-signer = { path = "../blindbook-signer", optional = true }
+flate2 = "1"
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tower-http = { version = "0.7", default-features = false, features = ["fs"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+blindbook-signer = { path = "../blindbook-signer" }
+reqwest.workspace = true

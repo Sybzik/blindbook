@@ -129,7 +129,6 @@ crates/
   blindbook-indexer/  one-time top-up addresses, payment detection with the incoming viewing key, chain follower
   blindbook-mint/     keysets derived from the pinned master key, blind signatures with DLEQ proofs
   blindbook-polymarket/  Polymarket mirror: catalog, live books, anchor, guard, feed health; Polygon resolver
-  blindbook-indexer/  untargeted chain sync, one-time diversified addresses (librustzcash)
   blindbook-api/      secretless: top-up desk, trade batches, bundle and live feed (axum)
   blindbook-signer/   holds all keys; replays before signing; blind signatures, sweeps, payouts, anchors
   blindbook-verify/   independent auditor (CLI; the same engine runs in the browser)

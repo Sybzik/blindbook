@@ -45,7 +45,7 @@ cashu = { version = "=0.18.1", default-features = false }
 
 # Servers. TLS is rustls with the ring provider everywhere (no aws-lc / cmake in the build).
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
-reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "gzip", "http2", "json", "query", "system-proxy"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "gzip", "http2", "json", "query", "system-proxy", "socks"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

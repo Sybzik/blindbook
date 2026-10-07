@@ -49,6 +49,14 @@
 .tk-proofres{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:0 0 20px;padding:16px;border:1px solid var(--phosphor-mid);background:var(--glass)}
 .tk-proofres p{margin:0}
 
+/* P400 solvency */
+.tk-cmd{margin:0;padding:12px;border:1px solid var(--phosphor-mid);background:var(--glass);color:var(--phosphor);font-family:var(--font-ui);font-size:13px;white-space:pre-wrap;word-break:break-all}
+.tk-solv{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:4px 0 8px}
+.tk-bars{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:10px;align-items:center;margin:4px 0}
+.tk-bars__cells{display:flex;gap:2px;height:14px}
+.tk-bars__cells i{flex:1;background:var(--line)}
+.tk-bars__cells i.is-on{background:var(--phosphor)}
+
 /* P300 */
 .tk-outrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:center}
 .tk-scan{display:flex;flex-direction:column;gap:12px;max-width:420px;margin-top:16px}

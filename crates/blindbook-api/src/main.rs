@@ -14,6 +14,8 @@
 //!                    makes the chain close the log blocks
 //! BB_ZCASH_NET       test (default) | main | regtest[:heights] for the indexer
 //! BB_LWD             lightwalletd / Zaino: zecrocks (default), zecrocks-main or host:port
+//! BB_RESERVE_UFVK    file with the reserve's full viewing key, published as /v1/reserve.json
+//!                    (with BB_RESERVE_BIRTHDAY, the wallet birthday height) for the solvency check
 //! BB_DEV_BLOCK_SECS  development only, without BB_UIVK: close a log block every N seconds
 //! HTTPS_PROXY        http:// proxy for Polymarket and Polygon (development machines only)
 //! ```
@@ -304,6 +306,20 @@ async fn main() -> Result<(), String> {
             }
         })
     };
+
+    // The reserve's viewing key, for anyone to check the reserve on-chain (PROTOCOL section 8).
+    if let Ok(path) = std::env::var("BB_RESERVE_UFVK") {
+        let ufvk = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+        let birthday: u64 = env_num("BB_RESERVE_BIRTHDAY", 0);
+        let public = data.join("public").join("v1");
+        std::fs::create_dir_all(&public).map_err(|e| e.to_string())?;
+        let body = serde_json::json!({
+            "ufvk": ufvk.trim(),
+            "birthday": birthday,
+            "network": env_or("BB_ZCASH_NET", "test"),
+        });
+        std::fs::write(public.join("reserve.json"), body.to_string()).map_err(|e| e.to_string())?;
+    }
 
     let desk = match std::env::var("BB_UIVK") {
         Ok(path) => {

@@ -35,6 +35,9 @@ use blindbook_polymarket::MarketInfo;
 use blindbook_signer::{Deposit, Signer};
 use tokio::sync::oneshot;
 
+/// The development reserve reported to the log (50 TAZ, simulated).
+const DEV_RESERVE_ZAT: u64 = 5_000_000_000;
+
 /// The public TEST master key: m = SHA256("blindbook/devserver"). Never a real key.
 fn master() -> MasterKey {
     MasterKey::from_secret(SecretKey::from_slice(&sha256(b"blindbook/devserver")).unwrap())
@@ -301,6 +304,7 @@ async fn main() {
     }
     let tx = running.tx.clone();
     let shared = running.shared.clone();
+    let reserve_signer = signer.clone();
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(Duration::from_secs(15));
         tick.tick().await;
@@ -315,6 +319,16 @@ async fn main() {
                     },
                 })
                 .await;
+            // A fixed development reserve, so the solvency check has something to compare.
+            if h.is_multiple_of(4) {
+                let event = LogEvent::ReserveReported {
+                    height: h + 1,
+                    reserve_zat: DEV_RESERVE_ZAT,
+                    unswept_zat: 0,
+                };
+                reserve_signer.lock().unwrap().report_event(event.clone());
+                let _ = tx.send(Cmd::Event(event)).await;
+            }
         }
     });
 

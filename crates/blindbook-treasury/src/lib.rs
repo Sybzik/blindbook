@@ -184,6 +184,8 @@ impl BlockCache for MemCache {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Balances {
     pub deposit_spendable: u64,
+    /// Including deposits not confirmed enough to sweep yet.
+    pub deposit_total: u64,
     pub reserve_spendable: u64,
     /// Including notes not spendable yet (unconfirmed change, fresh sweeps).
     pub reserve_total: u64,
@@ -314,6 +316,14 @@ impl Treasury {
             .encode(&self.net)
     }
 
+    /// The height the reserve's wallet starts at: published with its viewing key, so a verifier
+    /// knows where to start scanning.
+    pub fn reserve_birthday(&self) -> Result<u64, Error> {
+        Ok(u64::from(
+            self.db.get_account_birthday(self.reserve).map_err(err)?,
+        ))
+    }
+
     /// The reserve's address (Revision 0, Orchard receiver), for buffer funding.
     pub fn reserve_address(&mut self) -> Result<String, Error> {
         let ua = self.address_of(self.reserve)?;
@@ -356,6 +366,7 @@ impl Treasury {
         };
         Ok(Balances {
             deposit_spendable: spendable(self.deposit),
+            deposit_total: total(self.deposit),
             reserve_spendable: spendable(self.reserve),
             reserve_total: total(self.reserve),
         })
@@ -621,4 +632,68 @@ fn r0_zaddr(ua: &UnifiedAddress, net: &Net) -> ZcashAddress {
     )
     .expect("valid");
     ZcashAddress::from_unified(net.network_type(), u)
+}
+
+/// A view-only wallet of the reserve, from its public full viewing key: what anyone (the
+/// verifier) uses to check the reserve the signer reports, on-chain.
+pub struct ReserveWatch {
+    db: Db,
+    net: Net,
+    cache: MemCache,
+    account: zcash_client_sqlite::AccountUuid,
+}
+
+impl ReserveWatch {
+    /// Open (or create) the watch wallet in `dir` for the published reserve key and birthday.
+    pub async fn open(
+        dir: &Path,
+        net: Net,
+        ufvk: &str,
+        birthday_height: u64,
+        client: &mut Client,
+    ) -> Result<Self, Error> {
+        std::fs::create_dir_all(dir).map_err(err)?;
+        let key = zcash_keys::keys::UnifiedFullViewingKey::decode(&net, ufvk).map_err(Error)?;
+        let mut db = WalletDb::for_path(dir.join("reserve-watch.sqlite"), net, SystemClock, OsRng)
+            .map_err(err)?;
+        init_wallet_db(&mut db, None).map_err(err)?;
+        let account = match db.get_account_ids().map_err(err)?.first() {
+            Some(id) => *id,
+            None => {
+                let b = birthday(client, birthday_height).await?;
+                db.import_account_ufvk(
+                    "reserve",
+                    &key,
+                    &b,
+                    zcash_client_backend::data_api::AccountPurpose::ViewOnly,
+                    None,
+                )
+                .map_err(err)?
+                .id()
+            }
+        };
+        Ok(ReserveWatch {
+            db,
+            net,
+            cache: MemCache::default(),
+            account,
+        })
+    }
+
+    pub async fn sync(&mut self, client: &mut Client) -> Result<(), Error> {
+        zcash_client_backend::sync::run(client, &self.net, &self.cache, &mut self.db, 1_000)
+            .await
+            .map_err(err)
+    }
+
+    /// The reserve's total (including notes not spendable yet) and the height it is valid at.
+    pub fn balance(&self) -> Result<(u64, u64), Error> {
+        let Some(s) = self.db.get_wallet_summary(confirmations()).map_err(err)? else {
+            return Ok((0, 0));
+        };
+        let total = s.account_balances().get(&self.account).map_or(0, |b| {
+            b.ironwood_balance().total().into_u64() + b.orchard_balance().total().into_u64()
+        });
+        Ok((total, u64::from(s.chain_tip_height())))
+    }
 }

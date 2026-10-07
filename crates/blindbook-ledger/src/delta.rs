@@ -90,6 +90,15 @@ pub enum LogEvent {
         txid: String,
         root: H32,
     },
+    /// The reserve at a chain height, for the solvency check. The reserve account's full viewing
+    /// key is public, so anyone can check `reserve_zat` on-chain; top-ups not swept yet sit in
+    /// the deposit account (only its incoming viewing key exists outside the signer) and are
+    /// reported apart, already public one by one as `topup_credited`.
+    ReserveReported {
+        height: u64,
+        reserve_zat: u64,
+        unswept_zat: u64,
+    },
 }
 
 /// Public chain statistics for the block (Block Radio).

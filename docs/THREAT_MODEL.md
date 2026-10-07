@@ -71,6 +71,7 @@
 | X4 | Payout to transparent or Sapling-only addresses (amount published by pool crossing) | A1 | rejected; Ironwood receivers only |
 | X5 | Timing between a withdraw request and the payout | A2 | fixed batch schedule; requests arrive through the mixnet and are unlinkable to bets anyway |
 | X6 | The public reserve viewing key shows each payout transaction's **total**; when only one person withdraws in a block, that total is their withdrawal amount (never the destination) | A1, A4 | withdrawals in standard denominations (a non-standard remainder stays as CREDIT or goes out in a later block), several withdrawals batched per payout whenever the queue allows, and the per-block schedule regardless of demand. Residual at low volume: "someone withdrew 0.05 at block N" is public, and links to nobody |
+| X7 | The log's reserve reports (`reserve_reported`) publish the reserve and the not-yet-swept deposit total over time | A4 | nothing new: the reserve figure is what the public reserve viewing key shows anyway (X6), and every credited top-up is already public one by one as `topup_credited` with its standard amount; a deposit that arrives before it is credited shows in the unswept total minutes earlier, and links to nobody |
 
 ### Layer 4: network and infrastructure
 

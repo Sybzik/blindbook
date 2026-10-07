@@ -4,7 +4,7 @@
 import { CONSOLE_RESPONSES } from '../ds';
 import { app, actions } from '../app/services';
 import { BET_UNITS, COIN, config } from '../app/config';
-import { coin, coinLabel, height } from '../app/format';
+import { coin, coinLabel, height, zat } from '../app/format';
 import { runAudit } from './pages/Verify';
 import { ui, type Theme } from './uistate';
 import { setSound } from './sound';
@@ -153,9 +153,13 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
       return out([
         `hash chain   ${r.chainOk ? `✓ ${r.deltas} deltas up to root ${r.root.slice(0, 8)}…` : '✗ BROKEN'}`,
         `signatures   ${r.sigsOk === r.sigs ? '✓' : '✗'} ${r.sigsOk}/${r.sigs} DLEQ proofs valid for keys derived from M`,
+        `keysets      ${r.keysetsOk ? '✓ every listed market uses keys derived from M' : '✗ a market uses keys not derived from M'}`,
         `supply       ${r.supplyOk ? '✓ nothing spent beyond what was issued' : '✗ more spent than issued'}`,
+        r.reserve
+          ? `solvency     ${r.solventOk ? '✓' : '✗'} reserve ${zat(r.reserve.reserveZat + r.reserve.unsweptZat)} vs liabilities ${zat(r.reserve.owedZat)} ${COIN} at blk ${height(r.reserve.height)}`
+          : `solvency     no reserve report yet · liabilities ${zat(r.liabilitiesZat)} ${COIN}`,
         `anchors      ${r.anchors.length} on-chain · ${(r.ms / 1000).toFixed(1)} s in this browser`,
-        r.chainOk && r.sigsOk === r.sigs && r.supplyOk ? 'LEDGER MATCH ✓' : 'MISMATCH ✗',
+        r.chainOk && r.sigsOk === r.sigs && r.keysetsOk && r.supplyOk && (r.solventOk || !r.reserve) ? 'LEDGER MATCH ✓' : 'MISMATCH ✗',
       ]);
     }
     case 'status': {

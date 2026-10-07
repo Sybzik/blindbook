@@ -38,6 +38,12 @@ export function App() {
     addEventListener('hashchange', onHash);
     return () => removeEventListener('hashchange', onHash);
   }, []);
+  // The boot animation runs on animation frames, which a hidden tab doesn't get: never get stuck.
+  useEffect(() => {
+    if (phase !== 'boot') return;
+    const t = setTimeout(() => setPhase('desk'), 4_000);
+    return () => clearTimeout(t);
+  }, [phase]);
   useEffect(() => {
     if (theme === 'green') delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;

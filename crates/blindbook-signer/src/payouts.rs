@@ -31,9 +31,18 @@ pub struct Schedule {
     pub sweep_every: u64,
 }
 
+/// Report the reserve at least this often (blocks), even when it did not change.
+const RESERVE_EVERY: u64 = 48;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct State {
     inflight: Vec<InFlight>,
+    /// Height and values of the last reserve report (a new one when they change, or every
+    /// RESERVE_EVERY blocks).
+    #[serde(default)]
+    last_reserve: u64,
+    #[serde(default)]
+    reported: Option<(u64, u64)>,
     last_anchor: u64,
     last_sweep: u64,
     last_payout: u64,
@@ -204,6 +213,21 @@ async fn pass(
         }
         state.last_sweep = h;
         save(state_path, state);
+    }
+
+    // The reserve for the public solvency check.
+    if let Ok(b) = t.balances() {
+        let now = (b.reserve_total, b.deposit_total);
+        if state.reported != Some(now) || h >= state.last_reserve + RESERVE_EVERY {
+            report(LogEvent::ReserveReported {
+                height: h,
+                reserve_zat: now.0,
+                unswept_zat: now.1,
+            });
+            state.reported = Some(now);
+            state.last_reserve = h;
+            save(state_path, state);
+        }
     }
 
     if h >= state.last_anchor + sched.anchor_every {

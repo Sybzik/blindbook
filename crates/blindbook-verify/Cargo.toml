@@ -7,8 +7,16 @@ version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+default = ["chain"]
+# The on-chain reserve check (a view-only wallet of the published reserve key, over
+# lightwalletd). Off for the browser build.
+chain = ["dep:blindbook-indexer", "dep:blindbook-treasury"]
+
 [dependencies]
 blindbook-engine = { path = "../blindbook-engine" }
+blindbook-indexer = { path = "../blindbook-indexer", optional = true }
+blindbook-treasury = { path = "../blindbook-treasury", optional = true }
 blindbook-ledger = { path = "../blindbook-ledger" }
 blindbook-mint = { path = "../blindbook-mint" }
 flate2 = "1"

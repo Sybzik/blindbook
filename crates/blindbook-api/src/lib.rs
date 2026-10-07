@@ -134,6 +134,10 @@ pub fn start(
         .route("/v1/signer", get(routes::signer))
         .nest_service("/v1/delta", ServeDir::new(public.join("delta")))
         .nest_service("/v1/snapshot", ServeDir::new(public.join("snapshot")))
+        .route_service(
+            "/v1/reserve.json",
+            tower_http::services::ServeFile::new(public.join("reserve.json")),
+        )
         .layer(DefaultBodyLimit::max(128 * 1024))
         .with_state(state);
     Ok(Running {

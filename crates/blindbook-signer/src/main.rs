@@ -157,6 +157,18 @@ async fn init(dir: &Path, birthday: &str) -> Result<(), String> {
     println!("seal public key (pin in the app):   {}", hexs(&pk));
     println!("deposit UIVK (API BB_UIVK file):     {}", t.deposit_uivk());
     println!("reserve UFVK (publish, solvency):    {}", t.reserve_ufvk());
+    // Public values, ready for the API (BB_RESERVE_UFVK, BB_RESERVE_BIRTHDAY).
+    let birthday = t.reserve_birthday().map_err(|e| e.to_string())?;
+    std::fs::write(
+        dir.join("reserve-ufvk.txt"),
+        format!(
+            "{}
+",
+            t.reserve_ufvk()
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+    println!("reserve birthday:                    {birthday} (reserve-ufvk.txt written)");
     println!(
         "reserve address (buffer funding):    {}",
         t.reserve_address().map_err(|e| e.to_string())?

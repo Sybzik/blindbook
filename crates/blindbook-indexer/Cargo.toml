@@ -1,0 +1,28 @@
+[package]
+name = "blindbook-indexer"
+description = "Blindbook indexer: one-time Ironwood top-up addresses, payment detection with the incoming viewing key only (mempool and compact blocks), EXPOSED / AMOUNT VISIBLE classification, chain tip (PROTOCOL section 11)"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hex = "0.4"
+orchard.workspace = true
+prost = "0.14"
+serde.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tonic = { version = "0.14", default-features = false, features = ["transport", "codegen", "tls-ring", "tls-webpki-roots"] }
+tracing.workspace = true
+zcash_address.workspace = true
+zcash_client_backend = { workspace = true, features = ["lightwalletd-tonic-tls-webpki-roots", "orchard"] }
+zcash_keys = { workspace = true, features = ["orchard", "sapling"] }
+zcash_note_encryption.workspace = true
+zcash_primitives.workspace = true
+zcash_protocol = { workspace = true, features = ["local-consensus"] }
+zip32.workspace = true
+
+[dev-dependencies]
+tracing-subscriber.workspace = true

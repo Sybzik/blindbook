@@ -101,7 +101,7 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | Endpoint | Body | Executes | Returns |
 |---|---|---|---|
 | `POST /v1/topup` | `amount_zat` (a top-up denomination), `credit_outputs[]`, `claim_hash = SHA256(topup_secret)` | on SEEN (within 0-conf caps) or 1 confirmation | `{topup_id, address, expires_height}` |
-| `GET /v1/topup/{id}` | | | `{status: awaiting / seen / credited / confirmed, signatures[]}` |
+| `GET /v1/topup/{id}` | | | `{status: awaiting / seen / credited / confirmed, privacy: SHIELDED / AMOUNT_VISIBLE / EXPOSED, paid_zat, signatures[]}` |
 | `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market_id, side (buy/sell), outcome (0/1), limit_bp, amount, outputs[], change_outputs[], tag` | next 2 s batch | `{avg_price_bp, filled, refunded, signatures[]}` |
 | `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[]}` |
 | `POST /v1/redeem` | `inputs[]` (winning keyset), `credit_outputs[]` | immediately after resolution | `{signatures[]}` |
@@ -281,6 +281,8 @@ Payouts go only to unified addresses with an Orchard-protocol receiver, checked 
 - Watch the **full** mempool stream (`GetMempoolStream` returns full transactions); trial-decrypt everything for SEEN. On testnet a payment was SEEN 0.9 s after the wallet's broadcast (`spikes/c-deposits`).
 - Request compact blocks with **all pool types**: they carry transparent inputs and Sapling spends, so a top-up is classified (transparent inputs → EXPOSED; Sapling spends → AMOUNT VISIBLE) without fetching any single transaction. Verified: classification from compact data matched full transactions for 162/162 testnet transactions, at 40 KB per 100 blocks instead of 333 KB.
 - Never request a single txid from third-party infrastructure.
+- **Crediting (normative):** a payment is credited as `floor(value_zat / 1000)` CREDIT units onto the request's blank outputs, on SEEN if it is within the 0-conf caps, otherwise when mined. The API's indexer proposes it; the signer credits only a payment its **own** indexer (full viewing key) has seen, applies the same caps itself, and never credits a txid twice. The first payment to an address uses the request's outputs; any later payment is claimed with `topup_secret` onto fresh outputs (`POST /v1/topup/claim`). Implementation: `crates/blindbook-indexer`, `crates/blindbook-api/src/topup.rs`.
+- **Measured on testnet (Oct 7):** 0.05 TAZ credited **1.6 s** after the paying wallet's broadcast returned (mempool SEEN, both indexers); a payment mined while the API was down was credited 1 s after restart from the block range.
 - The API needs only the deposit account's incoming viewing key (UIVK) for detection; the full viewing key stays with the signer.
 - The signer runs its own indexer the same way.
 - Mainnet option: self-hosted Zebra + Zaino.

@@ -113,7 +113,8 @@ Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); th
 - [x] Ledger: batches around the engine, spent set, issuance, swaps, redemptions, withdrawals, hash-chained log
 - [x] Signer core: checks every slip and claim, applies the same ledger operation, signs with DLEQ
 - [x] API service (sequencer, journal, public log files, live prices) and the signer link with exact-once recovery
-- [ ] Indexer (top-ups), payouts, verifier
+- [x] Indexer: one-time addresses, mempool SEEN and block detection with the incoming viewing key; top-ups credited on testnet in under 2 s
+- [ ] Payouts, sweeps, anchors, verifier
 - [ ] Web app (vault, slips, markets, cage, called it, verify)
 - [ ] Testnet playground and mainnet proof
 - [ ] Demo video
@@ -125,6 +126,7 @@ crates/
   blindbook-engine/   anchored LMSR, 2-second batches, exposure invariant (pure, deterministic, also WASM)
   blindbook-engine-wasm/  the engine as a wasm32 module (the browser verifier, the determinism check)
   blindbook-ledger/   batches around the engine, spent set, issuance, the hash-chained public log (pure)
+  blindbook-indexer/  one-time top-up addresses, payment detection with the incoming viewing key, chain follower
   blindbook-mint/     keysets derived from the pinned master key, blind signatures with DLEQ proofs
   blindbook-polymarket/  Polymarket mirror: catalog, live books, anchor, guard, feed health; Polygon resolver
   blindbook-indexer/  untargeted chain sync, one-time diversified addresses (librustzcash)

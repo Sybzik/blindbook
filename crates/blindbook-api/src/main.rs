@@ -10,7 +10,11 @@
 //! BB_POW_LIGHT       proof-of-work bits for trades, swaps, redemptions (default 16)
 //! BB_POW_HEAVY       for top-ups, vouchers, withdrawals (default 20)
 //! BB_VOUCHER_UNITS   CREDIT units per voucher (default 50,000 = 0.5 TAZ)
-//! BB_DEV_BLOCK_SECS  development only: close a log block every N seconds
+//! BB_UIVK            file with the deposit account's incoming viewing key: turns on top-ups and
+//!                    makes the chain close the log blocks
+//! BB_ZCASH_NET       test (default) | main | regtest[:heights] for the indexer
+//! BB_LWD             lightwalletd / Zaino: zecrocks (default), zecrocks-main or host:port
+//! BB_DEV_BLOCK_SECS  development only, without BB_UIVK: close a log block every N seconds
 //! HTTPS_PROXY        http:// proxy for Polymarket and Polygon (development machines only)
 //! ```
 //! It logs nothing about requests: no addresses, no paths, no user agents.
@@ -301,6 +305,40 @@ async fn main() -> Result<(), String> {
         })
     };
 
+    let desk = match std::env::var("BB_UIVK") {
+        Ok(path) => {
+            let net = blindbook_indexer::Net::parse(&env_or("BB_ZCASH_NET", "test"))?;
+            let uivk = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+            let keys = Arc::new(
+                blindbook_indexer::DepositKeys::from_uivk(net, &uivk).map_err(|e| e.to_string())?,
+            );
+            let (caps, denominations) = match env_or("BB_NETWORK", "testnet").as_str() {
+                "mainnet" => (
+                    blindbook_api::topup::ZeroConfCaps {
+                        per_topup: 500,
+                        total: 1_000,
+                    },
+                    blindbook_api::topup::DENOMINATIONS_MAINNET.to_vec(),
+                ),
+                _ => (
+                    blindbook_api::topup::ZeroConfCaps {
+                        per_topup: 10_000,
+                        total: 30_000,
+                    },
+                    blindbook_api::topup::DENOMINATIONS_TESTNET.to_vec(),
+                ),
+            };
+            let book = blindbook_api::topup::TopupBook::open(&data.join("topups.json"), caps)
+                .map_err(|e| e.to_string())?;
+            Some(blindbook_api::topup::Desk {
+                keys,
+                book: Arc::new(std::sync::Mutex::new(book)),
+                denominations,
+            })
+        }
+        Err(_) => None,
+    };
+
     let running = start(
         StartConfig {
             data_dir: data.clone(),
@@ -313,6 +351,7 @@ async fn main() -> Result<(), String> {
             signer_token: std::env::var("BB_SIGNER_TOKEN")
                 .ok()
                 .filter(|t| t.len() >= 32),
+            topup: desk.clone(),
         },
         None,
         refs,
@@ -341,7 +380,33 @@ async fn main() -> Result<(), String> {
         running.tx.clone(),
         running.shared.clone(),
     ));
-    if let Some(secs) = std::env::var("BB_DEV_BLOCK_SECS")
+    if let Some(desk) = desk {
+        let server = env_or("BB_LWD", "zecrocks");
+        let scanned = desk
+            .book
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .scanned_height;
+        let from = if scanned > 0 {
+            scanned + 1
+        } else {
+            // First start: a little history, so nothing paid just before is missed.
+            let mut c = blindbook_indexer::follow::connect(&server)
+                .await
+                .map_err(|e| e.to_string())?;
+            blindbook_indexer::follow::tip(&mut c)
+                .await
+                .map_err(|e| e.to_string())?
+                .saturating_sub(20)
+        };
+        tracing::info!(%server, from, "indexer following the chain");
+        let rx = blindbook_indexer::follow(desk.keys.clone(), server, from, Duration::from_secs(2));
+        tokio::spawn(blindbook_api::topup::run_chain(
+            rx,
+            running.tx.clone(),
+            desk.book.clone(),
+        ));
+    } else if let Some(secs) = std::env::var("BB_DEV_BLOCK_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
     {

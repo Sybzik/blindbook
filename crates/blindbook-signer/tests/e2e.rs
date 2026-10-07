@@ -252,13 +252,12 @@ fn signer_and_api_replica_end_to_end() {
     };
     let op = topup(&mut w);
     assert_eq!(pair.run(&op).0, Applied::Refused(Reject::InvalidClaim));
-    pair.signer.deposit_seen(
-        7,
-        Deposit {
-            amount: 10_000,
-            txid: "ab".repeat(32),
-        },
-    );
+    pair.signer.deposit_seen(Deposit {
+        diversifier_index: 7,
+        amount: 10_000,
+        txid: "ab".repeat(32),
+        confirmed: false,
+    });
     let op = topup(&mut w);
     let (applied, sigs, _) = pair.run(&op);
     w.receive(&applied, &sigs);

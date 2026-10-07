@@ -4,6 +4,7 @@ members = [
   "crates/blindbook-api",
   "crates/blindbook-engine",
   "crates/blindbook-engine-wasm",
+  "crates/blindbook-indexer",
   "crates/blindbook-ledger",
   "crates/blindbook-mint",
   "crates/blindbook-polymarket",

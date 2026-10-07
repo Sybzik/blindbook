@@ -34,11 +34,35 @@ pub enum Error {
     Signing(String),
 }
 
-/// A confirmed payment to a one-time top-up address, from the signer's own indexer.
+/// A payment to a one-time top-up address, from the signer's own indexer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Deposit {
+    pub diversifier_index: u64,
+    /// CREDIT units (1,000 zatoshi each, rounded down).
     pub amount: u64,
     pub txid: String,
+    /// Mined (at least one confirmation).
+    pub confirmed: bool,
+}
+
+/// How much may be credited before a confirmation (PROTOCOL section 1, THREAT_MODEL I9).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ZeroConf {
+    pub per_topup: u64,
+    pub total: u64,
+}
+
+impl ZeroConf {
+    /// Testnet: 0.1 TAZ per top-up, 0.3 TAZ unconfirmed in total.
+    pub const TESTNET: ZeroConf = ZeroConf {
+        per_topup: 10_000,
+        total: 30_000,
+    };
+    /// Mainnet: 0.005 / 0.01 ZEC.
+    pub const MAINNET: ZeroConf = ZeroConf {
+        per_topup: 500,
+        total: 1_000,
+    };
 }
 
 pub struct Signer {
@@ -47,8 +71,13 @@ pub struct Signer {
     pub ledger: Ledger,
     /// `SHA256(code)` → amount, for vouchers not used yet.
     vouchers: HashMap<H32, u64>,
-    /// Payments the signer's indexer saw, by diversifier index, not credited yet.
-    deposits: HashMap<u64, Deposit>,
+    /// Payments the signer's indexer saw and nobody claimed yet, by txid.
+    deposits: HashMap<String, Deposit>,
+    /// Txids already credited: never again, whatever the indexer replays.
+    credited: std::collections::HashSet<String>,
+    /// Credited before their first confirmation, by txid (units).
+    unconfirmed: HashMap<String, u64>,
+    zero_conf: ZeroConf,
 }
 
 fn kind_of(k: Keyset) -> KeysetKind {
@@ -74,6 +103,9 @@ impl Signer {
             ledger: Ledger::new(ids),
             vouchers: HashMap::new(),
             deposits: HashMap::new(),
+            credited: Default::default(),
+            unconfirmed: HashMap::new(),
+            zero_conf: ZeroConf::TESTNET,
         })
     }
 
@@ -96,9 +128,32 @@ impl Signer {
             .extend(hashes.into_iter().map(|h| (h, amount)));
     }
 
-    /// Record a payment the signer's own indexer saw.
-    pub fn deposit_seen(&mut self, diversifier_index: u64, d: Deposit) {
-        self.deposits.entry(diversifier_index).or_insert(d);
+    pub fn set_zero_conf(&mut self, z: ZeroConf) {
+        self.zero_conf = z;
+    }
+
+    /// Record a payment the signer's own indexer saw (again when it is mined).
+    pub fn deposit_seen(&mut self, d: Deposit) {
+        if self.credited.contains(&d.txid) {
+            if d.confirmed {
+                self.unconfirmed.remove(&d.txid);
+            }
+            return;
+        }
+        let e = self.deposits.entry(d.txid.clone()).or_insert(d.clone());
+        e.confirmed |= d.confirmed;
+    }
+
+    fn topup_claim_ok(&self, index: u64, txid: &str, amount: u64) -> bool {
+        let Some(d) = self.deposits.get(txid) else {
+            return false;
+        };
+        if d.diversifier_index != index || amount > d.amount || amount == 0 {
+            return false;
+        }
+        let pending: u64 = self.unconfirmed.values().sum();
+        d.confirmed
+            || (amount <= self.zero_conf.per_topup && pending + amount <= self.zero_conf.total)
     }
 
     fn input_ok(&self, i: &Input) -> bool {
@@ -151,10 +206,7 @@ impl Signer {
                     CreditClaim::Topup {
                         diversifier_index,
                         txid,
-                    } => self
-                        .deposits
-                        .get(diversifier_index)
-                        .is_some_and(|d| d.amount >= *amount && d.txid == *txid),
+                    } => self.topup_claim_ok(*diversifier_index, txid, *amount),
                 };
                 if claim_ok && Self::outputs_ok(outputs) {
                     vec![]
@@ -215,10 +267,14 @@ impl Signer {
                 CreditClaim::Voucher { code_hash } => {
                     self.vouchers.remove(code_hash);
                 }
-                CreditClaim::Topup {
-                    diversifier_index, ..
-                } => {
-                    self.deposits.remove(diversifier_index);
+                CreditClaim::Topup { txid, .. } => {
+                    let d = self.deposits.remove(txid);
+                    if let (Op::Credit { amount, .. }, Some(d)) = (op, &d)
+                        && !d.confirmed
+                    {
+                        self.unconfirmed.insert(txid.clone(), *amount);
+                    }
+                    self.credited.insert(txid.clone());
                 }
             }
         }

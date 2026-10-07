@@ -9,6 +9,7 @@ pub mod live;
 pub mod pow;
 pub mod routes;
 pub mod sequencer;
+pub mod topup;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -37,6 +38,8 @@ pub struct StartConfig {
     pub voucher_units: u64,
     /// Bearer token the signer presents on `/v1/signer`; `None` disables the endpoint.
     pub signer_token: Option<String>,
+    /// The top-up desk (needs the deposit account's incoming viewing key).
+    pub topup: Option<topup::Desk>,
 }
 
 pub struct Running {
@@ -103,6 +106,7 @@ pub fn start(
         signer_token: cfg.signer_token,
         m_hex: cfg.m.to_hex(),
         live: live_bytes,
+        topup: cfg.topup,
     };
     let router = Router::new()
         .route("/v1/head", get(routes::head))
@@ -112,6 +116,9 @@ pub fn start(
         .route("/v1/redeem", post(routes::redeem))
         .route("/v1/withdraw", post(routes::withdraw))
         .route("/v1/voucher", post(routes::voucher))
+        .route("/v1/topup", post(routes::topup_create))
+        .route("/v1/topup/claim", post(routes::topup_claim))
+        .route("/v1/topup/{id}", get(routes::topup_status))
         .route("/v1/signer", get(routes::signer))
         .nest_service("/v1/delta", ServeDir::new(public.join("delta")))
         .nest_service("/v1/snapshot", ServeDir::new(public.join("snapshot")))

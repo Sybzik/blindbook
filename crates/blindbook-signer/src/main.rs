@@ -11,17 +11,23 @@
 //!     BB_SIGNER_DATA     directory for the journal
 //!     BB_VOUCHERS        optional file of voucher hashes (one hex per line)
 //!     BB_VOUCHER_UNITS   CREDIT units per voucher (default 50,000 = 0.5 TAZ)
+//!     BB_SIGNER_UFVK     file with the deposit account's full viewing key: the signer's own
+//!                        indexer, which every top-up credit is checked against
+//!     BB_ZCASH_NET       test (default) | main | regtest[:heights]
+//!     BB_LWD             lightwalletd / Zaino: zecrocks (default) or host:port
+//!     BB_NETWORK         testnet (default) | mainnet: the 0-conf caps
 //! ```
 //! Keys, codes and journals never go into the repository (`..\blindbook-work\` locally).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+use blindbook_indexer::{ChainEvent, DepositKeys, Net};
 use blindbook_ledger::H32;
 use blindbook_mint::cashu::SecretKey;
 use blindbook_mint::{MasterKey, sha256};
-use blindbook_signer::Signer;
 use blindbook_signer::link::{Station, run};
+use blindbook_signer::{Deposit, Signer, ZeroConf};
 
 fn env(k: &str) -> Result<String, String> {
     std::env::var(k).map_err(|_| format!("{k} is not set"))
@@ -94,20 +100,72 @@ async fn serve() -> Result<(), String> {
         tracing::info!(count = hashes.len(), units, "vouchers loaded");
         signer.add_vouchers(hashes, units);
     }
+    signer.set_zero_conf(match std::env::var("BB_NETWORK").as_deref() {
+        Ok("mainnet") => ZeroConf::MAINNET,
+        _ => ZeroConf::TESTNET,
+    });
     let data = PathBuf::from(env("BB_SIGNER_DATA")?);
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let station = Station::open(signer, &data.join("signer-journal.jsonl"))?;
-    tracing::info!(
-        m = %station.signer.public_key().to_hex(),
-        applied = station.applied,
-        "signer ready"
-    );
-    run(
-        env("BB_API_URL")?,
-        env("BB_SIGNER_TOKEN")?,
-        Arc::new(Mutex::new(station)),
-    )
-    .await;
+    let station = Arc::new(Mutex::new(station));
+    if let Ok(path) = std::env::var("BB_SIGNER_UFVK") {
+        let net = Net::parse(&std::env::var("BB_ZCASH_NET").unwrap_or_else(|_| "test".into()))?;
+        let ufvk = std::fs::read_to_string(&path).map_err(|e| format!("{path}: {e}"))?;
+        let keys = Arc::new(DepositKeys::from_ufvk(net, &ufvk).map_err(|e| e.to_string())?);
+        let server = std::env::var("BB_LWD").unwrap_or_else(|_| "zecrocks".into());
+        let height_file = data.join("signer-scanned-height.txt");
+        let scanned: u64 = std::fs::read_to_string(&height_file)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0);
+        let from = if scanned > 0 {
+            // Re-read a margin: already-credited txids are ignored, so this is harmless.
+            scanned.saturating_sub(100)
+        } else {
+            let mut c = blindbook_indexer::follow::connect(&server)
+                .await
+                .map_err(|e| e.to_string())?;
+            blindbook_indexer::follow::tip(&mut c)
+                .await
+                .map_err(|e| e.to_string())?
+        };
+        tracing::info!(%server, from, "signer's own indexer following the chain");
+        let mut rx =
+            blindbook_indexer::follow(keys, server, from, std::time::Duration::from_secs(2));
+        let st = station.clone();
+        tokio::spawn(async move {
+            while let Some(ev) = rx.recv().await {
+                let (payments, confirmed, height) = match ev {
+                    ChainEvent::Seen(p) => (vec![p], false, None),
+                    ChainEvent::Block {
+                        height, payments, ..
+                    } => (payments, true, Some(height)),
+                };
+                {
+                    let mut s = st.lock().unwrap_or_else(|e| e.into_inner());
+                    for p in payments {
+                        let Ok(index) = u64::try_from(p.index) else {
+                            continue;
+                        };
+                        s.signer.deposit_seen(Deposit {
+                            diversifier_index: index,
+                            amount: p.value_zat / 1_000,
+                            txid: p.txid,
+                            confirmed,
+                        });
+                    }
+                }
+                if let Some(h) = height {
+                    let _ = std::fs::write(&height_file, h.to_string());
+                }
+            }
+        });
+    }
+    {
+        let s = station.lock().unwrap_or_else(|e| e.into_inner());
+        tracing::info!(m = %s.signer.public_key().to_hex(), applied = s.applied, "signer ready");
+    }
+    run(env("BB_API_URL")?, env("BB_SIGNER_TOKEN")?, station).await;
     Ok(())
 }
 

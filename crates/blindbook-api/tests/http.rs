@@ -177,6 +177,7 @@ async fn serve(
             pow: BITS,
             voucher_units: 50_000,
             signer_token: None,
+            topup: None,
         },
         Some(SignerLink::Embedded(signer)),
         refs(),

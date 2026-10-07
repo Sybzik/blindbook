@@ -14,6 +14,7 @@ embedded-signer = ["dep:blindbook-signer"]
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "ws"] }
 blindbook-engine = { path = "../blindbook-engine" }
+blindbook-indexer = { path = "../blindbook-indexer" }
 blindbook-ledger = { path = "../blindbook-ledger" }
 blindbook-mint = { path = "../blindbook-mint" }
 blindbook-polymarket = { path = "../blindbook-polymarket" }

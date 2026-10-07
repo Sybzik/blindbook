@@ -8,6 +8,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+blindbook-indexer = { path = "../blindbook-indexer" }
 blindbook-ledger = { path = "../blindbook-ledger" }
 blindbook-mint = { path = "../blindbook-mint" }
 futures-util.workspace = true

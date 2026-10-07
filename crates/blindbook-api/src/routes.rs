@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use axum::Json;
-use axum::extract::{State, WebSocketUpgrade};
+use axum::extract::{Path, State, WebSocketUpgrade};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use blindbook_ledger::H32;
@@ -44,6 +44,7 @@ pub struct AppState {
     /// Master public key `M`, hex.
     pub m_hex: String,
     pub live: Arc<std::sync::RwLock<Vec<u8>>>,
+    pub topup: Option<crate::topup::Desk>,
 }
 
 /// A JSON answer with `Connection: close`.
@@ -321,6 +322,133 @@ pub async fn voucher(State(state): State<AppState>, Json(body): Json<Value>) -> 
             done,
             json!({ "kind": "voucher", "amount": state.voucher_units }),
         ),
+        Err(r) => r,
+    }
+}
+
+#[derive(Deserialize)]
+struct TopupBody {
+    amount_zat: u64,
+    credit_outputs: Vec<BlindedMessage>,
+    claim_hash: H32,
+}
+
+pub async fn topup_create(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
+    let Some(desk) = state.topup.clone() else {
+        return answer(StatusCode::NOT_FOUND, json!({ "error": "top-ups are off" }));
+    };
+    let b: TopupBody = match parse(body, state.pow.heavy) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    if !desk.denominations.contains(&b.amount_zat) {
+        return bad("not a top-up denomination");
+    }
+    if !crate::topup::blank_credit_ok(&b.credit_outputs, &state.shared.credit_id) {
+        return bad("credit_outputs must be 31 blank CREDIT outputs");
+    }
+    let head_height = state
+        .shared
+        .head
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .height;
+    let mut book = desk.book.lock().unwrap_or_else(|e| e.into_inner());
+    let height = head_height.max(book.scanned_height);
+    let created = book.create(
+        &desk.keys,
+        b.amount_zat,
+        b.credit_outputs,
+        b.claim_hash,
+        height,
+    );
+    drop(book);
+    match created {
+        Ok(t) => answer(
+            StatusCode::OK,
+            json!({
+                "topup_id": t.id, "address": t.address, "expires_height": t.expires_height,
+                "stored_record": { "kind": "topup", "amount_zat": t.amount_zat, "expires_height": t.expires_height },
+            }),
+        ),
+        Err(_) => from_api_error(ApiError::Internal("topup".into())),
+    }
+}
+
+pub async fn topup_status(State(state): State<AppState>, Path(id): Path<String>) -> Response {
+    let Some(desk) = state.topup.clone() else {
+        return answer(StatusCode::NOT_FOUND, json!({ "error": "top-ups are off" }));
+    };
+    let book = desk.book.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(t) = book.get(&id) else {
+        return answer(StatusCode::NOT_FOUND, json!({ "error": "unknown top-up" }));
+    };
+    let privacy = t.payments.first().map(|p| p.privacy);
+    let paid: u64 = t.payments.iter().map(|p| p.value_zat).sum();
+    answer(
+        StatusCode::OK,
+        json!({
+            "status": t.status, "privacy": privacy, "paid_zat": paid,
+            "payments": t.payments.len(), "expires_height": t.expires_height,
+            "signatures": t.signatures,
+        }),
+    )
+}
+
+#[derive(Deserialize)]
+struct ClaimBody {
+    topup_id: String,
+    topup_secret: String,
+    credit_outputs: Vec<BlindedMessage>,
+}
+
+pub async fn topup_claim(State(state): State<AppState>, Json(body): Json<Value>) -> Response {
+    let Some(desk) = state.topup.clone() else {
+        return answer(StatusCode::NOT_FOUND, json!({ "error": "top-ups are off" }));
+    };
+    let b: ClaimBody = match parse(body, state.pow.heavy) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    if !crate::topup::blank_credit_ok(&b.credit_outputs, &state.shared.credit_id) {
+        return bad("credit_outputs must be 31 blank CREDIT outputs");
+    }
+    let job = match desk.book.lock().unwrap_or_else(|e| e.into_inner()).claim(
+        &b.topup_id,
+        &b.topup_secret,
+        b.credit_outputs,
+    ) {
+        Ok(j) => j,
+        Err(why) => return answer(StatusCode::UNPROCESSABLE_ENTITY, json!({ "error": why })),
+    };
+    let op = Op::Credit {
+        amount: job.units,
+        outputs: job.outputs.clone(),
+        claim: CreditClaim::Topup {
+            diversifier_index: job.index,
+            txid: job.txid.clone(),
+        },
+    };
+    match submit(&state, op).await {
+        Ok(done) => {
+            if let Applied::Effects(e) = &done.applied {
+                let sigs = e
+                    .jobs
+                    .iter()
+                    .zip(done.signatures.iter().cloned())
+                    .map(|(j, sig)| crate::topup::SigOut {
+                        list: j.list,
+                        index: j.index,
+                        sig,
+                    })
+                    .collect();
+                desk.book
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .credited(&job, sigs);
+            }
+            op_answer(done, json!({ "kind": "topup_claim", "units": job.units }))
+        }
         Err(r) => r,
     }
 }

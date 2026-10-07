@@ -100,7 +100,10 @@ mod vectors {
         let canonical = String::from_utf8(to_canonical(&body).unwrap()).unwrap();
         let digest = sha256(canonical.as_bytes());
         let nonce = solve(&body, 12);
-        assert_eq!(canonical, r#"{"amount":5,"market":"ab","s":"é\n","z":[1,2]}"#);
+        assert_eq!(
+            canonical,
+            r#"{"amount":5,"market":"ab","s":"é\n","z":[1,2]}"#
+        );
         assert_eq!(
             blindbook_ledger::hex::encode(&digest),
             "e2494b42ee6de3f4f1ed4b6cb4ab45ee2af3f56d443029a75896d11aa29978a1"

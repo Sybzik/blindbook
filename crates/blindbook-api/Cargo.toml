@@ -35,3 +35,9 @@ blindbook-seal = { path = "../blindbook-seal" }
 blindbook-signer = { path = "../blindbook-signer" }
 blindbook-verify = { path = "../blindbook-verify" }
 tokio-tungstenite.workspace = true
+zcash_keys = { workspace = true, features = ["orchard", "sapling"] }
+zip32.workspace = true
+
+[[example]]
+name = "devserver"
+required-features = ["embedded-signer"]

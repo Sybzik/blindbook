@@ -227,13 +227,19 @@ async fn resolver(http: reqwest::Client, tx: mpsc::Sender<Cmd>, shared: Arc<Shar
     }
 }
 
+/// Directives appended to every log filter so the HTTP stack can't log requests.
+const NO_REQUEST_LOGS: &str = "tower_http=off,hyper=off,hyper_util=off,axum=off,h2=off";
+
 #[tokio::main]
 async fn main() -> Result<(), String> {
+    // Whatever RUST_LOG says, the HTTP stack never logs a request: no line, path, header or
+    // address (THREAT_MODEL N2). The handlers themselves never see an address.
+    let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());
+    let filter = format!("{filter},{NO_REQUEST_LOGS}");
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::new(&filter))
         .init();
+    tracing::info!("request logging is off: no addresses, paths or bodies are ever logged");
     let data = PathBuf::from(env_or("BB_DATA", "data"));
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let m = PublicKey::from_hex(env_or("BB_M", "").trim()).map_err(|_| "BB_M must be M in hex")?;

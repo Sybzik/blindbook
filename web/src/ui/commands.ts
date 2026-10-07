@@ -18,6 +18,7 @@ export interface DeskApi {
   intro(): void;
   closeConsole(): void;
   insider(): void;
+  degauss(): void;
 }
 
 const HELP = [
@@ -25,7 +26,7 @@ const HELP = [
   'verify · status · verbose on|off · trace · ping polymarket · ironwood · turnstile',
   'duels · duel 201 yes 0.01 --at 0.45 · take <duel id> · play snake|redact · calc 0.45',
   'radio on|off · record · pass · cage · lock · intro',
-  'theme green|amber|paper · clean on|off · sound on|off · whoami · history · clear · exit',
+  'theme green|amber|paper · clean on|off · sound on|off · degauss · whoami · history · clear · exit',
 ];
 
 const PAGES: Record<string, string> = {
@@ -310,6 +311,9 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
       await wait(400);
       desk.intro();
       return;
+    case 'degauss':
+      desk.degauss();
+      return out('*thunk*');
     case 'insider':
       desk.insider();
       return out("we can't tell who you are. that includes insiders.");

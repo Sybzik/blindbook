@@ -89,6 +89,37 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const [idle, setIdle] = useState(false);
   const [insider, setInsider] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [degauss, setDegauss] = useState(false);
+  const redactClicks = useRef(new WeakMap<Element, number>());
+  const say = (s: string) => {
+    setToast(s);
+    setTimeout(() => setToast((t) => (t === s ? null : t)), 2600);
+  };
+  const doDegauss = () => {
+    play('degauss');
+    setDegauss(true);
+    setTimeout(() => setDegauss(false), 900);
+  };
+  // Easter eggs that live on the desk itself: a redaction bar clicked 7 times peels off to
+  // reveal another redaction bar; the block clock knows what time it is.
+  const onEggClick = (e: React.MouseEvent) => {
+    const t = e.target as HTMLElement;
+    const bar = t.closest('.bb-redact, .bb-redact-paper, [aria-label="redacted participant"]');
+    if (bar) {
+      const n = (redactClicks.current.get(bar) ?? 0) + 1;
+      redactClicks.current.set(bar, n);
+      if (n % 7 === 0) {
+        bar.classList.remove('tk-peel');
+        void (bar as HTMLElement).offsetWidth;
+        bar.classList.add('tk-peel');
+        play('tear');
+        say('underneath: another redaction bar. it goes all the way down.');
+      }
+      return;
+    }
+    if (t.closest('.bb-tray__seg--blk')) say('time is a block height.');
+  };
   const lastEsc = useRef(0);
   const digits = useRef<{ s: string; t: number }>({ s: '', t: 0 });
   const konami = useRef(0);
@@ -199,6 +230,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
       setInsider(true);
       setTimeout(() => setInsider(false), 4200);
     },
+    degauss: doDegauss,
   };
 
   // Keyboard: console (` or Ctrl/⌘+K), ESC ESC leaves the booth, three digits open a page,
@@ -350,7 +382,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
       { id: 'duels', label: 'BLIND DUELS', icon: 'slips' },
     ];
     return (
-      <div className="pg-app bb-crt" data-signal={clean ? 'clean' : undefined}>
+      <div className={'pg-app bb-crt' + (degauss ? ' tk-degauss' : '')} data-signal={clean ? 'clean' : undefined} onClick={onEggClick}>
         <div className="pg-status">
           <span className="pg-bal">
             BAL <span className={vault === 'unlocked' ? 'bb-a' : 'bb-dim'}>{vault === 'unlocked' ? coin(balance) : 'LOCKED'}</span>
@@ -443,13 +475,18 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             <p className="bb-display-md bb-glow bb-hi">NOTHING OF YOU STAYS BEHIND</p>
           </div>
         )}
+        {toast && (
+          <p className="tk-toast bb-ui" role="status">
+            {toast}
+          </p>
+        )}
         {idle && <Screensaver onWake={() => setIdle(false)} still={clean} />}
       </div>
     );
   }
 
   return (
-    <div className="tk-app" data-signal={clean ? 'clean' : undefined} onMouseOver={onHover} onFocus={onHover}>
+    <div className={'tk-app' + (degauss ? ' tk-degauss' : '')} data-signal={clean ? 'clean' : undefined} onMouseOver={onHover} onFocus={onHover} onClick={onEggClick}>
       <Wallpaper className="tk-desk">
         <DesktopIcons className="tk-icons" layout={narrow ? 'row' : 'column'} items={rail} selected={showVault ? undefined : page === 'market' ? 'markets' : page} onSelect={(id: string) => { setVaultWin(false); go(id); }} bindFKeys />
         <AppIcons className="tk-apps" layout={narrow ? 'row' : 'column'} selected={showVault ? undefined : page} onSelect={(id: string) => { setVaultWin(false); go(id); }} />
@@ -520,6 +557,11 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
           />
         }
       />
+      {toast && (
+        <p className="tk-toast bb-ui" role="status">
+          {toast}
+        </p>
+      )}
       {idle && <Screensaver onWake={() => setIdle(false)} still={clean} />}
     </div>
   );

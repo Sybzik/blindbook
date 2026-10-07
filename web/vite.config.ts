@@ -22,7 +22,7 @@ const CSP = [
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-ancestors 'none'",
+  // frame-ancestors only works as an HTTP header: the server sends it (deploy/Caddyfile).
 ].join('; ');
 
 function cspPlugin(): Plugin {

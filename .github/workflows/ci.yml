@@ -76,6 +76,12 @@ jobs:
             echo "unexpected absolute URL in the build output"; exit 1
           fi
 
+      - name: the running app makes no third-party request and trips no CSP rule (headless Chrome)
+        run: |
+          npx @puppeteer/browsers install chrome-headless-shell@stable --path "$RUNNER_TEMP/chrome" > chrome.txt
+          export CHROME_PATH="$(tail -1 chrome.txt | cut -d' ' -f2-)"
+          pnpm leakcheck
+
   secrets:
     runs-on: ubuntu-24.04
     steps:

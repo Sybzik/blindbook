@@ -191,3 +191,13 @@
 @keyframes bd-steam{from{opacity:0;transform:translateY(16px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
 @media (max-width:760px){.bd-hint{display:none}.bd-keys{left:16px;right:16px;flex-direction:row;flex-wrap:wrap;justify-content:center;bottom:calc(20px + env(safe-area-inset-bottom))}}
 @media (max-width:760px){.bd .ld-tr{bottom:calc(116px + env(safe-area-inset-bottom))}}
+
+/* Desk easter eggs: the peeling redaction bar, degauss, toasts */
+.tk-peel{display:inline-block;animation:tk-peel 900ms var(--ease-mech) both}
+@keyframes tk-peel{0%{transform:none}35%{transform:perspective(200px) rotateX(70deg) translateY(-6px);opacity:.4}36%{transform:perspective(200px) rotateX(-70deg)}100%{transform:none;opacity:1}}
+.tk-degauss{animation:tk-degauss 900ms ease-out}
+@keyframes tk-degauss{0%{filter:none;transform:none}15%{filter:hue-rotate(90deg) saturate(2) drop-shadow(3px 0 0 rgba(255,0,80,.6)) drop-shadow(-3px 0 0 rgba(0,160,255,.6));transform:skewX(2deg) scale(1.01)}40%{filter:hue-rotate(-60deg) drop-shadow(-2px 0 0 rgba(255,0,80,.5)) drop-shadow(2px 0 0 rgba(0,160,255,.5));transform:skewX(-1.5deg)}70%{filter:hue-rotate(20deg);transform:skewX(.5deg)}100%{filter:none;transform:none}}
+[data-signal="clean"].tk-degauss,[data-signal="clean"] .tk-peel{animation:none}
+.tk-toast{position:fixed;z-index:120;left:50%;bottom:72px;translate:-50% 0;margin:0;padding:8px 14px;background:var(--void);border:1px solid var(--phosphor-mid);color:var(--phosphor-hi);box-shadow:0 6px 24px rgba(0,0,0,.6);max-width:min(90vw,520px);text-align:center}
+.tk-tray-blk{cursor:help}
+.bb-tray__seg--blk{cursor:help}

@@ -123,10 +123,15 @@ async fn main() {
     println!("liabilities now: {} ZEC", zec(r.liabilities_zat));
     match r.reserve {
         Some((h, reserve, unswept, owed)) => println!(
-            "reserve reported at height {h}: {} ZEC + {} unswept, liabilities then {} ZEC (add --chain to check the reserve on-chain)",
+            "reserve reported at height {h}: {} ZEC + {} unswept, liabilities then {} ZEC{}",
             zec(reserve),
             zec(unswept),
-            zec(owed)
+            zec(owed),
+            if opts.contains_key("chain") {
+                ""
+            } else {
+                " (add --chain to check it on-chain)"
+            }
         ),
         None => println!("no reserve report yet"),
     }
@@ -219,6 +224,39 @@ mod chain {
                 }
             ));
         }
+        // Every anchor in the log: its transaction, opened with the reserve key, carries the
+        // memo bb1:anchor:<height>:<root>, and that root is the log's root at that height.
+        let mut anchored = 0;
+        for (txid, root) in &r.anchors {
+            let memo = w
+                .anchor_memo(&mut client, txid)
+                .await
+                .map_err(|e| format!("anchor {txid}: {e}"))?;
+            let Some((mined, memo)) = memo else {
+                return Err(format!(
+                    "anchor {txid}: no bb1:anchor memo the reserve key can read"
+                ));
+            };
+            let mut parts = memo.trim().split(':').skip(2);
+            let (h, m_root) = (
+                parts.next().and_then(|h| h.parse::<u64>().ok()),
+                parts.next(),
+            );
+            let in_log = r
+                .roots
+                .iter()
+                .any(|(rh, rr)| Some(*rh) == h && Some(rr.to_string().as_str()) == m_root);
+            if m_root != Some(root.to_string().as_str()) || !in_log {
+                return Err(format!(
+                    "anchor {txid} (mined at {mined}): memo {memo} doesn't name the log's root"
+                ));
+            }
+            anchored += 1;
+        }
+        out.push(format!(
+            "anchors: {anchored} of {} found on-chain, each naming the log's root at its height",
+            r.anchors.len()
+        ));
         if onchain + unswept < r.liabilities_zat {
             return Err(format!(
                 "on-chain reserve {} + {} unswept is below the liabilities of {} ZEC",

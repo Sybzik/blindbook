@@ -95,6 +95,14 @@ pub fn replay_all(batches: &[BatchRecord]) -> Vec<String> {
         if let Some(f) = replay_batch(b) {
             failures.push(f);
         }
+        // The exposure invariant (PROTOCOL 5.3): the house's worst case stays within L.
+        let worst = i128::from(b.after.u[0].max(b.after.u[1])) - i128::from(b.after.c);
+        if worst > i128::from(b.params.l) {
+            failures.push(format!(
+                "batch {} {}: worst-case loss {worst} exceeds the buffer {}",
+                b.batch_id, b.market, b.params.l
+            ));
+        }
     }
     failures
 }

@@ -697,3 +697,62 @@ impl ReserveWatch {
         Ok((total, u64::from(s.chain_tip_height())))
     }
 }
+
+impl ReserveWatch {
+    /// The memo of an anchor transaction (`bb1:anchor:<height>:<root>`), read by fetching the
+    /// transaction and trial-decrypting it with the public reserve key: the anchor is a payment
+    /// from the reserve to itself, so that key opens it. Returns the mined height and the memo.
+    pub async fn anchor_memo(
+        &self,
+        client: &mut Client,
+        txid_hex: &str,
+    ) -> Result<Option<(u64, String)>, Error> {
+        let mut hash = blindbook_hex(txid_hex).ok_or_else(|| Error("bad txid".into()))?;
+        // Displayed txids are byte-reversed.
+        hash.reverse();
+        let raw = client
+            .get_transaction(service::TxFilter {
+                block: None,
+                index: 0,
+                hash,
+            })
+            .await
+            .map_err(err)?
+            .into_inner();
+        let height = BlockHeight::from_u32(u32::try_from(raw.height).map_err(err)?);
+        let branch = zcash_protocol::consensus::BranchId::for_height(&self.net, height);
+        let tx =
+            zcash_primitives::transaction::Transaction::read(&raw.data[..], branch).map_err(err)?;
+        let ufvk = self
+            .db
+            .get_account(self.account)
+            .map_err(err)?
+            .and_then(|a| a.ufvk().cloned())
+            .ok_or_else(|| Error("no reserve key".into()))?;
+        let keys = std::collections::HashMap::from([(0u8, ufvk)]);
+        let dec =
+            zcash_client_backend::decrypt_transaction(&self.net, Some(height), None, &tx, &keys);
+        let memo = dec
+            .ironwood_outputs()
+            .iter()
+            .chain(dec.orchard_outputs())
+            .filter_map(|o| match Memo::try_from(o.memo().clone()) {
+                Ok(Memo::Text(t)) => Some(t.to_string()),
+                _ => None,
+            })
+            .find(|t| t.starts_with("bb1:anchor:"));
+        Ok(memo.map(|m| (u64::from(height), m)))
+    }
+}
+
+fn blindbook_hex(s: &str) -> Option<Vec<u8>> {
+    s.len()
+        .is_multiple_of(2)
+        .then(|| {
+            (0..s.len())
+                .step_by(2)
+                .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+                .collect()
+        })
+        .flatten()
+}

@@ -5,7 +5,8 @@
 //! 1. the deltas form one hash chain from genesis to the head;
 //! 2. every listed market's keyset ids are the ones derived from `M` (no hidden keys);
 //! 3. every batch replays with the engine to the same fills and pool, each anchor equals the lower
-//!    median of its recorded samples, and each market's pool carries over from batch to batch;
+//!    median of its recorded samples, each market's pool carries over from batch to batch, and
+//!    after every batch the house's worst case `max(u_A, u_B) − c` stays within the buffer `L`;
 //! 4. every issued blind signature carries a DLEQ proof valid for the key derived from `M` for
 //!    its keyset and amount (no slip can be tagged with a special key);
 //! 5. per keyset, nothing was spent beyond what was issued; the outstanding supply is reported;
@@ -41,6 +42,8 @@ pub struct Report {
     /// The last reserve report: (height, reserve, unswept top-ups) in zatoshi, and the
     /// liabilities at that point of the log.
     pub reserve: Option<(u64, u64, u64, u64)>,
+    /// The root after every delta, with its height (what on-chain anchors must name).
+    pub roots: Vec<(u64, H32)>,
     pub failures: Vec<String>,
 }
 
@@ -130,6 +133,9 @@ pub fn audit(m: &PublicKey, deltas: &[Delta], head: Option<Head>) -> Report {
     let mut duels: BTreeMap<H32, u64> = BTreeMap::new();
     let mut reports: Vec<(u64, u64, u64)> = Vec::new();
     for d in deltas {
+        if let Ok(root) = d.root() {
+            r.roots.push((d.height, root));
+        }
         for e in &d.events {
             match e {
                 LogEvent::MarketListed {
@@ -201,6 +207,14 @@ pub fn audit(m: &PublicKey, deltas: &[Delta], head: Option<Head>) -> Report {
             pools.insert(b.market, b.after);
             if let Some(f) = replay_batch(b) {
                 r.failures.push(f);
+            }
+            // The exposure invariant (PROTOCOL 5.3): the house's worst case stays within L.
+            let worst = i128::from(b.after.u[0].max(b.after.u[1])) - i128::from(b.after.c);
+            if worst > i128::from(b.params.l) {
+                r.failures.push(format!(
+                    "batch {} {}: worst-case loss {worst} exceeds the buffer {}",
+                    b.batch_id, b.market, b.params.l
+                ));
             }
         }
         for s in &d.issued {

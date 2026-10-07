@@ -43,6 +43,9 @@ struct State {
     last_reserve: u64,
     #[serde(default)]
     reported: Option<(u64, u64)>,
+    /// The last root anchored: a root is anchored once, however many blocks pass.
+    #[serde(default)]
+    last_root: Option<H32>,
     last_anchor: u64,
     last_sweep: u64,
     last_payout: u64,
@@ -232,7 +235,7 @@ async fn pass(
 
     if h >= state.last_anchor + sched.anchor_every {
         let head = station.lock().unwrap_or_else(|e| e.into_inner()).log.head;
-        if head.seq > 0 {
+        if head.seq > 0 && state.last_root != Some(head.root) {
             let memo = format!("bb1:anchor:{}:{}", head.height, head.root);
             match t.anchor(c, &memo).await {
                 Ok(txid) => {
@@ -242,6 +245,7 @@ async fn pass(
                         root: head.root,
                     });
                     state.last_anchor = h;
+                    state.last_root = Some(head.root);
                     save(state_path, state);
                 }
                 Err(e) => tracing::warn!(error = %e, "anchor failed"),

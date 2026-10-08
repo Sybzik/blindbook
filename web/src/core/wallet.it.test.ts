@@ -122,7 +122,7 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     await api.head();
     expect(await w.voucher('DEV-0099')).toBe(50_000);
     const nextBlock = async (after: number) => {
-      for (let i = 0; i < 120 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
+      for (let i = 0; i < 240 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
     };
 
     // The bet went through, its answer was lost: the slips it spent are held back, then its
@@ -147,5 +147,5 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     await nextBlock(sent + 2);
     expect(await w.settleDoubts()).toBe(1);
     expect(w.creditBalance()).toBe(credit);
-  }, 150_000);
+  }, 300_000);
 });

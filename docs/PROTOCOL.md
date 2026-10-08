@@ -25,16 +25,16 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | payout batch | every block while the queue is non-empty | fixed 8-action shape |
 | withdrawal privacy delay | uniform random 0–60 s, client-side | before sending, from the separate top-up/withdrawal tunnel |
 | sweep | every 48 blocks (~1 h), only if there are deposits | |
-| anchor tx | testnet every 48 blocks; mainnet once a day + at each resolution | each costs 0.0001 ZEC |
+| anchor tx | every `BB_ANCHOR_EVERY` blocks (default 48, about an hour), only when the log root has changed since the last anchor | each costs 0.0001 ZEC |
 | PoW difficulty | top-up, voucher, withdraw: **20 bits**; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast. Measured with a WASM SHA-256 on one desktop thread: 16 bits ≈ 35 ms median, 20 bits ≈ 0.5 s (2.1 s p95); the client solves in 2–4 workers |
 | connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off); the next poll opens the connection the next write uses | see §4 |
 | LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
-| exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market; funded at listing |
-| listing band | Polymarket mid ∈ [0.10, 0.90] at listing | |
+| exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market, covered by the reserve. Every market of a network has the same parameters; the signer refuses a listing with others |
+| listing rules | Polymarket mid ∈ [0.10, 0.90], a deep book, an event start still ahead, an end before judging ends | checked by the API on the live book ([MARKETS.md](MARKETS.md#listing)) |
 
 Rounding (normative): share and credit amounts round **down** to whole units. Every remainder goes to the house balance and is logged.
 
-**Reference snapshot (normative).** Each batch records, for every market with orders, the reference it priced from (`RefSnapshot` in `crates/blindbook-polymarket`):
+**Reference snapshot (normative).** Each batch records, for every market with orders, the reference it priced from (`RefSnapshot` in `crates/blindbook-ledger/src/reference.rs`, taken by `crates/blindbook-polymarket`):
 
 | Field | Meaning |
 |---|---|
@@ -81,9 +81,9 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
   - by Argon2id(passphrase) as the fallback.
 
   The BIP 39 seed inside the vault is the root of every secret.
-- **Zero-query restore (normative client behaviour):** derive `B_` for counters 0..n per keyset, find them in the public issuance log, unblind, and check `Y` against the public spent set. **No restore request is ever sent.**
+- **Zero-query restore (normative client behaviour):** derive `B_` for counters 0..n per keyset (stopping after 96 unused counters in a row), find them among the signatures the public log published, unblind, and drop those whose `Y` the log lists as spent. The same pass finds the trade history by the CALLED IT tags (§6). The log is the same set of files every verifier downloads (§8). **No restore request is ever sent.**
 - **Transfer format:** `bbslip1:` + base64url(CBOR [keyset_id, amount, x, C]…), also as a QR code. The recipient swaps it immediately so the sender can't spend it twice.
-- **Paper slips:** the same `bbslip1:` payload printed as a QR on a receipt-width page (black on white). The app can then delete the slip locally. Importing a paper slip **swaps it at once** (new secrets, new signatures), so the paper is void after import, and a photographed copy is worthless once imported.
+- **Handed-over codes and paper slips:** the same `bbslip1:` payload, as text, a QR on screen, or printed on a receipt-width page (black on white). The slips leave the vault when the code is made; the code stays in the vault's outbox, so the issuer can take it back (a swap of its own code) until someone else swaps it first. Importing **swaps at once** (new secrets, new signatures), so a code or a paper slip is void after import, and a photographed copy is worthless once imported.
 
 ## 4. Requests (browser → API, always over the mixnet)
 
@@ -92,9 +92,9 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
   - **mix-fetch allows one tunnel per JavaScript realm** (`setupMixTunnel` once; after `disconnectMixTunnel` that realm can't open another). So **every tunnel lives in its own hidden same-origin frame**, the main one included: the main tunnel carries browsing, reads and trades; a stuck tunnel is replaced by a new frame, with no page reload.
   - **Boot races two tunnel frames** and keeps the first that answers `GET /v1/head` within 8 s; the other is destroyed. About a third of randomly chosen mixnet routes come up "ready" and never answer (`spikes/a-mixnet`), and mix-fetch has no request timeout, so **every request carries an app-level deadline** and a failing tunnel is replaced while the lamp shows RELINKING.
   - **Writes never share a connection:** the API answers every POST with `Connection: close`, and the TLS terminator disables session tickets and resumption, so each write rides a new TCP+TLS connection inside the tunnel. The regular `/v1/live` poll then opens the next connection, which the next write reuses, so the handshake (about 2 s inside the mixnet) stays off the bet's path.
-  - **Top-ups and withdrawals use a separate mixnet identity:** they run in a hidden same-origin frame that sets up **its own tunnel** (a different mixnet client), destroyed afterwards. Withdrawals add a random 0–60 s delay. Fallback, if a frame can't hold its own tunnel: reload into "cage mode" with a fresh tunnel.
+  - **Top-ups and withdrawals use a separate mixnet identity:** each runs in a hidden same-origin frame that sets up **its own tunnel** (a different mixnet client). A top-up keeps its frame until it is credited or its address expires, and its status is polled only through it; a withdrawal gets a fresh frame, destroyed afterwards, after a random 0–60 s delay.
   - **One mixnet identity per tunnel, never reused (normative):** mix-fetch keeps its client identity (keys, gateway registration) in an IndexedDB database named `wasm-client-storage-<clientId>`, and a same-origin frame shares that storage. So every tunnel is set up with a random `clientId` and a random `storagePassphrase`: the main tunnel gets a new one on every page load (and on every replacement), the cage frame a new one for every top-up or withdrawal. `disconnectMixTunnel` leaves the database behind, so the app deletes it explicitly when the tunnel ends, and deletes leftovers at boot. Two tunnels never load the same identity, and no identity outlives its session.
-  - **No HTTP compression through the tunnel:** mix-fetch requests `Accept-Encoding: identity` (its WASM has no decompressor). Bundle files are served as `.gz` files and decompressed by the app (`DecompressionStream`).
+  - **No HTTP compression through the tunnel:** mix-fetch requests `Accept-Encoding: identity` (its WASM has no decompressor). The public log and the price history are served as `.gz` files and decompressed by the app (`DecompressionStream`).
   - **Verified in `spikes/a-mixnet` (Oct 6):** a frame gets an independent tunnel with its own identity and exit IP, also while another tunnel runs; tunnel setup 10–14 s; a warm request ≈ 0.9 s, a fresh TCP+TLS request ≈ 3 s. Still to measure against our own API: the poll-then-write pattern (target bet p50 ≤ 3 s).
   - **If a fresh connection per write is too slow:** bets within one session may share a keep-alive connection (linkable only to each other, never to top-ups or withdrawals; residual N11).
 
@@ -102,21 +102,22 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 |---|---|---|---|
 | `POST /v1/topup` | `amount_zat` (a top-up denomination), `credit_outputs[]`, `claim_hash = SHA256(topup_secret)` | on SEEN (within 0-conf caps) or 1 confirmation | `{topup_id, address, expires_height}` |
 | `GET /v1/topup/{id}` | | | `{status: awaiting / seen / credited / confirmed, privacy: SHIELDED / AMOUNT_VISIBLE / EXPOSED, paid_zat, signatures[]}` |
-| `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market_id, side (buy/sell), outcome (0/1), limit_bp, amount, outputs[], change_outputs[], tag` | next 2 s batch | `{avg_price_bp, filled, refunded, signatures[]}` |
-| `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[]}` |
-| `POST /v1/redeem` | `inputs[]` (winning keyset), `credit_outputs[]` | immediately after resolution | `{signatures[]}` |
+| `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market, side (buy/sell), outcome (0/1), limit_bp, amount, outputs[], change_outputs[], tag` | next 2 s batch | `{batch_id, fill: {tag, status, kept, out, fee, refund, avg_price_bp}, signatures[], stored_record}` |
+| `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[], stored_record}` |
+| `POST /v1/redeem` | `inputs[]` (a resolved outcome's keyset), `outputs[]` (31 blank CREDIT outputs) | immediately after resolution | `{paid, signatures[], stored_record}` |
 | `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount` (units, a standard denomination, THREAT_MODEL X6), `change_outputs[]`, `address_sealed` (`bbseal1:`, sealed to the signer's pinned X25519 key; format in `crates/blindbook-seal`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{signatures[] (change), stored_record}`; payout shown in the log as `PayoutSent {txid, commitments}` |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
-| `POST /v1/voucher` | `code, credit_outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips |
+| `POST /v1/voucher` | `code, outputs[]` | immediately | judge vouchers: a single-use code (case and spaces ignored) exchanged for CREDIT slips |
+| `POST /v1/duel/open`, `/take`, `/cancel` | see §7.1 | immediately | `{signatures[], stored_record}` |
 
 - Output counts are capped at 32 per keyset per request; a request spends at most 64 slips.
 - **Trades pay from any slips:** `amount` (CREDIT units for a buy, share-units for a sell) may be less than the inputs' total, and the rest comes back on the change outputs in the same answer, so a bet never waits for a swap to exact change. The public log records `amount`, not the slips' denominations.
 - **Blank outputs for trades (normative):** the client can't know in advance how a trade fills, so `/v1/trade` carries blinded outputs **without amounts** for both possible results (as in Cashu NUT-08); the signer picks each used output's denomination and returns it with the signature and DLEQ.
   - **buy:** `outputs[]` in the outcome's position keyset (shares bought), `change_outputs[]` in CREDIT (refunds: limit, halt, the part shrunk by the invariant);
   - **sell:** `outputs[]` in CREDIT (proceeds), `change_outputs[]` in the **same position keyset** (shares that didn't sell: limit, halt, the part shrunk by the invariant).
-  - Each list always holds **31** blank outputs, enough for any amount below 2³¹ units, so every trade request has the same shape. Unused outputs are never signed, and zero-query restore skips them (gap limit 64 counters).
+  - Each list always holds **31** blank outputs, enough for any amount below 2³¹ units, so every trade request has the same shape. Unused outputs are never signed, and zero-query restore skips them (gap limit 96 counters).
 - **P600 transparency:** every write response includes `stored_record`, the exact row the server stored for that request (batch, tag, market, outcome, side, size, price, height). The app keeps these in the vault and shows them on P600, with no extra request.
-- **API-side validation:** PoW, schema, unspent and valid inputs.
+- **API-side validation:** PoW, schema, and inputs not already spent or pending; the signer then checks every slip's signature (§9).
 - **The API never signs.** It hands batches to the signer over the signer's outbound stream (§9) and relays the signatures back.
 
 ## 5. Pricing and batch clearing (normative)
@@ -142,6 +143,7 @@ A market is halted for a batch if any of:
 - **event start reached:** `gameStartTime` for sports, or a scheduled moment set at listing (e.g. a central-bank announcement);
 - past our end time;
 - either outcome's ask ≥ 0.98;
+- no valid reference: a mid, bid or ask outside (0, 1];
 - the reference feed unhealthy for more than 10 s (connection down or silent, no snapshot, or a local book that disagrees with Polymarket's own best prices; not "no price change").
 
 Halted requests are refunded in full: a buy as CREDIT, a sell as its own shares (new position slips from `change_outputs[]`).
@@ -152,8 +154,7 @@ Halted requests are refunded in full: a buy as CREDIT, a sell as its own shares 
 W = max(u_A, u_B) − c  ≤  L          // the house's worst-case loss in this market
 ```
 
-`c` is part of the reserve, so with W ≤ L in every market and the buffers funded:
-`reserve ≥ CREDIT outstanding + Σ_markets max(u_A, u_B)`. That is the public solvency check.
+`c` is part of the reserve, so with W ≤ L in every market and the reserve covering the buffers, the reserve covers every payout. The public solvency check (§8) compares the reported reserve with `CREDIT outstanding + Σ_markets max(u_A, u_B) + queued withdrawals + open duel stakes`, all computed from the log.
 
 ### 5.4 Buys in a batch
 
@@ -224,17 +225,17 @@ Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with
 ## 6. "Called it" receipts
 
 1. For trade request i, the client derives a secret `s_i` from the vault seed (NUT-13 style path, separate counter) and sends `tag_i = SHA256("bb-called-it" ‖ s_i)`.
-2. The batch result in the public log lists `(tag_i, market_id, outcome, side, filled_units, avg_price_bp, height, batch_id)`. It's anchored on-chain with the bundle root.
+2. The batch result in the public log lists `(tag_i, market_id, outcome, side, filled_units, avg_price_bp, height, batch_id)`. The root of the log that contains it is anchored on-chain.
 3. **Proof** = `s_i`, optionally packed as `bbproof1:` + base64url(CBOR [s_i, height]) or a link that carries the proof after `#` (`https://…/#p=<…>`), so neither our servers nor link-preview bots ever receive it.
-4. **Verification** happens in any browser (or the CLI): compute `SHA256("bb-called-it" ‖ s_i)`, find it in the log at `height`, check the bundle root against the on-chain anchor, show the fill.
+4. **Verification** happens in any browser (or the CLI): compute `SHA256("bb-called-it" ‖ s_i)`, find it in the log the browser downloads and checks (hash chain, signatures), and show the fill. The command-line verifier with `--chain` also checks that each on-chain anchor names the log's root.
 5. **Revealing one proof says nothing about other trades:** every tag uses an independent secret.
 
 ## 7. Resolution and redemption
 
-1. After the end date, the resolver polls the Polygon ConditionalTokens contract every 5 minutes on **two independent RPC providers**, which must agree:
+1. After the end date, the API's resolver polls the Polygon ConditionalTokens contract every 5 minutes on **two independent RPC providers**, which must agree:
    - `payoutDenominator(conditionId)` = `0xdd34de67`;
    - `payoutNumerators(conditionId, i)` = `0x0504c814`.
-2. When the denominator is greater than 0: record the numerators, the Polygon block and the resolution tx hash. The market becomes **RESOLVED**.
+2. When the denominator is greater than 0 on both: the API proposes `resolve {market, den, num, polygon_block, polygon_tx}`. **The signer reads the result itself** (once a minute, its own pair of RPCs, `BB_POLYGON_RPCS`) and refuses a resolution that doesn't match it, so the internet-facing API can't settle a market its own way. Once applied, the market is **RESOLVED** and the log records the numerators, the Polygon block and the resolution transaction; `blindbook-verify --polygon public` reads each one from Polygon again.
 3. A redeem request of `a` share-units of outcome i pays `floor(a · num_i / den)` CREDIT units. A 50-50 result (`[1,1]`) pays half per share. Losing keysets become worthless.
 4. Redemption never expires.
 
@@ -260,22 +261,25 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 
 | File | Content | Refresh |
 |---|---|---|
-| `GET /v1/head` | `{height, seq, root, pow_bits}` | poll ~3 s |
-| `GET /v1/live` | current prices (ours and the Polymarket reference) for all markets, the last 2 minutes of batch results, and the last chain block with its shielded action count | poll ~3 s |
+| `GET /v1/head` | `{height, seq, root, pow_bits, halted}` | poll ~15 s |
+| `GET /v1/live` | for every market: state and halt reason, our price, the Polymarket reference; the last 2 minutes of fills; the last chain block with its shielded action count; payouts of the last 30 minutes with the withdrawal commitments they paid; open duels and the challenger signatures of duels taken in the last 30 minutes. About 260 bytes per market | poll ~3 s |
 | `GET /v1/markets` | the catalog: question, outcome labels, Polymarket's rules, resolution source, schedule, keyset ids, status | poll ~30 s |
-| `GET /v1/snapshot/{seq}.json.gz` | full state: markets (labels, rules text, WebP thumbnails ≤ 4 KB), keyset ids, issuance log, spent set, house balance | first load, then cached |
-| `GET /v1/delta/{seq}.json.gz` | one block's worth of batch records (per market: parameters, schedule, reference snapshot, pool before, orders with tags, halt, fills, pool after), issued `B_`/`C_`/DLEQ **sorted by `B_`**, spent slips `{Y, keyset, amount}` **sorted by `Y`** (so anyone can compute what is outstanding per keyset), events (market listed, top-up credited, voucher, redeemed, withdrawal queued, payout sent, resolved, anchored, reserve reported), public chain stats for the block (shielded action count, for Block Radio), `prev_root` | per block |
+| `GET /v1/history.json.gz` | every market's price history, ours and Polymarket's mid, in basis points: one-minute samples for 2 h, 15-minute for a week, 2-hour since listing | poll ~5 min |
+| `GET /v1/segment/{k}.jsonl.gz` | deltas `128k + 1 … 128k + 128`, one per line, each byte for byte as in `delta/`; written once the last of them exists | read once, then cached |
+| `GET /v1/reserve.json` | the reserve's public full viewing key, its birthday height and the network | once |
+| `GET /v1/delta/{seq}.json.gz` | one block's worth of batch records (per market: parameters, schedule, reference snapshot, pool before, orders with tags, halt, fills, pool after), issued `B_`/`C_`/DLEQ **sorted by `B_`**, spent slips `{Y, keyset, amount}` **sorted by `Y`** (so anyone can compute what is outstanding per keyset), events (market listed, top-up credited, voucher redeemed, redeemed, withdrawal queued, payout sent, swept, resolved, anchored, reserve reported, duel opened / taken / cancelled), public chain stats for the block (shielded action count, for Block Radio), `prev_root` | per block |
 
 - `root = SHA256(prev_root ‖ SHA256(canonical JSON of the delta))` (RFC 8785; the first delta's `prev_root` is 32 zero bytes): a hash chain, anchored on-chain. Sorting issued signatures and spent `Y`s means their order inside a block says nothing about which request they came from. Types and the builder: `crates/blindbook-ledger`.
 - **What the verifier replays:** every batch record carries everything `clear_batch` needs (parameters, schedule, reference, pool before, orders), so anyone can recompute the fills and the pool after, check that each market's pool after equals its pool before in the next batch, recompute each anchor from its samples, and check the chain of roots against the on-chain anchors.
 - **Solvency.** The signer reports the reserve into the log (`reserve_reported {height, reserve_zat, unswept_zat}`) whenever it changes and at least every 48 blocks. At each report the verifier computes the liabilities from the log itself: CREDIT outstanding, per open market `max(outstanding A, outstanding B)` (only one outcome wins; a 50-50 pays half of each, which is less), per resolved market `Σ outstanding × num / den`, plus withdrawals queued and not paid yet, at 1 000 zatoshi per unit. It fails if `reserve + unswept < liabilities`. The reserve account's full viewing key is public, so the reported figure can be checked on-chain; top-ups not swept yet are reported apart (each one is already public as `topup_credited`).
-- Your own results arrive in the **response** within seconds. The bundle is for the public record, restore, proofs and verification.
+- **Reading the log.** Clients read whole segments where they exist and the newest deltas one by one, a few requests at a time: the browser verifier, restore and duel recovery read the same files in the same way, so a reader's requests say nothing about what it is looking for. At one block every ~75 s, a month is about 35,000 deltas, which is 270 segment requests.
+- Your own results arrive in the **response** within seconds. The log is for the public record, restore, proofs and verification.
 
 ## 9. Signer protocol
 
 - **No inbound ports.** The signer opens a persistent outbound stream (WebSocket over TLS) to the API's `/v1/signer`, authenticated with a bearer token (≥ 32 characters).
-- **One operation at a time, one order (normative).** The API's sequencer puts every state change (list market, trade batch, swap, redeem, credit, withdraw, resolve) in one order and sends each to the signer: `{"id", "op"}` → `{"id", "reply": {"invalid", "signatures"}}`. Both sides apply it to their own ledger replica with the same `ops::apply`, leaving out the requests the signer found invalid (`invalid`), so the replicas never diverge; the API checks the signatures line up with its own sign jobs and halts if they don't (`crates/blindbook-ledger/src/ops.rs`).
-- **Independent verification.** It runs its own indexer and engine replica and **verifies every batch before signing**: each spent slip (`Y` matches the secret, `C = k·hash_to_curve(x)` for its keyset and amount), each blinded output (a curve point), each top-up claim against its own indexer, each voucher against its own list, the exposure invariant. Signing takes milliseconds.
+- **One operation at a time, one order (normative).** The API's sequencer puts every state change (list market, trade batch, swap, redeem, credit, withdraw, duel open / take / cancel, resolve, block close, recorded treasury event) in one order and sends each to the signer: `{"id", "op"}` → `{"id", "reply": {"invalid", "signatures"}}`. Both sides apply it to their own ledger replica with the same `ops::apply`, leaving out the requests the signer found invalid (`invalid`), so the replicas never diverge; the API checks the signatures line up with its own sign jobs and halts if they don't (`crates/blindbook-ledger/src/ops.rs`).
+- **Independent verification.** It runs its own indexer and engine replica and **verifies every operation before signing**: each spent slip (`Y` matches the secret, `C = k·hash_to_curve(x)` for its keyset and amount), each blinded output (a curve point), each top-up claim against its own indexer, each voucher against its own list, each duel's time against its own clock, the exposure invariant; a listing must carry the network's parameters, and a resolution must match the result the signer read from Polygon itself (§7). Signing takes milliseconds.
 - **Hello and step check.** On connect the signer sends `{"hello": {"m", "applied"}}`. The API admits it only with the pinned `M` and the same number of applied operations.
 - **A lost answer is applied exactly once.** If the link drops after an operation was sent but before its answer, the API keeps that operation in doubt, admits the signer one operation ahead, and re-sends it before anything else; the signer recognises the repeat (digest of the redacted operation, kept in its journal with the reply) and answers from its cache. Tested in `crates/blindbook-api/tests/remote.rs`.
 - **Journals hold no spendable secret.** Both sides keep an append-only journal (fsynced before any answer leaves) and rebuild their state from it after a restart; spent slips are written with their secret and `C` replaced by placeholders (`ops::redact`), keeping only `Y`, keyset and amount.
@@ -288,9 +292,9 @@ Every visitor downloads **the same files in the same order**, through the mixnet
 |---|---|---|---|
 | Sweep | deposit account → reserve | matured top-up notes in, one note out | none |
 | Payout | reserve → users (+ change) | always **8 Ironwood actions**: ≤ 7 recipients + change, padded with **zero-value outputs to freshly generated throwaway addresses** (indistinguishable from real ones); recipient and padding outputs use `OvkPolicy::Discard`; ZIP 317 fee 0.0004 ZEC. Verified on testnet (`spikes/g-payout`): 8 actions, and the sender's full viewing key sees only the change | none |
-| Anchor | reserve → reserve (internal) | 2 actions | `bb1:anchor:<height>:<root-hex>` (the signer's own root, §9) |
+| Anchor | reserve → reserve (internal) | 2 actions | `bb1:anchor:<height>:<root-hex>` (the signer's own root, §9); each root is anchored once. The reserve's viewing key opens it, which is how the verifier checks it |
 | Split | reserve → reserve | the payout shape (7 equal outputs to fresh reserve addresses + change, OVK discarded), whenever fewer than 3 reserve notes are spendable, so payouts and anchors never wait for each other's change | none |
-| Buffer funding | operator → reserve | | `bb1:buffer:<market_id>` |
+| Buffer funding | operator → reserve | an ordinary shielded payment to the reserve address `blindbook-signer init` prints | optional |
 
 Payouts go only to unified addresses with an Orchard-protocol receiver, checked by parsing with `zcash_address`.
 
@@ -298,14 +302,14 @@ Payouts go only to unified addresses with an Orchard-protocol receiver, checked 
 - **Never paying twice (normative for the signer):** a payout is built and stored by the wallet, its txid and the withdrawals it pays are written to disk, and only then is it broadcast; after a restart the in-flight payouts are re-broadcast (harmless) and re-reported. A withdrawal leaves the queue only when its `PayoutSent` event is recorded in the log.
 - **The address is checked before the CREDIT is spent:** the signer opens the sealed address and checks it against the commitment, the network and the Orchard receiver while it checks the slips; a withdrawal it couldn't pay is refused and spends nothing.
 - **Confirmations:** the wallet spends its own notes after 1 confirmation and received notes (deposits, buffer funding) after 3.
-- **Measured on testnet (Oct 7):** a withdrawal to a sealed address was paid in the next payout, 8 Ironwood actions (tx `948d5136…`); two withdrawals made back to back went out together in one payout (`80d88933…`); the signer anchored its own log root (`ef070d78…`). Implementation: `crates/blindbook-treasury`, `crates/blindbook-signer/src/payouts.rs`, `crates/blindbook-seal`.
+- **Measured on testnet (Oct 7):** a withdrawal to a sealed address was paid in the next payout, 8 Ironwood actions (tx `948d5136…`); two withdrawals made back to back went out together in one payout (`80d88933…`); the signer anchored its own log root (`ef070d78…`), and `blindbook-verify --chain` later found an anchor of a fresh log on-chain (`775009d6…`) naming that log's root, and the reserve at 0.1380 TAZ. Implementation: `crates/blindbook-treasury`, `crates/blindbook-signer/src/payouts.rs`, `crates/blindbook-seal`.
 
 ## 11. Indexer rules
 
 - Sync every compact block with the deposit viewing key.
 - Watch the **full** mempool stream (`GetMempoolStream` returns full transactions); trial-decrypt everything for SEEN. On testnet a payment was SEEN 0.9 s after the wallet's broadcast (`spikes/c-deposits`).
 - Request compact blocks with **all pool types**: they carry transparent inputs and Sapling spends, so a top-up is classified (transparent inputs → EXPOSED; Sapling spends → AMOUNT VISIBLE) without fetching any single transaction. Verified: classification from compact data matched full transactions for 162/162 testnet transactions, at 40 KB per 100 blocks instead of 333 KB.
-- Never request a single txid from third-party infrastructure.
+- The indexers never request a single txid from third-party infrastructure. (The command-line verifier does fetch the anchor transactions named in the public log: the operator's own transactions, never a user's; THREAT_MODEL N14.)
 - **Crediting (normative):** a payment is credited as `floor(value_zat / 1000)` CREDIT units onto the request's blank outputs, on SEEN if it is within the 0-conf caps, otherwise when mined. The API's indexer proposes it; the signer credits only a payment its **own** indexer (full viewing key) has seen, applies the same caps itself, and never credits a txid twice. The first payment to an address uses the request's outputs; any later payment is claimed with `topup_secret` onto fresh outputs (`POST /v1/topup/claim`). Implementation: `crates/blindbook-indexer`, `crates/blindbook-api/src/topup.rs`.
 - **Measured on testnet (Oct 7):** 0.05 TAZ credited **1.6 s** after the paying wallet's broadcast returned (mempool SEEN, both indexers); a payment mined while the API was down was credited 1 s after restart from the block range.
 - The API needs only the deposit account's incoming viewing key (UIVK) for detection; the full viewing key stays with the signer.
@@ -314,5 +318,5 @@ Payouts go only to unified addresses with an Orchard-protocol receiver, checked 
 
 ## 12. On-disk state
 
-The ledger state is not a database: it is the replay of an append-only journal (`journal.jsonl` on the API, `signer-journal.jsonl` on the signer; see §9), and the public log files are written from the same replay. Top-up requests and deposits (diversifier index ↔ request) and payout status are kept by the indexer and the signer next to their journals. Withdrawals keep only the commitment, the sealed blob until broadcast, status and txid; **no plaintext address**.
-No table, log or metric ever contains an IP, user agent or plaintext payout address. The boot-time self-check refuses to start a service with access logging enabled.
+The ledger state is not a database: it is the replay of an append-only journal (`journal.jsonl` on the API, `signer-journal.jsonl` on the signer; see §9), and the public log files are written from the same replay. The price history (`history.json`) holds only public prices. Top-up requests and deposits (diversifier index ↔ request) and payout status are kept by the indexer and the signer next to their journals. Withdrawals keep only the commitment, the sealed blob until broadcast, status and txid; **no plaintext address**.
+No table, log or metric ever contains an IP, user agent or plaintext payout address. The API's log filter switches the HTTP stack's logging off whatever the configuration says, and `crates/blindbook-api/tests/no_logs.rs` fails if the code ever reads a client address or a proxy header or adds request tracing.

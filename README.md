@@ -9,10 +9,9 @@
 </p>
 
 <p align="center">
-  <img alt="Zcash Ironwood" src="https://img.shields.io/badge/Zcash-Ironwood%20(NU6.3)-5CFF9D?style=flat-square&labelColor=030805">
+  <img alt="Zcash Ironwood" src="https://img.shields.io/badge/Zcash-Ironwood-5CFF9D?style=flat-square&labelColor=030805">
   <img alt="Zecathon: Private Markets" src="https://img.shields.io/badge/Zecathon-Private%20Markets-5CFF9D?style=flat-square&labelColor=030805">
   <img alt="Network privacy: Nym mixnet" src="https://img.shields.io/badge/network-Nym%20mixnet-C6FFDD?style=flat-square&labelColor=030805">
-  <img alt="Status: building" src="https://img.shields.io/badge/status-building-FFB547?style=flat-square&labelColor=030805">
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-A99BFF?style=flat-square&labelColor=030805">
 </p>
 
@@ -20,8 +19,9 @@
   <a href="#why">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#privacy-in-five-layers">Privacy</a> ·
-  <a href="#called-it">Called it</a> ·
-  <a href="#design">Design</a> ·
+  <a href="#what-you-can-do">Features</a> ·
+  <a href="#check-it-yourself">Verify</a> ·
+  <a href="#run-it">Run it</a> ·
   <a href="#docs">Docs</a> ·
   <a href="#status">Status</a>
 </p>
@@ -37,9 +37,9 @@ A prediction market needs **public prices**, not **public participants**. Zcash 
 
 ## How it works
 
-1. **Top up once.** Pay a one-time shielded address from any Zcash wallet (one tap on iPhone via Zodl, or a QR code). Small top-ups are credited in seconds as a **private balance** that only your device knows about.
-2. **Bet in seconds.** Pick a market mirrored from Polymarket (Yes/No or named outcomes such as `LEGACY vs PARIVISION`). Your bet clears in a **2-second sealed batch** at one price per side: Polymarket's live price, shifted by our users' own flow.
-3. **Hold bearer slips.** Positions are blind-signed e-cash. Sell them, hand them to anyone as a QR code, or redeem when Polymarket's result is final on-chain.
+1. **Top up once.** Pay a one-time shielded address from any Zcash wallet (a QR code, or one tap on a phone). Small top-ups are credited within seconds as a **private balance** that only your device knows about.
+2. **Bet in seconds.** Pick a market mirrored from Polymarket (Yes/No, or named outcomes such as `NAVI vs FAZE`). Your bet clears in a **2-second batch** at one price per side: Polymarket's live price, shifted by our own users' flow.
+3. **Hold bearer slips.** Positions are blind-signed e-cash. Sell them, hand them to anyone as a code or a printed slip, or cash them in when Polymarket's result is final on-chain.
 4. **Withdraw** to a fresh shielded address. Nobody, including us, can tie that payout to your bets.
 
 ```mermaid
@@ -48,7 +48,7 @@ flowchart LR
     B["Your browser: vault + slips"] <-->|"Nym mixnet, no IPs"| A["API: holds no secrets"]
     A <-->|"2-second batches"| S["Signer: no inbound ports"]
     P["Polymarket: catalog + live price"] --> A
-    C["Polygon CTF: final result"] --> A
+    C["Polygon: final result"] --> A
     D -->|"hourly sweep"| R[("Reserve: viewing key public")]
     R -->|"fixed-shape payout, discarded OVK"| F["Your fresh address"]
     classDef bb fill:#0A1A11,stroke:#3FCB7E,color:#C6FFDD
@@ -59,101 +59,126 @@ flowchart LR
 
 | Layer | Question | Closed by |
 |---|---|---|
-| **Funding** | Who paid? | Ironwood shielded top-up to a one-time address nobody can recognize as ours |
+| **Funding** | Who paid? | a shielded Ironwood top-up to a one-time address nobody can recognize as ours |
 | **Positions** | Who holds what? | Chaumian e-cash: blind-signed bearer slips, so even we can't link a top-up, a bet and a payout |
-| **Payout** | Where did the money go? | fixed-shape shielded batches with a discarded outgoing viewing key; destinations sealed to an isolated signer |
-| **Network** | Who is online? | every request through the Nym mixnet, so no IP ever reaches us; money in and out on a separate mixnet identity; one identical data bundle for everyone; no CDN, analytics or Polymarket calls from the browser (only the mixnet's own directory and entry gateway see that an IP uses Nym) |
-| **Device** | What's on your phone? | encrypted vault opened with Face ID on phones (a passphrase on computers), a 12-word phrase as backup, restore without asking the server anything |
+| **Payout** | Where did the money go? | fixed-shape shielded payouts with a discarded outgoing viewing key; the address is sealed to an isolated signer and forgotten |
+| **Network** | Who is online? | every request goes through the Nym mixnet, so no IP reaches us; money in and out uses a separate mixnet identity; everyone downloads the same public files; no CDN, analytics or Polymarket request from the browser |
+| **Device** | What's on your phone? | an encrypted vault (Face ID on phones, a passphrase on computers), 12 words as the backup, and a restore that asks the server nothing |
 
 | Public | Never public |
 |---|---|
-| prices, volumes, every batch's fills (with participants redacted), issuance, reserves, payout totals | who you are, which bets are yours, your balance, your deposit and payout addresses, your IP |
+| prices, volumes, every batch's orders and fills (participants redacted), every slip issued and spent, the reserve, payout totals | who you are, which bets are yours, your balance, your top-up and payout addresses, your IP |
 
-**Privacy is trustless. Custody is verifiable.** The internet-facing server holds no secrets. Your browser can replay the whole public log and check prices, issuance and solvency against the public reserve. Every known leak and its fix is in the [threat model](docs/THREAT_MODEL.md).
+**Privacy is trustless. Custody is verifiable.** The internet-facing server holds no secrets. Every known leak, who could see it and what closes it is in the [threat model](docs/THREAT_MODEL.md).
 
-## Called it
+## What you can do
 
-> **Anonymous by default. Provable by choice.**
+- **Bet** on curated Polymarket markets, with both outcomes on the chart and Polymarket's rules word for word next to how Blindbook settles them.
+- **Sell** before the result, or **cash in** after it. Trading closes at the event start, so nobody trades on live information faster than the reference.
+- **Hand over** a position or part of your balance as a code or QR. Take back a code nobody has used yet.
+- **Print** a position as a bearer paper slip with a real QR. Scanning it moves the slip into the scanner's vault and voids the paper.
+- **CALLED IT.** Every trade carries a secret tag in the public log. Reveal one secret later to prove "I bought NAVI at 62¢ at block N", to whoever you choose, and nothing else.
+- **Blind duels.** Challenge anyone with a link: they take the other side anonymously, and together you buy a complete set. The house carries no risk, and Polymarket's result settles it.
+- **P600 · What we know about you:** the exact record the server stored for each of your requests, next to what it doesn't have.
+- **NOBODY PASS:** an anonymity card with a random face, saved as an image on your device.
+- **The console:** everything has a button, and the console reaches it by typing too. `verbose on` prints the cryptography as it happens.
+- **The back room:** Nullifier Snake, an odds calculator, Redact-a-Tracker, Dead Drop (notes kept in your vault) and Block Radio (a chord per Zcash block). All local, nothing sent.
 
-Every trade carries a secret tag in the public log, which is anchored on-chain. Months later you can reveal that one secret to prove *"I bought LEGACY at 18¢ at block 3,514,220"*: to a friend, a follower or a journalist, whenever and to whoever you choose. Their browser checks it against the anchored log and stamps **VERIFIED ✓**. Nothing about your other trades, balance or payouts is revealed. It's Zcash's selective disclosure, applied to forecasting: reputation without identity.
+## Check it yourself
+
+Everything that matters is in a hash-chained public log, anchored on-chain. Two verifiers run the same checks:
+
+- **In the browser (P400 · VERIFY):** it downloads the log and checks
+  - that the hash chain reaches the published head;
+  - that every batch replays through the pricing engine (the engine's own code, built for WebAssembly) to the same fills and pools;
+  - every blind signature's DLEQ proof against keys derived from the master key pinned in the app;
+  - that nothing was spent beyond what was issued;
+  - that the house's worst case stays within each market's buffer;
+  - that the reserve report covers every liability.
+- **On the command line, plus the chains:** `blindbook-verify` runs the same checks. With `--chain` it syncs a view-only wallet of the **public reserve viewing key**, checks the real reserve balance against the liabilities and opens every on-chain anchor to confirm that it names the log's root. With `--polygon` it reads every market's result again from Polymarket's contract on Polygon.
+
+```bash
+cargo run --release -p blindbook-verify -- <M> https://<api> --chain zecrocks --polygon public
+```
+
+Nobody has to trust the internet-facing server with results either: the signer reads each result from Polygon itself and refuses any other.
 
 ## Design
 
-**The Blind Booth.** You step into a booth, the curtain closes, and a green-phosphor CRT terminal from an alternate 1986 boots up: teletext pages, split-flap digits, an oscilloscope for prices, a retro desktop with pixel shortcuts and a taskbar, thermal receipts and paper betting slips. Wherever an exchange would show a person, there's a black redaction bar. On a phone it becomes a handheld pager. On the desktop sit the **back-room** apps, local-only toys: Nullifier Snake (touch your own tail and it's a double-spend), an odds calculator, Redact-a-Tracker and Block Radio, which turns every new Zcash block into a chord.
+**The Blind Booth.** You step into a booth, the curtain closes, and a green-phosphor terminal from an alternate 1986 boots up: teletext pages, split-flap digits, a scope for prices, a retro desktop with a taskbar, thermal receipts and paper slips. Wherever an exchange would show a person, there's a black redaction bar. On a phone it becomes a handheld pager.
 
 <p align="center">
-  <img src="design/reference/calm-terminal.png" alt="Desktop: the market page in the terminal" width="68%">
-  &nbsp;
-  <img src="design/reference/calm-pager.png" alt="Phone: the same market on the pager" width="22%"><br>
+  <img src="docs/assets/screens/booth.jpg" alt="The 3D booth landing" width="49%">
+  <img src="docs/assets/screens/market.jpg" alt="A market page on the desktop" width="49%"><br>
+  <img src="docs/assets/screens/verify.jpg" alt="The verifier in the browser" width="49%">
+  <img src="docs/assets/screens/backroom.jpg" alt="Nullifier Snake in the back room" width="49%"><br>
+  <img src="docs/assets/screens/pager-market.jpg" alt="A market on the phone pager" width="24%">
+  <img src="docs/assets/screens/pager-menu.jpg" alt="The pager menu" width="24%">
 </p>
+
+## Run it
+
+Everything runs locally without a Zcash node: a development server with the real API and the signer in one process, three synthetic markets, judge codes `DEV-0001`…`DEV-0099`, and a block every 15 seconds. You need Rust 1.95 with the `wasm32-unknown-unknown` target (the app's verifier runs the engine as WebAssembly), Node 22 and pnpm 10.
+
+```bash
+cargo run -p blindbook-api --features embedded-signer --example devserver
+```
+
+```bash
+pnpm --dir web install && pnpm --dir web dev
+```
+
+Open http://127.0.0.1:5173, make a vault, redeem `DEV-0001` in F3 CAGE → JUDGE CODE, and bet. Tests:
+
+```bash
+cargo test --workspace && cargo test -p blindbook-api --features embedded-signer
+```
+
+The development build talks to the server directly. The production build (`VITE_BB_MIXNET=1`) sends every request through the Nym mixnet.
 
 ## Docs
 
-| Product | |
+| | |
 |---|---|
-| [ARCHITECTURE](docs/ARCHITECTURE.md) | the five layers, components, keys, flows, "called it", timing budget, deployment |
-| [PROTOCOL](docs/PROTOCOL.md) | units, keysets, slips, API, anchored LMSR with the exposure invariant (worked examples), proofs, signer |
-| [MARKETS](docs/MARKETS.md) | what we take from Polymarket, named outcomes, rules and trade conditions, halts, on-chain settlement |
-| [THREAT_MODEL](docs/THREAT_MODEL.md) | adversaries, who-can-learn-what matrix, every leak and its fix, residual risks |
-| [DESIGN_BRIEF](docs/DESIGN_BRIEF.md) | the Blind Booth: identity, clarity and restraint rules, screens, console, easter eggs |
-
-| Project | |
-|---|---|
-| [ROADMAP](docs/ROADMAP.md) | day-by-day plan, gates and fallbacks, cut list, budget, risk register |
-| [SUBMISSION](docs/SUBMISSION.md) | Zecathon rules check, description, judge quickstart, video storyboard |
-| [RESEARCH](docs/RESEARCH.md) | Zcash after Ironwood, Polymarket, NEAR Intents, Nym, Cashu, prior art, external review |
+| [ARCHITECTURE](docs/ARCHITECTURE.md) | the five layers, components and keys, every flow, pricing, settlement, verification, timing, deployment |
+| [PROTOCOL](docs/PROTOCOL.md) | units, keysets, slips, the API, the anchored LMSR with the exposure invariant, CALLED IT, duels, the public log, the signer, chain transactions |
+| [MARKETS](docs/MARKETS.md) | what we take from Polymarket, named outcomes, listing rules, the rules panel, halts, on-chain settlement |
+| [THREAT_MODEL](docs/THREAT_MODEL.md) | adversaries, who can learn what, every leak and what closes it, residual risks |
+| [ROADMAP](docs/ROADMAP.md) | what is done, what remains before submission, gates, risks |
+| [SUBMISSION](docs/SUBMISSION.md) | the Zecathon rules check, the description, the judge quickstart, the video plan |
+| [RESEARCH](docs/RESEARCH.md) | Zcash after Ironwood, Polymarket, Nym, Cashu, prior art |
+| [SECURITY](SECURITY.md) | how to report a leak |
 
 ## Status
 
-Design is complete and the risky parts are proven on testnet (Gate 1, Oct 6); the build has started. Development runs on a local Regtest chain, the judge playground runs on **testnet**, and a **mainnet** proof runs the same build with micro stakes.
-
-- [x] Research, architecture, protocol, threat model, design brief
-- [x] Spikes ([`spikes/`](spikes/)): Nym mixnet in the browser · one-time deposit addresses on testnet · blind signatures Rust ↔ browser · Polymarket + Polygon · engine · fixed-shape payouts
-- [x] Engine (native = WASM), mint keysets and blind signatures, Polymarket mirror and Polygon resolver
-- [x] Ledger: batches around the engine, spent set, issuance, swaps, redemptions, withdrawals, hash-chained log
-- [x] Signer core: checks every slip and claim, applies the same ledger operation, signs with DLEQ
-- [x] API service (sequencer, journal, public log files, live prices) and the signer link with exact-once recovery
-- [x] Indexer: one-time addresses, mempool SEEN and block detection with the incoming viewing key; top-ups credited on testnet in under 2 s
-- [x] Treasury: sealed-address withdrawals paid in 8-action shielded payouts, sweeps, on-chain anchors of the signer's own log root (live on testnet)
-- [x] Verifier CLI: hash chain, every batch replayed, pools carried over, every signature's DLEQ against keys derived from M, supply per keyset
-- [ ] Browser verifier page
-- [ ] Web app (vault, slips, markets, cage, called it, verify)
-- [ ] Testnet playground and mainnet proof
-- [ ] Demo video
+Built and tested: every server component (live on Zcash testnet), the web app on desktop and phone, both verifiers. Still ahead before submission (Oct 27): the iPhone test with the mixnet and Face ID, deployment (two servers, static hosting, a Tor onion), the testnet playground for judges, a mainnet proof with micro stakes, and the video. Details in the [roadmap](docs/ROADMAP.md).
 
 ### Repository layout
 
 ```
 crates/
-  blindbook-engine/   anchored LMSR, 2-second batches, exposure invariant (pure, deterministic, also WASM)
-  blindbook-engine-wasm/  the engine as a wasm32 module (the browser verifier, the determinism check)
-  blindbook-ledger/   batches around the engine, spent set, issuance, the hash-chained public log (pure)
-  blindbook-indexer/  one-time top-up addresses, payment detection with the incoming viewing key, chain follower
-  blindbook-mint/     keysets derived from the pinned master key, blind signatures with DLEQ proofs
-  blindbook-polymarket/  Polymarket mirror: catalog, live books, anchor, guard, feed health; Polygon resolver
-  blindbook-api/      secretless: top-up desk, trade batches, bundle and live feed (axum)
-  blindbook-signer/   holds all keys; replays before signing; blind signatures, its own log and indexer
-  blindbook-treasury/ deposit and reserve wallets: sweeps, 8-action payouts, anchors (signer only)
-  blindbook-seal/     sealed withdrawal addresses (X25519 + HKDF + AES-GCM) and their commitments
-  blindbook-verify/   independent auditor (CLI; the same engine runs in the browser)
-web/                  static app: vault, slip wallet, mixnet client, terminal UI, 3D booth, console
-video/                demo video (Remotion)
-deploy/               docker compose, Caddy, Tor onion service
-docs/                 everything above
-design/               design exports and references
+  blindbook-engine/       anchored LMSR, 2-second batches, exposure invariant (pure, deterministic)
+  blindbook-engine-wasm/  the engine for WebAssembly: the browser verifier's replay, the determinism check
+  blindbook-ledger/       batches around the engine, slips issued and spent, duels, the hash-chained log, replay
+  blindbook-mint/         keysets derived from the pinned master key, blind signatures with DLEQ proofs
+  blindbook-polymarket/   catalog, live order books, anchor and guard, feed health; the Polygon resolver
+  blindbook-indexer/      one-time top-up addresses, payment detection with the incoming viewing key
+  blindbook-api/          the secretless server: sequencer, listing rules, top-up desk, public log, live feed, price history
+  blindbook-signer/       holds every key; checks and signs; its own indexer, log, Polygon reads, treasury loop
+  blindbook-treasury/     deposit and reserve wallets: sweeps, 8-action payouts, anchors; the reserve watch
+  blindbook-seal/         sealed withdrawal addresses (X25519 + HKDF + AES-GCM) and their commitments
+  blindbook-verify/       the independent auditor (the same replay runs in the browser)
+web/                      the app: vault, slip wallet, mixnet client, terminal UI, pager, 3D booth
+spikes/                   the Gate 1 experiments and their measurements
+design/                   the design system and screen exports
+docs/                     everything above
 ```
-
-The code folders appear as the build progresses.
 
 ## Built with
 
 [Zcash](https://z.cash) Ironwood and [librustzcash](https://github.com/zcash/librustzcash) · [Nym](https://nym.com) mixnet (mix-fetch) · [Cashu](https://cashubtc.github.io/nuts/) blind-signature primitives · [Polymarket](https://polymarket.com) public market data · Polygon (Polymarket's ConditionalTokens) for settlement · Rust, React, three.js.
 
 Blindbook is an independent project. It is not affiliated with Polymarket, Zcash or Nym.
-
-## Security
-
-Found a leak or a way to break the claim? See [SECURITY.md](SECURITY.md).
 
 ## License
 

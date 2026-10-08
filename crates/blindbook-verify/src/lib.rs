@@ -44,7 +44,50 @@ pub struct Report {
     pub reserve: Option<(u64, u64, u64, u64)>,
     /// The root after every delta, with its height (what on-chain anchors must name).
     pub roots: Vec<(u64, H32)>,
+    /// Every market the log says is resolved, with its payout vector (`den`, `num`).
+    pub resolutions: Vec<(H32, u64, [u64; 2])>,
     pub failures: Vec<String>,
+}
+
+/// Read every resolution again from Polymarket's ConditionalTokens contract on Polygon (the
+/// RPCs must agree); each must match the log's payout vector.
+#[cfg(feature = "chain")]
+pub async fn resolutions_on_polygon(
+    rpcs: Vec<String>,
+    resolutions: &[(H32, u64, [u64; 2])],
+) -> Result<Vec<String>, String> {
+    use blindbook_polymarket::polygon::{PolygonReader, Settlement};
+    let http = blindbook_polymarket::net::http_client().map_err(|e| e.to_string())?;
+    let poly = PolygonReader::new(http, rpcs);
+    let mut out = Vec::new();
+    for (market, den, num) in resolutions {
+        match poly
+            .settle(&format!("0x{market}"))
+            .await
+            .map_err(|e| format!("market {market}: {e}"))?
+        {
+            Settlement::Final { den: d, num: n, .. } if (d, n) == (*den, *num) => {
+                out.push(format!(
+                    "  resolution {market}: {num:?}/{den}, as on Polygon"
+                ));
+            }
+            Settlement::Final { den: d, num: n, .. } => {
+                return Err(format!(
+                    "market {market}: the log says {num:?}/{den}, Polygon says {n:?}/{d}"
+                ));
+            }
+            other => {
+                return Err(format!(
+                    "market {market}: the log says resolved, Polygon has no final result ({other:?})"
+                ));
+            }
+        }
+    }
+    out.push(format!(
+        "resolutions: all {} match Polygon",
+        resolutions.len()
+    ));
+    Ok(out)
 }
 
 impl Report {
@@ -175,6 +218,7 @@ pub fn audit(m: &PublicKey, deltas: &[Delta], head: Option<Head>) -> Report {
                     market, den, num, ..
                 } => {
                     resolved.insert(*market, (*den, *num));
+                    r.resolutions.push((*market, *den, *num));
                 }
                 LogEvent::ReserveReported {
                     height,
@@ -303,5 +347,31 @@ mod tests {
             liabilities(&supply, &pools, &resolved, &queued),
             (800 + 300 + 50) * ZAT_PER_UNIT
         );
+    }
+
+    /// Needs the network (and `HTTPS_PROXY` where Polygon RPCs are blocked):
+    /// `cargo test -p blindbook-verify -- --ignored`.
+    #[cfg(feature = "chain")]
+    #[tokio::test]
+    #[ignore = "reads Polygon"]
+    async fn resolutions_are_read_again_from_polygon() {
+        // "Will the price of Bitcoin be above $74,000 on October 5?" resolved Yes.
+        let btc =
+            H32::parse("2ebd864919bd149475d00db8aa75a70768a6ad3f33a0ab56a2ee0d54cbad9e3e").unwrap();
+        let rpcs = || {
+            blindbook_polymarket::polygon::DEFAULT_RPCS
+                .iter()
+                .map(|s| s.to_string())
+                .collect()
+        };
+        assert!(
+            resolutions_on_polygon(rpcs(), &[(btc, 1, [1, 0])])
+                .await
+                .is_ok()
+        );
+        let err = resolutions_on_polygon(rpcs(), &[(btc, 1, [0, 1])])
+            .await
+            .unwrap_err();
+        assert!(err.contains("Polygon says [1, 0]/1"), "{err}");
     }
 }

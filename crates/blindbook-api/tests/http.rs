@@ -380,11 +380,6 @@ async fn http_end_to_end_and_restart() {
     assert_eq!(audit.batches, 1);
     assert_eq!(audit.signatures as usize, delta.issued.len());
     assert_eq!(audit.markets, 1);
-    let snap: Value = serde_json::from_slice(
-        &gunzip_get(&c, &format!("{base}/v1/snapshot/latest.json.gz")).await,
-    )
-    .unwrap();
-    assert_eq!(snap["issued"].as_array().unwrap().len(), delta.issued.len());
     // No slip secret ever reaches the disk.
     let journal = std::fs::read_to_string(data.join("journal.jsonl")).unwrap();
     for s in &w.slips {

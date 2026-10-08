@@ -4,7 +4,8 @@
 import { Api, ApiError, DirectTransport, type Head, type Live, type Transport } from '../core/api';
 import { Wallet, newWalletData, type HistoryEntry, type LocalData, type MyDuel, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
 import { blankOutputs } from '../core/blind';
-import { restore, type DeltaLike, type Snapshot } from '../core/restore';
+import { restore, type DeltaLike } from '../core/restore';
+import { SEGMENT, deltaTexts } from '../core/log';
 import { yOf } from '../core/blind';
 import { IdbStore, Vault, newMnemonic, seedFromMnemonic, type Wrap } from '../vault/vault';
 import { createPasskey, prfSupported, unlockPasskey } from '../vault/passkey';
@@ -20,6 +21,8 @@ export interface MarketMeta {
   outcomes: [string, string];
   rules: string;
   source: string;
+  /** Polymarket's slug, for the one outbound link (the rules page). */
+  slug: string;
   eventStartMs: number | null;
   endMs: number;
   keysets: [string, string];
@@ -145,7 +148,7 @@ interface CatalogEntry {
   end_ms: number;
   event_start_ms: number | null;
   status: { state: 'open' } | { state: 'resolved'; den: number; num: [number, number] };
-  info: { question: string; outcomes: [string, string]; description: string; resolution_source: string; volume_24h_usd: number | null; group_item_title: string | null } | null;
+  info: { slug: string; question: string; outcomes: [string, string]; description: string; resolution_source: string; volume_24h_usd: number | null; group_item_title: string | null } | null;
 }
 
 async function pollCatalog() {
@@ -159,6 +162,7 @@ async function pollCatalog() {
       outcomes: m.info!.outcomes,
       rules: m.info!.description,
       source: m.info!.resolution_source,
+      slug: m.info!.slug,
       eventStartMs: m.event_start_ms,
       endMs: m.end_ms,
       keysets: m.keysets,
@@ -290,16 +294,10 @@ export async function restoreFromWords(words: string, passphrase: string | null,
   const seed = seedFromMnemonic(words);
   onProgress?.('DOWNLOADING THE PUBLIC LOG');
   const head = await api.head();
-  let snap: Snapshot = { seq: 0, height: 0, root: '', credit_keyset: '', markets: [], issued: [], spent: [] };
-  try {
-    snap = await api.json<Snapshot>('/v1/snapshot/latest.json.gz');
-  } catch {
-    /* a fresh deployment has no snapshot yet */
-  }
-  const deltas: DeltaLike[] = [];
-  for (let seq = 1; seq <= head.seq; seq++) deltas.push(await api.json<DeltaLike>(`/v1/delta/${seq}.json.gz`));
+  const texts = await deltaTexts(api, 1, head.seq, head.seq, (n, of) => onProgress?.(`DOWNLOADING THE PUBLIC LOG ${n}/${of}`));
+  const deltas = texts.map((t) => JSON.parse(t) as DeltaLike);
   onProgress?.('FINDING YOUR SLIPS');
-  const r = restore(seed, config.m, { ...snap, seq: 0, markets: app.get().markets.map((m) => ({ id: m.id, keysets: m.keysets })) }, deltas, yOf);
+  const r = restore(seed, config.m, deltas, yOf);
   const data = newWalletData(seed);
   data.mnemonic = words.trim().toLowerCase().split(/\s+/).join(' ');
   data.local = { backedUp: true };
@@ -453,15 +451,21 @@ export async function recoverDuel(duel: string): Promise<number> {
   const pending = blankOutputs(wallet.seed, d.keyset, d.counter).pending;
   const index = new Map(pending.map((p, i) => [p.B_, i]));
   const head = await api.head();
-  for (let seq = head.seq; seq >= 1; seq--) {
-    const delta = await api.json<{ issued: { id: string; amount: number; B_: string; C_: string; dleq: { e: string; s: string } }[]; events: { type: string; duel?: string }[] }>(`/v1/delta/${seq}.json.gz`);
-    const mine = delta.issued.filter((s) => index.has(s.B_));
-    if (mine.length) {
-      const n = await wallet.duelClaim(duel, mine.map((s) => ({ index: index.get(s.B_)!, amount: s.amount, id: s.id, C_: s.C_, dleq: s.dleq })));
-      refreshWallet();
-      return n;
+  // Newest first, a segment at a time, back to the block the duel was opened in.
+  for (let hi = head.seq; hi >= 1; ) {
+    const lo = Math.floor((hi - 1) / SEGMENT) * SEGMENT + 1;
+    const texts = await deltaTexts(api, lo, hi, head.seq);
+    for (const t of texts.reverse()) {
+      const delta = JSON.parse(t) as { issued: { id: string; amount: number; B_: string; C_: string; dleq: { e: string; s: string } }[]; events: { type: string; duel?: string }[] };
+      const mine = delta.issued.filter((s) => index.has(s.B_));
+      if (mine.length) {
+        const n = await wallet.duelClaim(duel, mine.map((s) => ({ index: index.get(s.B_)!, amount: s.amount, id: s.id, C_: s.C_, dleq: s.dleq })));
+        refreshWallet();
+        return n;
+      }
+      if (delta.events.some((e) => e.type === 'duel_opened' && e.duel === duel)) return 0;
     }
-    if (delta.events.some((e) => e.type === 'duel_opened' && e.duel === duel)) break;
+    hi = lo - 1;
   }
   return 0;
 }

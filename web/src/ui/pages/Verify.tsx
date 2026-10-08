@@ -16,6 +16,7 @@ import { canonical } from '../../core/canonical';
 import { concat, fromHex, toHex, utf8 } from '../../core/bytes';
 import { creditKeyset, keyFor, outcomeKeyset, type Keyset } from '../../core/keysets';
 import { decodeProof } from '../../core/codes';
+import { deltaTexts } from '../../core/log';
 import { coin, height, zat } from '../../app/format';
 import { COIN } from '../../app/config';
 import { play } from '../sound';
@@ -75,14 +76,8 @@ const ZAT_PER_UNIT = 1_000;
 export async function fetchDeltas(onProgress?: (n: number, of: number) => void): Promise<{ deltas: Delta[]; texts: string[]; head: { seq: number; root: string; height: number } }> {
   const api = getApi();
   const head = await api.head();
-  const deltas: Delta[] = [];
-  const texts: string[] = [];
-  for (let seq = 1; seq <= head.seq; seq++) {
-    const t = await api.text(`/v1/delta/${seq}.json.gz`);
-    texts.push(t);
-    deltas.push(JSON.parse(t) as Delta);
-    onProgress?.(seq, head.seq);
-  }
+  const texts = await deltaTexts(api, 1, head.seq, head.seq, onProgress);
+  const deltas = texts.map((t) => JSON.parse(t) as Delta);
   return { deltas, texts, head };
 }
 
@@ -276,18 +271,19 @@ function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string 
   );
 }
 
-/** RUN IT YOURSELF: the full audit, every batch replayed through the engine, the reserve
- *  checked on-chain. The command is public; copying it sends nothing. */
+/** RUN IT YOURSELF: the full audit, every batch replayed through the engine, the reserve and
+ *  the anchors checked on-chain, every result read again from Polygon. The command is public;
+ *  copying it sends nothing. */
 function RunIt() {
   const [copied, setCopied] = useState(false);
   const api = config.api || location.origin;
-  const cmd = `cargo run --release -p blindbook-verify -- ${config.m} ${api} --chain ${config.network === 'mainnet' ? 'zecrocks-main' : 'zecrocks'}`;
+  const cmd = `cargo run --release -p blindbook-verify -- ${config.m} ${api} --chain ${config.network === 'mainnet' ? 'zecrocks-main' : 'zecrocks'} --polygon public`;
   return (
     <div style={{ maxWidth: 680, marginTop: 20 }}>
       <p className="bb-label bb-hi tk-sec">RUN IT YOURSELF</p>
       <pre className="tk-cmd">$ {cmd}</pre>
       <p className="bb-ui bb-dim" style={{ margin: '6px 0' }}>
-        Replays every batch through the pricing engine and syncs the reserve from the chain with its public viewing key. Add ALL_PROXY=socks5h://127.0.0.1:9050 to fetch over Tor.
+        Everything above, plus the chain: it syncs the reserve with its public viewing key, opens every anchor, and reads every market's result again from Polygon. Add ALL_PROXY=socks5h://127.0.0.1:9050 to fetch over Tor.
       </p>
       <KeyButton size="sm" variant="secondary" onClick={() => navigator.clipboard?.writeText(cmd).then(() => setCopied(true), () => setCopied(false))}>
         {copied ? 'COPIED ✓' : 'COPY COMMAND'}

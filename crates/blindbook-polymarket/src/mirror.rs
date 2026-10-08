@@ -146,6 +146,20 @@ impl Mirror {
         Some(take(&st.feed, w, m, now, self.clock.wall(now)))
     }
 
+    /// A copy of one outcome's live book (for the listing rules), once its snapshot arrived.
+    pub fn book(&self, condition_id: &str, outcome: usize) -> Option<crate::book::Book> {
+        let m = self
+            .markets
+            .iter()
+            .find(|m| m.condition_id == condition_id)?;
+        let token = m.tokens.get(outcome)?;
+        let st = lock(&self.state);
+        if !st.feed.has_snapshot(token) {
+            return None;
+        }
+        st.feed.book(token).cloned()
+    }
+
     pub fn stats(&self) -> FeedStats {
         lock(&self.state).feed.stats
     }

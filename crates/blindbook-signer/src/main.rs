@@ -20,7 +20,10 @@
 //!     BB_ANCHOR_EVERY    blocks between anchors (default 48); BB_SWEEP_EVERY likewise
 //!     BB_ZCASH_NET       test (default) | main | regtest[:heights]
 //!     BB_LWD             lightwalletd / Zaino: zecrocks (default) or host:port
-//!     BB_NETWORK         testnet (default) | mainnet: the 0-conf caps
+//!     BB_NETWORK         testnet (default) | mainnet: the 0-conf caps and the only market
+//!                        parameters a listing may carry
+//!     BB_POLYGON_RPCS    comma-separated Polygon RPCs the signer reads results from itself
+//!                        (default: the two public ones the API uses; both must agree)
 //! ```
 //! Keys, codes and journals never go into the repository (`..\blindbook-work\` locally).
 
@@ -29,8 +32,11 @@ use std::sync::{Arc, Mutex};
 
 use blindbook_indexer::{ChainEvent, DepositKeys, Net};
 use blindbook_ledger::H32;
+use blindbook_ledger::ledger::MarketParams;
 use blindbook_mint::cashu::SecretKey;
 use blindbook_mint::{MasterKey, sha256};
+use blindbook_polymarket::net::http_client;
+use blindbook_polymarket::polygon::{DEFAULT_RPCS, PolygonReader, Settlement};
 use blindbook_signer::link::{Station, run};
 use blindbook_signer::{Deposit, Signer, ZeroConf};
 
@@ -190,10 +196,20 @@ async fn serve() -> Result<(), String> {
         tracing::info!(count = hashes.len(), units, "vouchers loaded");
         signer.add_vouchers(hashes, units);
     }
-    signer.set_zero_conf(match std::env::var("BB_NETWORK").as_deref() {
-        Ok("mainnet") => ZeroConf::MAINNET,
-        _ => ZeroConf::TESTNET,
+    let mainnet = std::env::var("BB_NETWORK").as_deref() == Ok("mainnet");
+    signer.set_zero_conf(if mainnet {
+        ZeroConf::MAINNET
+    } else {
+        ZeroConf::TESTNET
     });
+    // A listing carries the network's parameters or nothing, and a result counts only once the
+    // signer has read it from Polygon itself (PROTOCOL section 9).
+    signer.set_listing_params(if mainnet {
+        MarketParams::mainnet()
+    } else {
+        MarketParams::testnet()
+    });
+    signer.require_confirmed_resolutions();
     let data = PathBuf::from(env("BB_SIGNER_DATA")?);
     std::fs::create_dir_all(&data).map_err(|e| e.to_string())?;
     let net = Net::parse(&std::env::var("BB_ZCASH_NET").unwrap_or_else(|_| "test".into()))?;
@@ -289,12 +305,59 @@ async fn serve() -> Result<(), String> {
         ));
         tracing::info!("treasury running: payouts, sweeps, anchors");
     }
+    tokio::spawn(read_results(station.clone()));
     {
         let s = station.lock().unwrap_or_else(|e| e.into_inner());
         tracing::info!(m = %s.signer.public_key().to_hex(), applied = s.applied, "signer ready");
     }
     run(env("BB_API_URL")?, env("BB_SIGNER_TOKEN")?, station).await;
     Ok(())
+}
+
+/// Once a minute, read the result of every market past its end date from Polygon (two RPCs that
+/// must agree) and remember it: the API's resolution must match it.
+async fn read_results(station: Arc<Mutex<Station>>) {
+    let rpcs: Vec<String> = match std::env::var("BB_POLYGON_RPCS") {
+        Ok(v) => v.split(',').map(|s| s.trim().to_owned()).collect(),
+        Err(_) => DEFAULT_RPCS.iter().map(|s| s.to_string()).collect(),
+    };
+    let http = match http_client() {
+        Ok(h) => h,
+        Err(e) => {
+            tracing::error!(error = %e, "no HTTP client: resolutions can't be confirmed");
+            return;
+        }
+    };
+    let poly = PolygonReader::new(http, rpcs);
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
+    loop {
+        tick.tick().await;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_millis() as u64);
+        let due = station
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .signer
+            .unconfirmed_due(now);
+        for id in due {
+            match poly.settle(&format!("0x{id}")).await {
+                Ok(Settlement::Final { den, num, .. }) => {
+                    tracing::info!(market = %id, den, ?num, "result read from Polygon");
+                    station
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .signer
+                        .confirm_resolution(id, den, num);
+                }
+                Ok(Settlement::Disagree { readings }) => {
+                    tracing::error!(market = %id, ?readings, "Polygon RPCs disagree; no result");
+                }
+                Ok(Settlement::Pending { .. }) => {}
+                Err(e) => tracing::warn!(market = %id, error = %e, "Polygon read failed"),
+            }
+        }
+    }
 }
 
 #[tokio::main]

@@ -8,7 +8,8 @@ import { Api, DirectTransport, type PowFn } from './api';
 import { Wallet, newWalletData, type WalletData } from './wallet';
 import { utf8 } from './bytes';
 import { withPow } from './pow';
-import { restore, type DeltaLike, type Snapshot } from './restore';
+import { restore, type DeltaLike } from './restore';
+import { deltaTexts } from './log';
 import { yOf } from './blind';
 
 const BASE = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env.BB_DEV_API;
@@ -83,10 +84,8 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
       if ((await api.head()).seq > head0.seq) break;
     }
     const head = await api.head();
-    const snap = await api.json<Snapshot>('/v1/snapshot/latest.json.gz');
-    const deltas: DeltaLike[] = [];
-    for (let seq = 1; seq <= head.seq; seq++) deltas.push(await api.json<DeltaLike>(`/v1/delta/${seq}.json.gz`));
-    const r = restore(w.seed, M, { ...snap, seq: 0 }, deltas, yOf);
+    const deltas = (await deltaTexts(api, 1, head.seq, head.seq)).map((t) => JSON.parse(t) as DeltaLike);
+    const r = restore(w.seed, M, deltas, yOf);
     expect(r.foreign).toEqual([]);
     const sum = (ps: { amount: number; id: string }[], id: string) => ps.filter((p) => p.id === id).reduce((n, p) => n + p.amount, 0);
     expect(sum(r.slips, w.credit.id)).toBe(w.creditBalance());

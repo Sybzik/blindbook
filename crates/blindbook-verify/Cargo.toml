@@ -9,12 +9,13 @@ publish.workspace = true
 
 [features]
 default = ["chain"]
-# The on-chain reserve check (a view-only wallet of the published reserve key, over
-# lightwalletd). Off for the browser build.
-chain = ["dep:blindbook-indexer", "dep:blindbook-treasury"]
+# The on-chain checks: the reserve and the anchors (a view-only wallet of the published reserve
+# key, over lightwalletd), and every resolution against Polygon.
+chain = ["dep:blindbook-indexer", "dep:blindbook-treasury", "dep:blindbook-polymarket"]
 
 [dependencies]
 blindbook-indexer = { path = "../blindbook-indexer", optional = true }
+blindbook-polymarket = { path = "../blindbook-polymarket", optional = true }
 blindbook-treasury = { path = "../blindbook-treasury", optional = true }
 blindbook-ledger = { path = "../blindbook-ledger" }
 blindbook-mint = { path = "../blindbook-mint" }

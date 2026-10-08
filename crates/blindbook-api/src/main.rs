@@ -31,7 +31,9 @@ use blindbook_api::sequencer::{Cmd, RefFn, Shared, now_ms};
 use blindbook_api::{StartConfig, outcome_ids, start};
 use blindbook_ledger::H32;
 use blindbook_ledger::delta::ChainStats;
-use blindbook_ledger::ledger::{MarketEntry, MarketInputs, MarketParams, MarketStatus, Pool};
+use blindbook_ledger::ledger::{
+    MarketEntry, MarketInputs, MarketParams, MarketStatus, Pool, Reject,
+};
 use blindbook_ledger::ops::Op;
 use blindbook_ledger::reference::RefSnapshot;
 use blindbook_mint::cashu::PublicKey;
@@ -112,15 +114,68 @@ async fn op(tx: &mpsc::Sender<Cmd>, op: Op) -> Result<(), String> {
     }
 }
 
-/// List every catalog market the ledger doesn't know yet (retries until the signer is there).
+/// Judging ends Nov 22, 2026: a market must end before (MARKETS "Listing"). `BB_JUDGING_END_MS`
+/// overrides it.
+const JUDGING_END_MS: u64 = 1_795_392_000_000;
+
+/// The listing rules (MARKETS "Listing") on the live book: wait up to a minute for outcome A's
+/// snapshot, then return what keeps the market out (empty: list it). An event start entered in
+/// the markets file stands in for Polymarket's.
+async fn listing_check(mirror: &Mirror, info: &MarketInfo, l: &Listing) -> Vec<String> {
+    let mut book = None;
+    for _ in 0..60 {
+        book = mirror.book(&info.condition_id, 0);
+        if book.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let Some(book) = book else {
+        return vec!["no order book snapshot from Polymarket".into()];
+    };
+    let mut info = info.clone();
+    if l.event_start_ms.is_some() {
+        info.event_start_ms = l.event_start_ms;
+    }
+    if l.end_ms.is_some() {
+        info.end_ms = l.end_ms;
+    }
+    let judging_end = env_num("BB_JUDGING_END_MS", JUDGING_END_MS);
+    blindbook_polymarket::gamma::listing_issues(
+        &info,
+        &book,
+        blindbook_polymarket::gamma::LISTING_DEPTH_MICRO,
+        now_ms(),
+        judging_end,
+    )
+    .into_iter()
+    .map(|i| format!("{i:?}"))
+    .collect()
+}
+
+/// List every catalog market the ledger doesn't know yet and that passes the listing rules
+/// (retries until the signer is there).
 async fn list_markets(
     tx: mpsc::Sender<Cmd>,
     shared: Arc<Shared>,
     m: PublicKey,
     params: MarketParams,
     catalog: BTreeMap<H32, (MarketInfo, Listing)>,
+    mirror: Arc<Mirror>,
 ) {
     for (id, (info, l)) in catalog {
+        let known = shared
+            .markets
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .contains_key(&id);
+        if !known {
+            let issues = listing_check(&mirror, &info, &l).await;
+            if !issues.is_empty() {
+                tracing::warn!(slug = %info.slug, ?issues, "not listed: the listing rules keep it out");
+                continue;
+            }
+        }
         loop {
             let known = shared
                 .markets
@@ -149,6 +204,13 @@ async fn list_markets(
             {
                 Ok(()) => {
                     tracing::info!(slug = %info.slug, "market listed");
+                    break;
+                }
+                Err(e) if e == Reject::NotConfirmed.to_string() => {
+                    tracing::error!(
+                        slug = %info.slug,
+                        "the signer refuses the listing: its parameters aren't the signer's network's (BB_NETWORK must match on both)"
+                    );
                     break;
                 }
                 Err(e) => {
@@ -391,6 +453,7 @@ async fn main() -> Result<(), String> {
         m,
         params,
         catalog,
+        mirror.clone(),
     ));
     tokio::spawn(refresh_catalog(
         http.clone(),

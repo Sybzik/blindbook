@@ -287,7 +287,6 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   const recent = useStore(app, (s) => s.live?.recent);
   const series = useStore(app, (s) => s.series[id]);
   const link = useStore(app, (s) => s.link);
-  const head = useStore(app, (s) => s.head);
   const [rules, setRules] = useState(false);
   const { pager } = useContext(WinCtx);
   const outcomes = useMemo(() => (meta ? outcomesOf(meta, live, series ?? []) : []), [meta, live, series]);
@@ -300,6 +299,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   const ref = live ? Math.round(live.reference.mid_ppm / 10_000) : 0;
   const rows = [
     { label: 'TRADING CLOSES', value: meta.eventStartMs ? `at the event start (${utc(meta.eventStartMs)}), or earlier if Polymarket stops trading or a price reaches 98¢` : `${utc(meta.endMs)}, or earlier if Polymarket stops trading or a price reaches 98¢` },
+    { label: 'SOURCE', value: meta.source.trim() || "as stated in Polymarket's rules" },
     { label: 'SETTLES', value: "when Polymarket's result is final on-chain (Polygon); usually minutes to hours after the event, longer if disputed" },
     { label: 'PAYS', value: `1 ${COIN} per winning share; 0.5 per share if Polymarket resolves 50-50` },
     { label: 'YOUR BET', value: 'fills in the next 2-second batch at one shared price, never above your max price; any unfilled part returns. Fee 1%' },
@@ -319,7 +319,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
           <LeaderRow label="CLOSES" value={closesText(meta)} />
           <LeaderRow label="POLYMARKET" value={`${meta.outcomes[0].toUpperCase()} ${ref}¢ · ${meta.outcomes[1].toUpperCase()} ${100 - ref}¢`} tone="ref" />
           <div style={{ marginTop: 10 }} data-hint="Both outcomes, live. REF adds Polymarket's price as dashed violet lines.">
-            {rules ? <RulesPanel rules={meta.rules} rows={rows} /> : <ScopeChart key={meta.id} outcomes={outcomes} height={pager ? 120 : 168} />}
+            {rules ? <RulesPanel rules={meta.rules} rows={rows} url={`https://polymarket.com/market/${encodeURIComponent(meta.slug)}`} /> : <ScopeChart key={meta.id} outcomes={outcomes} height={pager ? 120 : 168} />}
           </div>
           <div className="row" style={{ marginTop: 8, gap: 8 }}>
             <KeyButton variant="secondary" size="sm" icon="rules" onClick={() => setRules(!rules)} data-hint="Polymarket's rules word for word, and how Blindbook settles this market.">
@@ -330,7 +330,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
           <div>
             {fills.length === 0 && <p className="bb-ui bb-dim" style={{ margin: 0 }}>No fills in the last two minutes.</p>}
             {fills.map((f, i) => (
-              <FillRow key={f.batch_id + '-' + i} outcome={meta.outcomes[f.outcome].toUpperCase()} side={f.outcome === 0 ? 'a' : 'b'} amount={coin(f.side === 'buy' ? f.fill.kept + f.fill.fee : f.fill.out, 3)} unit={COIN} price={Math.round(f.fill.avg_price_bp / 100)} block={height(head?.height ?? 0)} length={8} verb={f.side === 'buy' ? 'bought' : 'sold'} />
+              <FillRow key={f.batch_id + '-' + i} outcome={meta.outcomes[f.outcome].toUpperCase()} side={f.outcome === 0 ? 'a' : 'b'} amount={coin(f.side === 'buy' ? f.fill.kept + f.fill.fee : f.fill.out, 3)} unit={COIN} price={Math.round(f.fill.avg_price_bp / 100)} when={new Date(f.at_ms).toISOString().slice(11, 19) + ' UTC'} length={8} verb={f.side === 'buy' ? 'bought' : 'sold'} />
             ))}
           </div>
         </div>

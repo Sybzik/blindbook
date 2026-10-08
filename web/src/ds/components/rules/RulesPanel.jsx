@@ -13,12 +13,14 @@ export const RULES_ROWS = [
 
 /* RULES panel: (a) Polymarket's rules verbatim, (b) how Blindbook handles this market. */
 export function RulesPanel({ rules = RULES_SAMPLE, url = '#', rows = RULES_ROWS, className = '' }) {
+  // The one link that leaves Blindbook: polymarket.com sees whoever clicks it, so it says so.
   return (
     <div className={'bb-rules ' + className}>
       <section className="bb-rules__part">
         <h3 className="bb-label bb-rules__h">POLYMARKET'S RULES <span className="bb-rules__tag">VERBATIM</span></h3>
         <blockquote className="bb-text bb-rules__quote">{rules}</blockquote>
-        <a className="bb-rules__link" href={url} target="_blank" rel="noreferrer">full rules on Polymarket ↗</a>
+        <a className="bb-rules__link" href={url} target="_blank" rel="noreferrer noopener">full rules on Polymarket ↗</a>
+        <span className="bb-rules__note"> opens polymarket.com directly, outside the mixnet</span>
       </section>
       <section className="bb-rules__part">
         <h3 className="bb-label bb-rules__h">HOW BLINDBOOK HANDLES THIS MARKET</h3>

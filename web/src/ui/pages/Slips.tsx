@@ -80,7 +80,9 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
       <Win title="P300 · PRINT SLIP" onClose={() => setHanded(null)} maxWidth={520} style={{ alignSelf: 'center', width: '100%' }}>
         <div className="col" style={{ alignItems: 'center', gap: 16 }}>
           <PaperSlip h={handed} />
-          <p className="bb-conditions">The slip has left your vault and lives on this paper now. Until someone scans it, you can take it back from P300.</p>
+          <p className="bb-conditions">
+            The slip has left your vault and lives on this paper now: whoever scans it owns it. Print on a printer on your own network (shared or cloud printers may keep a copy). Until someone scans it, you can take it back from P300.
+          </p>
           <div className="row" style={{ gap: 8 }}>
             <KeyButton icon="qr" onClick={() => window.print()}>PRINT</KeyButton>
             <KeyButton variant="secondary" onClick={() => setHanded(null)}>DONE</KeyButton>
@@ -97,7 +99,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
           <Qr value={handed.code} size={240} title="Slip code" />
         </div>
         <p className="bb-ui" style={{ wordBreak: 'break-all' }}>{handed.code}</p>
-        <p className="bb-conditions">Bearer e-cash: whoever takes this code over first owns it. Nothing on the chain shows it moved. Until it is taken over you can take it back from P300.</p>
+        <p className="bb-conditions">Bearer e-cash: whoever takes this code over first owns it, so send it only over a channel you trust. Nothing on the chain shows it moved. Until it is taken over you can take it back from P300.</p>
         <div className="row" style={{ gap: 8 }}>
           <KeyButton size="sm" onClick={() => navigator.clipboard?.writeText(handed.code)}>COPY CODE</KeyButton>
           <KeyButton variant="secondary" size="sm" onClick={() => setHanded(null)}>DONE</KeyButton>

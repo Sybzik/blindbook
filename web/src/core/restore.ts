@@ -1,7 +1,7 @@
 // Zero-query restore (PROTOCOL section 3, normative client behaviour): from the seed alone, derive
-// every output we could have sent, find it in the PUBLIC issuance log (which every visitor
-// downloads anyway), unblind it, and drop what the public spent set already holds. No request
-// about our slips is ever sent, so the server can't tell anyone restored anything.
+// every output we could have sent, find it in the PUBLIC log (the same deltas every verifier
+// downloads), unblind it, and drop what the log says is spent. No request about our slips is ever
+// sent, so the server can't tell anyone restored anything.
 //
 // The same seed also finds our "called it" tags in the public batch records: the trade history
 // comes back too.
@@ -22,21 +22,12 @@ export interface IssuedRecord {
   dleq: { e: string; s: string };
 }
 
-export interface Snapshot {
-  seq: number;
-  height: number;
-  root: string;
-  credit_keyset: string;
-  markets: { id: string; keysets: [string, string] }[];
-  issued: IssuedRecord[];
-  spent: string[];
-}
-
 export interface DeltaLike {
   seq: number;
   issued: IssuedRecord[];
   spent: { Y: string }[];
   batches: { market: string; orders: { tag: string; side: string; outcome: number; amount: number }[]; fills: { tag: string }[] }[];
+  events: { type: string; market?: string; keysets?: [string, string] }[];
 }
 
 export interface Restored {
@@ -45,36 +36,34 @@ export interface Restored {
   /** Trades found by their called-it tags: secret index → market, outcome, side. */
   trades: { index: number; tag: string; market: string; outcome: number; side: string; amount: number }[];
   calledNext: number;
-  /** Keysets listed with an id we didn't derive from M (never trusted). */
+  /** Keyset ids in the log (listed or signed with) that aren't derived from M: never trusted. */
   foreign: string[];
 }
 
-export function restore(seed: Uint8Array, m: string, snap: Snapshot, deltas: DeltaLike[], yOf: (secret: string) => string): Restored {
+/** `deltas`: the whole log, from seq 1. */
+export function restore(seed: Uint8Array, m: string, deltas: DeltaLike[], yOf: (secret: string) => string): Restored {
   const issued = new Map<string, IssuedRecord>();
-  const spent = new Set<string>(snap.spent);
+  const spent = new Set<string>();
   const used = new Set<string>();
-  for (const r of snap.issued) {
-    issued.set(r.B_, r);
-    used.add(r.id);
-  }
-  for (const d of deltas.filter((d) => d.seq > snap.seq)) {
+  const keysets: Keyset[] = [creditKeyset(m)];
+  const foreign = new Set<string>();
+  for (const d of deltas) {
+    for (const e of d.events) {
+      if (e.type !== 'market_listed' || !e.market || !e.keysets) continue;
+      for (const o of [0, 1] as const) {
+        const ks = outcomeKeyset(m, e.market, o);
+        if (ks.id !== e.keysets[o]) foreign.add(e.keysets[o]);
+        keysets.push(ks);
+      }
+    }
     for (const r of d.issued) {
       issued.set(r.B_, r);
       used.add(r.id);
     }
     for (const s of d.spent) spent.add(s.Y);
   }
-
-  const keysets: Keyset[] = [creditKeyset(m)];
-  const foreign: string[] = [];
-  if (keysets[0]!.id !== snap.credit_keyset) foreign.push(snap.credit_keyset);
-  for (const mk of snap.markets) {
-    for (const o of [0, 1] as const) {
-      const ks = outcomeKeyset(m, mk.id, o);
-      if (ks.id !== mk.keysets[o]) foreign.push(mk.keysets[o]);
-      keysets.push(ks);
-    }
-  }
+  const derived = new Set(keysets.map((k) => k.id));
+  for (const id of used) if (!derived.has(id)) foreign.add(id);
 
   const slips: Proof[] = [];
   const counters: Record<string, number> = {};
@@ -114,5 +103,5 @@ export function restore(seed: Uint8Array, m: string, snap: Snapshot, deltas: Del
     trades.push({ index: i, tag, ...hit });
   }
   const calledNext = trades.length ? trades[trades.length - 1]!.index + 1 : 0;
-  return { slips, counters, trades, calledNext, foreign };
+  return { slips, counters, trades, calledNext, foreign: [...foreign] };
 }

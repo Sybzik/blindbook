@@ -6,8 +6,9 @@
 //! - `POST /dev/payout`: pay every queued withdrawal with a fake txid.
 //!
 //! ```text
-//! cargo run -p blindbook-api --features embedded-signer --example devserver
+//! cargo run -p blindbook-api --features embedded-signer --example devserver [-- --block-ms <ms>]
 //! ```
+//! `--block-ms` closes blocks faster, e.g. 250 to grow a long log (segments) in a minute.
 //! Listens on 127.0.0.1:8090 (the Vite dev server proxies `/v1` there). Never for production:
 //! the master key is a public test key.
 
@@ -243,7 +244,7 @@ async fn main() {
                     outcomes: f.outcomes.map(String::from),
                     token_ids: ["1".into(), "2".into()],
                     description: f.rules.into(),
-                    resolution_source: "dev".into(),
+                    resolution_source: "none: a synthetic market of the development server".into(),
                     end_ms: Some(now_ms() + 30 * 86_400_000),
                     event_start_ms: f.start_in_ms.map(|d| now_ms() + d),
                     neg_risk: false,
@@ -306,7 +307,12 @@ async fn main() {
     let shared = running.shared.clone();
     let reserve_signer = signer.clone();
     tokio::spawn(async move {
-        let mut tick = tokio::time::interval(Duration::from_secs(15));
+        let block_ms = std::env::args()
+            .skip_while(|a| a != "--block-ms")
+            .nth(1)
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(15_000u64);
+        let mut tick = tokio::time::interval(Duration::from_millis(block_ms.max(50)));
         tick.tick().await;
         loop {
             tick.tick().await;

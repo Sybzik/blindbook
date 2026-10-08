@@ -368,6 +368,13 @@ impl Feed {
         self.tokens.get(asset).map(|t| &t.book)
     }
 
+    /// Whether this token's book holds a snapshot (it is empty until the first one arrives).
+    pub fn has_snapshot(&self, asset: &str) -> bool {
+        self.tokens
+            .get(asset)
+            .is_some_and(|t| t.no_snapshot_since.is_none())
+    }
+
     /// Polymarket's timestamp of the last event applied to this token's book.
     pub fn server_ts_ms(&self, asset: &str) -> u64 {
         self.tokens.get(asset).map_or(0, |t| t.server_ts_ms)

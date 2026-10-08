@@ -24,7 +24,7 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
   const [words, setWords] = useState('');
   const [typed, setTyped] = useState('');
   const [progress, setProgress] = useState<string | null>(null);
-  const [summary, setSummary] = useState<{ slips: number; trades: number; balance: number } | null>(null);
+  const [summary, setSummary] = useState<{ slips: number; trades: number; balance: number; foreign: number } | null>(null);
   const [backedUp, setBackedUp] = useState(false);
   const [usePass, setUsePass] = useState(false);
   const phone = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
@@ -83,7 +83,7 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
     setErr(null);
     try {
       const r = await restoreFromWords(typed, pass, setProgress);
-      setSummary({ slips: r.slips.length, trades: r.trades.length, balance: app.get().balance });
+      setSummary({ slips: r.slips.length, trades: r.trades.length, balance: app.get().balance, foreign: r.foreign.length });
       setMode('restored');
     } catch (e) {
       setErr(String((e as Error).message));
@@ -210,6 +210,11 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
       <LeaderRow label="SLIPS FOUND" value={summary?.slips ?? 0} tone="hi" />
       <LeaderRow label="TRADES FOUND" value={summary?.trades ?? 0} />
       <LeaderRow label="FREE BALANCE" value={coinLabel(summary?.balance ?? 0)} />
+      {!!summary?.foreign && (
+        <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="alert">
+          WARNING: the public log uses {summary.foreign} key set{summary.foreign === 1 ? '' : 's'} not derived from the key this app pins. That can single out users. Nothing from them was trusted; run P400 VERIFY and report it (SECURITY.md).
+        </p>
+      )}
       <KeyButton onClick={done}>OPEN THE DESK</KeyButton>
     </div>,
   );

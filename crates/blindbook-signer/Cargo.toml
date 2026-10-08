@@ -11,6 +11,7 @@ publish.workspace = true
 blindbook-indexer = { path = "../blindbook-indexer" }
 blindbook-ledger = { path = "../blindbook-ledger" }
 blindbook-mint = { path = "../blindbook-mint" }
+blindbook-polymarket = { path = "../blindbook-polymarket" }
 blindbook-seal = { path = "../blindbook-seal" }
 blindbook-treasury = { path = "../blindbook-treasury" }
 futures-util.workspace = true

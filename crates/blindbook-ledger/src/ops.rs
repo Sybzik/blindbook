@@ -178,6 +178,9 @@ pub fn apply(l: &mut Ledger, op: &Op, invalid: &[usize]) -> Applied {
 fn apply_inner(l: &mut Ledger, op: &Op, invalid: &[usize]) -> Applied {
     let refused = !invalid.is_empty();
     match op {
+        Op::ListMarket { .. } | Op::Resolve { .. } if refused => {
+            Applied::Refused(Reject::NotConfirmed)
+        }
         Op::ListMarket { entry, keysets } => {
             for (o, id) in keysets.iter().enumerate() {
                 l.keysets.insert(

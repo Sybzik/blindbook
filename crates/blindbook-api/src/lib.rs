@@ -136,7 +136,7 @@ pub fn start(
         .route("/v1/topup/{id}", get(routes::topup_status))
         .route("/v1/signer", get(routes::signer))
         .nest_service("/v1/delta", ServeDir::new(public.join("delta")))
-        .nest_service("/v1/snapshot", ServeDir::new(public.join("snapshot")))
+        .nest_service("/v1/segment", ServeDir::new(public.join("segment")))
         .route_service(
             "/v1/reserve.json",
             tower_http::services::ServeFile::new(public.join("reserve.json")),

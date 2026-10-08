@@ -82,6 +82,8 @@ pub enum Reject {
     InvalidSlip,
     #[error("the top-up or voucher claim could not be confirmed")]
     InvalidClaim,
+    #[error("the signer did not confirm it: other listing parameters, or not Polygon's result")]
+    NotConfirmed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

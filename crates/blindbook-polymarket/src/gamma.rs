@@ -162,6 +162,8 @@ pub enum ListingIssue {
     EndsAfterJudging,
     /// No `gameStartTime`/`eventStartTime`: the operator must enter the event start at listing.
     NoEventStart,
+    /// The event has already started: trading would be halted from the first batch.
+    Started,
     /// The reference mid isn't inside [0.10, 0.90].
     OutsideBand(u32),
     /// Polymarket's book can't fill our max trade within 2¢ of the top (ppm away, per side).
@@ -202,8 +204,10 @@ pub fn listing_issues(
         None => out.push(ListingIssue::EndPassed),
         _ => {}
     }
-    if m.event_start_ms.is_none() {
-        out.push(ListingIssue::NoEventStart);
+    match m.event_start_ms {
+        None => out.push(ListingIssue::NoEventStart),
+        Some(t) if t <= now_ms => out.push(ListingIssue::Started),
+        _ => {}
     }
     match book_a.mid_ppm() {
         Some(mid) if (BAND_PPM.0..=BAND_PPM.1).contains(&mid) => {}
@@ -304,6 +308,11 @@ mod tests {
         let thin = Book::from_levels([(760_000, 100 * MICRO)], [(770_000, 100 * MICRO)]);
         let issues = listing_issues(&m, &thin, LISTING_DEPTH_MICRO, before_start, judging_end);
         assert!(matches!(issues[..], [ListingIssue::TooThin { .. }]));
+        let at_start = m.event_start_ms.expect("the fixture has a start");
+        assert!(
+            listing_issues(&m, &deep, LISTING_DEPTH_MICRO, at_start, judging_end)
+                .contains(&ListingIssue::Started)
+        );
         let after_end = 1_791_291_600_000;
         assert!(
             listing_issues(&m, &deep, LISTING_DEPTH_MICRO, after_end, judging_end)

@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use blindbook_ledger::H32;
-use blindbook_ledger::delta::{ChainStats, GENESIS_ROOT, Head, IssuedRecord, LogBuilder, LogEvent};
+use blindbook_ledger::delta::{ChainStats, GENESIS_ROOT, Head, LogBuilder, LogEvent};
 use blindbook_ledger::keysets::{Keyset, KeysetIds};
 use blindbook_ledger::ledger::{
     FillRecord, Ledger, MarketInputs, MarketParams, MarketStatus, OutputList, Pool, Reject, Side,
@@ -189,22 +189,6 @@ pub fn now_ms() -> u64 {
         .map_or(0, |d| d.as_millis() as u64)
 }
 
-#[derive(Serialize)]
-struct Snapshot<'a> {
-    v: u32,
-    seq: u64,
-    height: u64,
-    root: H32,
-    credit_keyset: &'a str,
-    markets: Vec<MarketView>,
-    issued: &'a [IssuedRecord],
-    spent: Vec<&'a String>,
-    /// Units issued and spent per keyset id: outstanding = issued − spent (solvency check).
-    issued_total: &'a BTreeMap<String, u64>,
-    spent_total: &'a BTreeMap<String, u64>,
-    house: i64,
-}
-
 pub struct Sequencer {
     ledger: Ledger,
     log: LogBuilder,
@@ -216,8 +200,6 @@ pub struct Sequencer {
     pending: Vec<(TradeRequest, oneshot::Sender<Result<TradeDone, ApiError>>)>,
     pending_ys: HashSet<String>,
     batch_id: u64,
-    /// Every signature ever issued: the issuance log in the snapshot (zero-query restore).
-    all_issued: Vec<IssuedRecord>,
     /// Operations applied so far (the signer reports the same count at hello).
     pub applied_ops: u64,
     /// Sent, unanswered: re-sent before anything else (the signer answers a repeat from its
@@ -255,7 +237,6 @@ impl Sequencer {
             pending: Vec::new(),
             pending_ys: HashSet::new(),
             batch_id: 0,
-            all_issued: Vec::new(),
             applied_ops: 0,
             in_doubt: None,
         };
@@ -304,7 +285,6 @@ impl Sequencer {
 
     /// Record an applied operation in the open block and the views.
     fn record(&mut self, op: &Op, applied: &Applied, sigs: &[BlindSignature], at_ms: u64) {
-        self.all_issued.extend(ops::issued_records(applied, sigs));
         ops::record_applied(&mut self.log, &self.ledger, op, applied, sigs);
         if let (Op::Trades { batch_id, reqs, .. }, Applied::Trades(res)) = (op, applied) {
             self.batch_id = self.batch_id.max(*batch_id);
@@ -600,36 +580,10 @@ impl Sequencer {
             .close(height, chain)
             .map_err(|e| ApiError::Internal(e.to_string()))?;
         let io = |e: std::io::Error| ApiError::Internal(e.to_string());
+        // Everything the head names exists before the head does.
         self.files.write_delta(&delta).map_err(io)?;
+        self.files.write_segments(head.seq).map_err(io)?;
         self.files.write_head(&head).map_err(io)?;
-        let mut spent: Vec<&String> = self.ledger.spent.iter().collect();
-        spent.sort();
-        let markets = self
-            .shared
-            .markets
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .values()
-            .cloned()
-            .collect();
-        self.files
-            .write_snapshot(
-                head.seq,
-                &Snapshot {
-                    v: 1,
-                    seq: head.seq,
-                    height: head.height,
-                    root: head.root,
-                    credit_keyset: &self.shared.credit_id,
-                    markets,
-                    issued: &self.all_issued,
-                    spent,
-                    issued_total: &self.ledger.issued,
-                    spent_total: &self.ledger.burned,
-                    house: self.ledger.house,
-                },
-            )
-            .map_err(io)?;
         *self.shared.head.write().unwrap_or_else(|e| e.into_inner()) = head;
         *self.shared.block.write().unwrap_or_else(|e| e.into_inner()) = Some(ChainBlock {
             height,

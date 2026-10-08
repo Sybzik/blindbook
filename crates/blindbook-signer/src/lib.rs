@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 use blindbook_ledger::H32;
 use blindbook_ledger::keysets::{Keyset, KeysetIds};
-use blindbook_ledger::ledger::{Ledger, MAX_OUTPUTS, SignJob};
+use blindbook_ledger::ledger::{Ledger, MAX_OUTPUTS, MarketStatus, SignJob};
 use blindbook_ledger::ops::{self, Applied, CreditClaim, Op, Reply};
 use blindbook_ledger::wire::{self, BlindedMessage, Input};
 use blindbook_mint::cashu::PublicKey;
@@ -116,6 +116,11 @@ pub struct Signer {
     payouts: Vec<PendingPayout>,
     /// Chain transactions the treasury made and wants in the log.
     events: Vec<blindbook_ledger::delta::LogEvent>,
+    /// The only parameters a new market may carry (the network's), once set.
+    listing_params: Option<blindbook_ledger::ledger::MarketParams>,
+    /// Results the signer read from Polygon itself, by market. Once set, a resolution is valid
+    /// only if it matches one: the API can't settle a market its own way.
+    resolutions: Option<HashMap<H32, (u64, [u64; 2])>>,
 }
 
 fn kind_of(k: Keyset) -> KeysetKind {
@@ -155,6 +160,8 @@ impl Signer {
             seal: None,
             payouts: Vec::new(),
             events: Vec::new(),
+            listing_params: None,
+            resolutions: None,
         })
     }
 
@@ -182,6 +189,38 @@ impl Signer {
     }
 
     /// The X25519 secret that opens sealed withdrawal addresses.
+    /// Refuse any listing whose parameters differ from these (the network's `b`, `L`, fee, caps).
+    pub fn set_listing_params(&mut self, p: blindbook_ledger::ledger::MarketParams) {
+        self.listing_params = Some(p);
+    }
+
+    /// From now on, accept a resolution only if it matches one passed to
+    /// [`Signer::confirm_resolution`].
+    pub fn require_confirmed_resolutions(&mut self) {
+        self.resolutions.get_or_insert_with(HashMap::new);
+    }
+
+    /// A result the signer read from Polygon itself (both providers agreeing).
+    pub fn confirm_resolution(&mut self, market: H32, den: u64, num: [u64; 2]) {
+        if let Some(r) = &mut self.resolutions {
+            r.insert(market, (den, num));
+        }
+    }
+
+    /// Open markets past their end date whose result the signer hasn't read yet.
+    pub fn unconfirmed_due(&self, now_ms: u64) -> Vec<H32> {
+        let Some(r) = &self.resolutions else {
+            return Vec::new();
+        };
+        self.ledger
+            .markets
+            .values()
+            .filter(|m| m.status == MarketStatus::Open && m.end_ms <= now_ms)
+            .filter(|m| !r.contains_key(&m.id))
+            .map(|m| m.id)
+            .collect()
+    }
+
     pub fn set_seal_key(&mut self, secret: [u8; 32], testnet: bool) {
         self.seal = Some((secret, testnet));
     }
@@ -341,7 +380,17 @@ impl Signer {
                     vec![0]
                 }
             }
-            Op::ListMarket { .. } | Op::Resolve { .. } | Op::Close { .. } => vec![],
+            Op::ListMarket { entry, .. } => match &self.listing_params {
+                Some(p) if entry.params != *p => vec![0],
+                _ => vec![],
+            },
+            Op::Resolve {
+                market, den, num, ..
+            } => match &self.resolutions {
+                Some(r) if r.get(market) != Some(&(*den, *num)) => vec![0],
+                _ => vec![],
+            },
+            Op::Close { .. } => vec![],
         }
     }
 

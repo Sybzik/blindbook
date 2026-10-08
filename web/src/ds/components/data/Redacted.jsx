@@ -34,7 +34,7 @@ export function LeaderRow({ label, value, tone = 'default', medium = 'screen', r
 }
 
 /* Recent fill, written as a sentence. Prices and sizes bright; people blacked out. */
-export function FillRow({ outcome, side = 'a', amount, unit = 'ZEC', price, block, length = 8, verb = 'bought', className = '' }) {
+export function FillRow({ outcome, side = 'a', amount, unit = 'ZEC', price, block, when, length = 8, verb = 'bought', className = '' }) {
   return (
     <p className={'bb-fill ' + className}>
       <Redacted length={length} />{' '}
@@ -45,6 +45,7 @@ export function FillRow({ outcome, side = 'a', amount, unit = 'ZEC', price, bloc
       <span className="bb-fill__verb"> @ </span>
       <span className="bb-fill__amt">{price}¢</span>
       {block !== undefined && <><span className="bb-fill__sep"> · </span><span className="bb-fill__verb">blk {typeof block === 'number' ? block.toLocaleString('en-US') : block}</span></>}
+      {when !== undefined && <><span className="bb-fill__sep"> · </span><span className="bb-fill__verb">{when}</span></>}
     </p>
   );
 }

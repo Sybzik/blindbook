@@ -33,6 +33,8 @@ export interface FillRowProps {
   /** cents */
   price: number | string;
   block?: number | string;
+  /** a time instead of a block, e.g. "18:52:10 UTC" */
+  when?: string;
   /** redaction length */
   length?: number;
   verb?: string;

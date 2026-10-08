@@ -3,11 +3,14 @@
 //! ```text
 //! blindbook-verify <M hex> <API base URL | directory with head.json and delta/>
 //!                  [--chain <lightwalletd URL>] [--reserve <UFVK> --birthday <height>]
-//!                  [--net test|main] [--data <dir>]
+//!                  [--net test|main] [--data <dir>] [--polygon public | <rpc,rpc>]
 //! ```
 //! With `--chain`, the reserve is also checked on-chain: a view-only wallet of the published
 //! reserve viewing key (from `--reserve`, or the API's `/v1/reserve.json`) is synced, and its balance
-//! plus the reported unswept top-ups must cover the liabilities. Exits with status 1 if anything
+//! plus the reported unswept top-ups must cover the liabilities; every anchor transaction is opened
+//! with that key and must name the log's root. With `--polygon`, every resolution in the log is
+//! read again from Polymarket's ConditionalTokens contract on Polygon (two RPCs that must agree;
+//! `public` = the two public ones the server uses). Exits with status 1 if anything
 //! fails. Requests honor `HTTPS_PROXY` / `ALL_PROXY`, so `ALL_PROXY=socks5h://127.0.0.1:9050`
 //! fetches the log over Tor.
 
@@ -46,6 +49,45 @@ async fn fetch(source: &str, path: &str) -> Result<Vec<u8>, String> {
     }
 }
 
+/// Deltas per segment (`segment/{k}.jsonl.gz`: deltas `k·128 + 1 ..= (k + 1)·128`, one per line).
+const SEGMENT: u64 = 128;
+
+/// Deltas 1..=`head_seq`: whole segments where they exist, single deltas for the rest.
+async fn read_log(source: &str, head_seq: u64) -> Result<Vec<Delta>, String> {
+    let mut deltas = Vec::new();
+    let mut seq = 1;
+    while seq <= head_seq {
+        let k = (seq - 1) / SEGMENT;
+        if (k + 1) * SEGMENT <= head_seq
+            && let Ok(text) = fetch(source, &format!("segment/{k}.jsonl.gz"))
+                .await
+                .and_then(|b| gunzip(&b))
+        {
+            let lines: Vec<&[u8]> = text
+                .split(|&b| b == b'\n')
+                .filter(|l| !l.is_empty())
+                .collect();
+            if lines.len() as u64 == SEGMENT {
+                for (i, line) in lines.iter().enumerate() {
+                    let d = serde_json::from_slice(line)
+                        .map_err(|e| format!("segment {k}, line {}: {e}", i + 1))?;
+                    deltas.push(d);
+                }
+                seq = (k + 1) * SEGMENT + 1;
+                continue;
+            }
+        }
+        let d = fetch(source, &format!("delta/{seq}.json.gz"))
+            .await
+            .and_then(|b| gunzip(&b))
+            .and_then(|j| serde_json::from_slice(&j).map_err(|e| e.to_string()))
+            .map_err(|e| format!("delta {seq}: {e}"))?;
+        deltas.push(d);
+        seq += 1;
+    }
+    Ok(deltas)
+}
+
 #[tokio::main]
 async fn main() {
     let all: Vec<String> = std::env::args().skip(1).collect();
@@ -62,7 +104,7 @@ async fn main() {
     }
     if args.len() != 2 {
         eprintln!(
-            "usage: blindbook-verify <M hex> <API base URL | public/v1 directory> [--chain <lightwalletd URL>] [--reserve <UFVK> --birthday <height>] [--net test|main] [--data <dir>]"
+            "usage: blindbook-verify <M hex> <API base URL | public/v1 directory> [--chain <lightwalletd URL>] [--reserve <UFVK> --birthday <height>] [--net test|main] [--data <dir>] [--polygon public | <rpc,rpc>]"
         );
         std::process::exit(2);
     }
@@ -87,21 +129,13 @@ async fn main() {
             std::process::exit(1)
         }
     };
-    let mut deltas = Vec::new();
-    for seq in 1..=head.seq {
-        let d: Delta = match fetch(source, &format!("delta/{seq}.json.gz"))
-            .await
-            .and_then(|b| gunzip(&b))
-            .and_then(|j| serde_json::from_slice(&j).map_err(|e| e.to_string()))
-        {
-            Ok(d) => d,
-            Err(e) => {
-                eprintln!("delta {seq}: {e}");
-                std::process::exit(1)
-            }
-        };
-        deltas.push(d);
-    }
+    let deltas = match read_log(source, head.seq).await {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(1)
+        }
+    };
     let mut r = audit(&m, &deltas, Some(head));
     println!(
         "deltas {} (head seq {}, height {}, root {})",
@@ -141,6 +175,17 @@ async fn main() {
             Err(e) => r.failures.push(format!("on-chain reserve check: {e}")),
         }
     }
+    if let Some(rpcs) = opts.get("polygon") {
+        match polygon(rpcs, &r).await {
+            Ok(lines) => lines.iter().for_each(|l| println!("{l}")),
+            Err(e) => r.failures.push(format!("resolutions against Polygon: {e}")),
+        }
+    } else if !r.resolutions.is_empty() {
+        println!(
+            "resolutions {} (add --polygon public to check each against Polygon)",
+            r.resolutions.len()
+        );
+    }
     println!("supply per keyset (issued / spent / outstanding units):");
     for (k, (i, s)) in &r.supply {
         println!("  {k:<70} {i:>10} {s:>10} {:>10}", i.saturating_sub(*s));
@@ -153,6 +198,25 @@ async fn main() {
         }
         std::process::exit(1);
     }
+}
+
+/// `--polygon public` or `--polygon <rpc,rpc>`.
+#[cfg(feature = "chain")]
+async fn polygon(rpcs: &str, r: &blindbook_verify::Report) -> Result<Vec<String>, String> {
+    let rpcs: Vec<String> = if rpcs == "public" || rpcs.is_empty() {
+        blindbook_polymarket::polygon::DEFAULT_RPCS
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        rpcs.split(',').map(|s| s.trim().to_owned()).collect()
+    };
+    blindbook_verify::resolutions_on_polygon(rpcs, &r.resolutions).await
+}
+
+#[cfg(not(feature = "chain"))]
+async fn polygon(_: &str, _: &blindbook_verify::Report) -> Result<Vec<String>, String> {
+    Err("built without the `chain` feature".into())
 }
 
 #[cfg(feature = "chain")]
@@ -277,6 +341,7 @@ mod chain {
 
 #[cfg(not(feature = "chain"))]
 mod chain {
+
     pub async fn check(
         _: &str,
         _: &str,

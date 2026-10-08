@@ -4,3 +4,4 @@
 .bb-rules__tag{padding:1px 6px;border:1px solid var(--text-dim);font-size:var(--text-ui-sm)}
 .bb-rules__quote{margin:0 0 var(--space-1);padding:0;color:var(--phosphor);max-width:68ch}
 .bb-rules__link{font-family:var(--font-ui);font-size:var(--text-ui-sm)}
+.bb-rules__note{font-family:var(--font-ui);font-size:var(--text-ui-sm);color:var(--text-dim)}

@@ -147,6 +147,7 @@ The development build talks to the server directly. The production build (`VITE_
 | [ROADMAP](docs/ROADMAP.md) | what is done, what remains before submission, gates, risks |
 | [SUBMISSION](docs/SUBMISSION.md) | the Zecathon rules check, the description, the judge quickstart, the video plan |
 | [RESEARCH](docs/RESEARCH.md) | Zcash after Ironwood, Polymarket, Nym, Cashu, prior art |
+| [DESIGN](docs/DESIGN.md) | the Blind Booth: clarity rules, usability targets, hard privacy constraints |
 | [SECURITY](SECURITY.md) | how to report a leak |
 
 ## Status

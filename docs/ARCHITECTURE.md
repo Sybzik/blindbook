@@ -113,7 +113,7 @@ Polymarket keeps your balance under a public wallet address; a typical custodial
 
 ### Unlock: Face ID on phones, passphrase on computers
 
-- **Phones (default):** Face ID. **Computers:** a passphrase only (no desktop biometrics).
+- **Phones (default):** Face ID. **Computers:** a passphrase by default; a passkey (Touch ID, Windows Hello, a security key) is offered where the browser supports PRF.
 
 - **Creating the vault on a phone** also creates a passkey for the Blindbook domain: user name `Blindbook vault`, random user handle, no email or identity.
 - **Opening the vault on a phone** asks for Face ID. The WebAuthn **PRF** extension returns a 32-byte secret only after that check. HKDF turns it into the key that unwraps the vault key, and AES-GCM decrypts the vault.
@@ -290,7 +290,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked; the API, the signer and the verifier each read for themselves |
 | Network privacy | `@nymproject/mix-fetch` 2.1: one tunnel per JavaScript realm, so every tunnel runs in its own disposable same-origin frame (main and cage); two race at boot; app-level request deadlines; `Connection: close` on writes and no TLS session resumption at the proxy; CSP `connect-src 'self' wss: https://validator.nymtech.net`, `worker-src blob:`, `script-src 'wasm-unsafe-eval'`; own Nym exit (IPR) if public exits stay unreliable; Tor onion as an explicit fallback |
 | Web | Vite 8, React 19, TypeScript, the design system's own CSS tokens and components (no Tailwind), three.js for the 3D booth (procedural, a lazy chunk; the 2D booth without WebGL), constant-URL navigation, an installable PWA (a service worker generated at build), strict CSP and SRI injected at build, `SHA256SUMS` of every built file (two builds of one commit match), a headless-browser leak check in CI |
-| Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones), Argon2id via `hash-wasm` for the passphrase (m = 64 MiB, t = 3, p = 1: ~0.13 s on a desktop; the only unlock on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
+| Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones; optional on computers), Argon2id via `hash-wasm` for the passphrase (m = 64 MiB, t = 3, p = 1: ~0.13 s on a desktop; the default on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | the browser only checks the shape of a withdrawal address as a hint; the signer parses it with `zcash_address` and refuses anything without an Orchard-protocol receiver before any CREDIT is spent |
 | Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |
 | Video | planned: scripted headless-browser capture of the real app, iPhone screen recording, edited in code |
@@ -311,7 +311,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | D10 | one mixnet tunnel for browsing and betting with a fresh connection per write (server closes connections, no TLS resumption); a separate tunnel in its own frame for top-ups and withdrawals, plus a random delay | decided; Spike A (Oct 6): frames hold independent tunnels and identities; a fresh connection costs ~2 s, so the poll pre-opens the next write's connection |
 | D11 | "Called it" receipts (tag per trade, reveal by choice) as the signature feature | decided |
 | D12 | Blind duels | built (Oct 7): escrowed stake, complete set on take, cancel by secret |
-| D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase only; the 12-word phrase is the backup | decided (core) |
+| D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase, or a passkey where PRF works; the 12-word phrase is the backup | built |
 | D14 | Zcash crates: the NU7 pre-release set, pinned exactly (testnet activated NU7 on Oct 5) | decided (Oct 6, `spikes/c-deposits`) |
 | D15 | Every mixnet tunnel lives in a disposable frame; two race at boot; dead routes are replaced, never bypassed | decided (Oct 6, `spikes/a-mixnet`) |
 | D16 | The signer builds, proves and signs payouts itself (no PCZT round trip); deposit addresses shown as ZIP 316 Revision 0 | decided (Oct 6, `spikes/g-payout`) |

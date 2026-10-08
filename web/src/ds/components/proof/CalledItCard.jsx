@@ -13,7 +13,7 @@ export function CalledItCard({ market = 'CS2 · LEGACY vs PARIVISION', outcome =
         <div className="bb-called__head"><Logo size={27} variant="paper" /><Wordmark height={14} color="var(--ink)" /><span className="bb-called__kind">RECEIPT CARD</span></div>
         <Stamp size="lg" rotate={-7} className="bb-called__stamp">CALLED IT</Stamp>
         <p className="bb-called__market">{market}</p>
-        <LeaderRow label="CALLED BY" value={<Redacted medium="paper" text="nobody.at" />} medium="paper" />
+        <LeaderRow label="CALLED BY" value={<Redacted medium="paper" length={9} />} medium="paper" />
         <LeaderRow label="OUTCOME" value={<span className="bb-called__oc"><span className={'bb-slip__swatch bb-slip__swatch--' + side} aria-hidden="true" />{outcome}</span>} medium="paper" />
         <LeaderRow label="PRICE" value={price} medium="paper" />
         <LeaderRow label="BLOCK" value={block} medium="paper" />

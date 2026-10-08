@@ -82,8 +82,8 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 
   The BIP 39 seed inside the vault is the root of every secret.
 - **Zero-query restore (normative client behaviour):** derive `B_` for counters 0..n per keyset (stopping after 96 unused counters in a row), find them among the signatures the public log published, unblind, and drop those whose `Y` the log lists as spent. The same pass finds the trade history by the CALLED IT tags (§6). The log is the same set of files every verifier downloads (§8). **No restore request is ever sent.**
-- **Transfer format:** `bbslip1:` + base64url(CBOR [keyset_id, amount, x, C]…), also as a QR code. The recipient swaps it immediately so the sender can't spend it twice.
-- **Handed-over codes and paper slips:** the same `bbslip1:` payload, as text, a QR on screen, or printed on a receipt-width page (black on white). The slips leave the vault when the code is made; the code stays in the vault's outbox, so the issuer can take it back (a swap of its own code) until someone else swaps it first. Importing **swaps at once** (new secrets, new signatures), so a code or a paper slip is void after import, and a photographed copy is worthless once imported.
+- **Transfer format:** `bbslip2:` + base64url(CBOR [[keyset_id, [[amount, x, C], …]], …]), slips grouped by keyset, with the id, a hex secret `x` and `C` as bytes so a QR stays readable (the older `bbslip1:` list of `[keyset_id, amount, x, C]` text entries is still read), also as a QR code. The recipient swaps it immediately so the sender can't spend it twice.
+- **Handed-over codes and paper slips:** the same `bbslip2:` payload, as text, a QR on screen, or printed on a receipt-width page (black on white). The slips leave the vault when the code is made; the code stays in the vault's outbox, so the issuer can take it back (a swap of its own code) until someone else swaps it first. Importing **swaps at once** (new secrets, new signatures), so a code or a paper slip is void after import, and a photographed copy is worthless once imported.
 
 ## 4. Requests (browser → API, always over the mixnet)
 

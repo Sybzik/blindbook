@@ -23,7 +23,7 @@ import { app, actions, type MarketMeta, type Point } from '../../app/services';
 import { useStore } from '../../app/store';
 import { BET_UNITS, COIN, config } from '../../app/config';
 import { coin, countdown, haltText, height, utc } from '../../app/format';
-import type { FillRecord, LiveMarket, TradeAnswer } from '../../core/api';
+import type { FillRecord, LiveMarket, RecentFill, TradeAnswer } from '../../core/api';
 import { RANGES, pointsFor, type Range } from '../../app/prices';
 import { calledItSecret, encodeProof } from '../../core/codes';
 import { currentWallet, earnStamp, setMixDelay } from '../../app/services';
@@ -41,7 +41,9 @@ export interface FilledSlip {
   shares: string;
   price: string;
   stake: string;
-  block: number;
+  /** The block that publishes the fill: null until it closes (it is the next block). */
+  block: number | null;
+  batchId: number;
   status: 'open' | 'refunded';
   tag: string;
   calledIndex?: number;
@@ -145,12 +147,16 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
   const held = positions.filter((p) => p.market === meta.id);
   const busy = useStore(app, (s) => s.busy);
   const error = useStore(app, (s) => s.error);
-  const head = useStore(app, (s) => s.head);
   const vault = useStore(app, (s) => s.vault);
   const [side, setSide] = useState<'a' | 'b'>('a');
   const options = BET_UNITS.map((u) => coin(u, 2));
   const [amt, setAmt] = useState(options[0]!);
   const [slip, setSlip] = useState<FilledSlip | null>(null);
+  // The fill's block, from the live feed every visitor polls, once that block has closed.
+  const published = useStore(app, (s) => publishedAt(s.live?.recent, slip));
+  useEffect(() => {
+    if (slip && slip.block === null && published !== null) setSlip({ ...slip, block: published });
+  }, [slip, published]);
   const [maxCents, setMaxCents] = useState<number | null>(null);
   const prefill = useStore(ui, (s) => s.prefill);
   const mixDelay = useStore(app, (s) => s.mixDelay);
@@ -194,7 +200,8 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
         shares: coin(f.out),
         price: f.avg_price_bp ? Math.round(f.avg_price_bp / 100) + '¢' : '—',
         stake: coin(f.kept + f.fee) + ' ' + COIN,
-        block: head?.height ?? 0,
+        block: null,
+        batchId: r.batch_id,
         status: f.out > 0 ? 'open' : 'refunded',
         tag: f.tag,
         calledIndex: entry?.called?.index,
@@ -208,9 +215,9 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
     return (
       <div className="tk-bet">
         <p className="bb-label" style={{ margin: 0 }}>
-          {slip.status === 'refunded' ? 'REFUNDED · nothing filled, the full amount is back' : `FILLED · blk ${height(slip.block)}`}
+          {slip.status === 'refunded' ? 'REFUNDED · nothing filled, the full amount is back' : slip.block !== null ? `FILLED · published in blk ${height(slip.block)}` : 'FILLED · published in the next block'}
         </p>
-        <BettingSlip {...slip} block={height(slip.block)} width="100%" />
+        <BettingSlip {...slip} block={blockLabel(slip.block)} width="100%" />
         <div className="row" style={{ gap: 8, alignItems: 'center' }}>
           {slip.status === 'open' && (
             <button type="button" className="tk-calledbtn" onClick={() => onCalledIt(slip)} data-hint="Prints a CALLED IT card. It stays private unless you share it.">
@@ -343,14 +350,25 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   );
 }
 
+/** A fill's block from the live feed (null while its block is still open). */
+function publishedAt(recent: RecentFill[] | undefined, slip: FilledSlip | null): number | null {
+  if (!slip || slip.block !== null) return null;
+  return recent?.find((f) => f.batch_id === slip.batchId && f.fill.tag === slip.tag)?.height ?? null;
+}
+
+const blockLabel = (b: number | null) => (b !== null ? height(b) : 'NEXT');
+
 export function CalledItPage({ slip, onBack }: { slip: FilledSlip; onBack: () => void }) {
   const [msg, setMsg] = useState<string | null>(null);
-  // The proof rides after "#": neither our servers nor link previews ever receive it.
+  const published = useStore(app, (s) => publishedAt(s.live?.recent, slip));
+  const block = slip.block ?? published;
+  // The proof rides after "#": neither our servers nor link previews ever receive it. The height
+  // in it is a hint for people; the check finds the trade by its tag.
   const link = useMemo(() => {
     const w = currentWallet();
     if (!w || slip.calledIndex === undefined) return null;
-    return `${location.origin}/#p=${encodeProof(calledItSecret(w.seed, slip.calledIndex), slip.block)}`;
-  }, [slip]);
+    return `${location.origin}/#p=${encodeProof(calledItSecret(w.seed, slip.calledIndex), block ?? 0)}`;
+  }, [slip, block]);
   const date = new Date(slip.at_ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
   const copy = async () => {
     if (!link) return;
@@ -364,13 +382,13 @@ export function CalledItPage({ slip, onBack }: { slip: FilledSlip; onBack: () =>
   };
   const save = async () => {
     if (!link) return;
-    savePng(await drawCalledIt({ market: slip.market, outcome: slip.outcome, price: slip.price, block: height(slip.block), date, link }), 'called-it.png');
+    savePng(await drawCalledIt({ market: slip.market, outcome: slip.outcome, price: slip.price, block: blockLabel(block), date, link }), 'called-it.png');
     setMsg('Saved on this device. Whoever scans the QR sees VERIFIED ✓ and nothing else.');
     void earnStamp('CALLED IT');
   };
   return (
     <Win title="CALLED IT · RECEIPT CARD" onClose={onBack} maxWidth={520} style={{ alignSelf: 'center', width: '100%' }}>
-      <CalledItCard market={slip.market} outcome={slip.outcome} side={slip.side} price={slip.price} block={height(slip.block)} date={date} proofSeed={slip.tag}
+      <CalledItCard market={slip.market} outcome={slip.outcome} side={slip.side} price={slip.price} block={block !== null ? height(block) : 'NEXT BLOCK'} date={date} proofSeed={slip.tag}
         qr={link ? <Qr value={link} size={96} paper title="Proof QR" /> : undefined}
         onKeepPrivate={() => setMsg('Kept private. Nothing was shared; the secret behind it stays in your vault.')} onCopyLink={copy} onSaveImage={save} />
       <p className="bb-conditions" role="status" style={{ minHeight: 20, wordBreak: 'break-all' }}>{msg}</p>

@@ -200,7 +200,7 @@ function Code() {
         {done !== null && (
           <p className="bb-conditions" role="status">
             Added {coinLabel(done)} to your balance.{' '}
-            <button type="button" className="bb-link" onClick={() => openWindow('markets')}>pick a market</button>
+            <button type="button" className="bb-link" onClick={() => openWindow('markets')}>Now pick a market ▸</button>
           </p>
         )}
         {error && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{error}</p>}

@@ -71,7 +71,7 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
 
     // Alice hands 1,000 units to Bob; Bob takes them over; Alice can't spend them again.
     const slipCode = await w.send(w.credit.id, 1_000);
-    expect(slipCode.startsWith('bbslip1:')).toBe(true);
+    expect(slipCode.startsWith('bbslip2:')).toBe(true);
     const bob = wallet('bob');
     expect(await bob.w.receiveCode(slipCode)).toBe(1_000);
     expect(bob.w.creditBalance()).toBe(1_000);

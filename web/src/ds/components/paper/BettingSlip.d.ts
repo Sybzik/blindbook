@@ -11,6 +11,8 @@ export interface BettingSlipProps {
   shares?: string;
   price?: string;
   stake?: string;
+  /** what the slip pays (a position: "0.0164 ZEC if it wins") */
+  pays?: string;
   block?: string;
   status?: 'open' | 'won' | 'lost' | 'refunded' | 'exposed' | 'amount-visible';
   width?: number | string;

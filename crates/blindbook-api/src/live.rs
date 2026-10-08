@@ -110,7 +110,10 @@ pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .iter()
-            .filter(|f| f.at_ms + crate::sequencer::RECENT_MS >= at_ms)
+            .filter(|f| {
+                (f.at_ms > 0 && f.height.is_none())
+                    || f.at_ms + crate::sequencer::RECENT_MS >= at_ms
+            })
             .cloned()
             .collect(),
         payouts: shared

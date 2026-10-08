@@ -98,6 +98,8 @@ export interface RecentFill {
   side: 'buy' | 'sell';
   outcome: 0 | 1;
   fill: FillRecord;
+  /** The block whose delta publishes this fill; null until that block closes. */
+  height: number | null;
 }
 
 export interface Live {

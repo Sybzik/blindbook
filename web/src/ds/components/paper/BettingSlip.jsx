@@ -15,7 +15,8 @@ const SLIP_STATES = {
 };
 
 /* Betting slip: serial, market, outcome, shares, stamp. */
-export function BettingSlip({ serial = '0041-18A', market = 'CS2 · LEGACY vs PARIVISION', outcome = 'LEGACY', side = 'a', shares = '0.0222', price = '45¢', stake = '0.010 ZEC', block = '3,514,220', status = 'open', width, className = '' }) {
+/* Rows the caller doesn't pass are left out (a position held across fills has no one price or block). */
+export function BettingSlip({ serial = '0041-18A', market = 'CS2 · LEGACY vs PARIVISION', outcome = 'LEGACY', side = 'a', shares = '0.0222', price, stake, pays, block, status = 'open', width, className = '' }) {
   const s = SLIP_STATES[status] || SLIP_STATES.open;
   return (
     <div className={['bb-slip', 'bb-paper', 'bb-grain', 'is-' + status, status === 'won' && 'bb-glow-box', className].filter(Boolean).join(' ')} style={{ width }}>
@@ -25,9 +26,10 @@ export function BettingSlip({ serial = '0041-18A', market = 'CS2 · LEGACY vs PA
         <p className="bb-slip__market">{market}</p>
         <p className="bb-slip__outcome"><span className={'bb-slip__swatch bb-slip__swatch--' + side} aria-hidden="true" />{outcome}{s.stamp && <Stamp size={status === 'open' ? 'sm' : 'md'} rotate={s.rot} className="bb-slip__stamp">{s.stamp}</Stamp>}</p>
         <LeaderRow label="SHARES" value={shares} medium="paper" />
-        <LeaderRow label="PRICE" value={price} medium="paper" />
-        <LeaderRow label="STAKE" value={stake} medium="paper" />
-        <LeaderRow label="BLOCK" value={block} medium="paper" />
+        {price !== undefined && <LeaderRow label="PRICE" value={price} medium="paper" />}
+        {stake !== undefined && <LeaderRow label="STAKE" value={stake} medium="paper" />}
+        {pays !== undefined && <LeaderRow label="PAYS" value={pays} medium="paper" />}
+        {block !== undefined && <LeaderRow label="BLOCK" value={block} medium="paper" />}
         {s.note && <p className="bb-slip__note">{s.note}</p>}
       </div>
       <div className="bb-slip__perf" aria-hidden="true" />

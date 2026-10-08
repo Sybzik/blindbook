@@ -7,6 +7,7 @@ import { BettingSlip, KeyButton, LeaderRow, TeletextHeader, TextInput, Wordmark 
 import { Qr } from '../Qr';
 import { Scan } from '../Scan';
 import { creditKeyset } from '../../core/keysets';
+import { isSlipCode } from '../../core/codes';
 import { config, COIN } from '../../app/config';
 import { Win, OpenVault } from '../win';
 import { app, actions, type Position } from '../../app/services';
@@ -196,7 +197,8 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
           return (
             <div className="tk-slipcell" key={p.keyset}>
               <BettingSlip serial={serial} market={m.question} outcome={outcome} side={p.outcome === 0 ? 'a' : 'b'}
-                shares={coin(p.units)} price={price + '¢ now'} stake={`pays ${coin(won && resolved ? Math.floor((p.units * resolved.num[p.outcome]!) / resolved.den) : p.units)} ${COIN} if it wins`} status={status} />
+                shares={coin(p.units)} price={status === 'open' ? price + '¢ now' : undefined}
+                pays={status === 'open' ? `${coin(p.units)} ${COIN} if it wins` : won && resolved ? `${coin(Math.floor((p.units * resolved.num[p.outcome]!) / resolved.den))} ${COIN}` : 'nothing'} status={status} />
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 {status === 'won' ? (
                   <KeyButton size="sm" disabled={!!busy} onClick={() => actions.redeem(p.market, p.outcome).then((n) => setMsg(`Cashed in: ${coinLabel(n)} added to your balance.`)).catch(() => undefined)} data-hint="Moves the winnings into your free balance.">CASH IN</KeyButton>
@@ -222,9 +224,9 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
         </div>
       )}
       <div style={{ maxWidth: 560, marginTop: 24 }}>
-        <TextInput label="TAKE OVER A CODE" placeholder="bbslip1:…" value={incoming} onChange={setIncoming} message="Swapped at once: the sender can't spend it after you." />
+        <TextInput label="TAKE OVER A CODE" placeholder="bbslip2:…" value={incoming} onChange={setIncoming} message="Swapped at once: the sender can't spend it after you." />
         <div style={{ marginTop: 8 }}>
-          <KeyButton size="sm" disabled={!incoming.trim().startsWith('bbslip1:') || !!busy} loading={busy === 'TAKING OVER SLIPS'} onClick={() => takeOver(incoming)}>TAKE OVER</KeyButton>
+          <KeyButton size="sm" disabled={!isSlipCode(incoming) || !!busy} loading={busy === 'TAKING OVER SLIPS'} onClick={() => takeOver(incoming)}>TAKE OVER</KeyButton>
         </div>
       </div>
       {(msg || error) && <p className="bb-conditions" role="status" style={{ color: error ? 'var(--alarm)' : undefined }}>{error ?? msg}</p>}

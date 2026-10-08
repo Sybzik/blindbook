@@ -69,6 +69,8 @@ pub struct RecentFill {
     pub side: Side,
     pub outcome: u8,
     pub fill: FillRecord,
+    /// The block whose delta publishes this fill; `None` until that block closes.
+    pub height: Option<u64>,
 }
 
 /// An open blind duel as everyone sees it (the challenger's outputs and cancel hash stay out).
@@ -302,10 +304,15 @@ impl Sequencer {
                         side: r.side,
                         outcome: r.outcome,
                         fill: fill.clone(),
+                        height: None,
                     });
                 }
             }
-            while recent.front().is_some_and(|f| f.at_ms + RECENT_MS < at_ms) {
+            // A fill stays until its block is published, then two more minutes.
+            while recent
+                .front()
+                .is_some_and(|f| f.height.is_some() && f.at_ms + RECENT_MS < at_ms)
+            {
                 recent.pop_front();
             }
         }
@@ -584,6 +591,17 @@ impl Sequencer {
         self.files.write_delta(&delta).map_err(io)?;
         self.files.write_segments(head.seq).map_err(io)?;
         self.files.write_head(&head).map_err(io)?;
+        // The fills of the open block are published at this height.
+        for f in self
+            .shared
+            .recent
+            .write()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter_mut()
+            .filter(|f| f.height.is_none())
+        {
+            f.height = Some(head.height);
+        }
         *self.shared.head.write().unwrap_or_else(|e| e.into_inner()) = head;
         *self.shared.block.write().unwrap_or_else(|e| e.into_inner()) = Some(ChainBlock {
             height,

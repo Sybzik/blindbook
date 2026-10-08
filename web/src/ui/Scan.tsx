@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { KeyButton } from '../ds';
+import { isSlipCode } from '../core/codes';
 
 type Detector = { detect(src: CanvasImageSource): Promise<{ rawValue: string }[]> };
 const native = (): Detector | null => {
@@ -29,7 +30,7 @@ async function decode(canvas: HTMLCanvasElement, det: Detector | null): Promise<
   return jsQR(img.data, img.width, img.height, { inversionAttempts: 'attemptBoth' })?.data ?? null;
 }
 
-export function Scan({ onCode, onCancel, accept = (s) => s.startsWith('bbslip1:') }: { onCode: (code: string) => void; onCancel: () => void; accept?: (s: string) => boolean }) {
+export function Scan({ onCode, onCancel, accept = isSlipCode }: { onCode: (code: string) => void; onCancel: () => void; accept?: (s: string) => boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [err, setErr] = useState<string | null>(null);

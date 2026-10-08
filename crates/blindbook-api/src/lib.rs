@@ -3,6 +3,7 @@
 //! and it never sees, stores or logs a client address.
 
 pub mod files;
+pub mod history;
 pub mod journal;
 pub mod link;
 pub mod live;
@@ -107,6 +108,7 @@ pub fn start(
     });
     let live_bytes = Arc::new(RwLock::new(b"{}".to_vec()));
     tokio::spawn(live::run(shared.clone(), refs, live_bytes.clone()));
+    tokio::spawn(history::run(cfg.data_dir.clone(), live_bytes.clone()));
     let public = cfg.data_dir.join("public").join("v1");
     let state = AppState {
         tx: tx.clone(),
@@ -140,6 +142,10 @@ pub fn start(
         .route_service(
             "/v1/reserve.json",
             tower_http::services::ServeFile::new(public.join("reserve.json")),
+        )
+        .route_service(
+            "/v1/history.json.gz",
+            tower_http::services::ServeFile::new(public.join("history.json.gz")),
         )
         .layer(DefaultBodyLimit::max(128 * 1024))
         .with_state(state);

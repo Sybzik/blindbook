@@ -24,6 +24,7 @@ import { useStore } from '../../app/store';
 import { BET_UNITS, COIN, config } from '../../app/config';
 import { coin, countdown, haltText, height, utc } from '../../app/format';
 import type { FillRecord, LiveMarket, TradeAnswer } from '../../core/api';
+import { RANGES, pointsFor, type Range } from '../../app/prices';
 import { calledItSecret, encodeProof } from '../../core/codes';
 import { currentWallet, earnStamp, setMixDelay } from '../../app/services';
 import { ToggleSwitch } from '../../ds';
@@ -286,10 +287,12 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   const live = useStore(app, (s) => s.live?.markets.find((m) => m.id === id));
   const recent = useStore(app, (s) => s.live?.recent);
   const series = useStore(app, (s) => s.series[id]);
+  const hist = useStore(app, (s) => s.prices[id]);
   const link = useStore(app, (s) => s.link);
   const [rules, setRules] = useState(false);
+  const [range, setRange] = useState<Range>('1D');
   const { pager } = useContext(WinCtx);
-  const outcomes = useMemo(() => (meta ? outcomesOf(meta, live, series ?? []) : []), [meta, live, series]);
+  const outcomes = useMemo(() => (meta ? outcomesOf(meta, live, pointsFor(range, hist, series ?? [], Date.now())) : []), [meta, live, series, hist, range]);
   if (!meta) return <Win title="MARKET" onClose={onClose}><p className="bb-text">Loading…</p></Win>;
   const st = statusOf(meta, live);
   const lockReason =
@@ -319,7 +322,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
           <LeaderRow label="CLOSES" value={closesText(meta)} />
           <LeaderRow label="POLYMARKET" value={`${meta.outcomes[0].toUpperCase()} ${ref}¢ · ${meta.outcomes[1].toUpperCase()} ${100 - ref}¢`} tone="ref" />
           <div style={{ marginTop: 10 }} data-hint="Both outcomes, live. REF adds Polymarket's price as dashed violet lines.">
-            {rules ? <RulesPanel rules={meta.rules} rows={rows} url={`https://polymarket.com/market/${encodeURIComponent(meta.slug)}`} /> : <ScopeChart key={meta.id} outcomes={outcomes} height={pager ? 120 : 168} />}
+            {rules ? <RulesPanel rules={meta.rules} rows={rows} url={`https://polymarket.com/market/${encodeURIComponent(meta.slug)}`} /> : <ScopeChart key={meta.id} outcomes={outcomes} ranges={RANGES} range={range} onRange={(r: string) => setRange(r as Range)} height={pager ? 120 : 168} />}
           </div>
           <div className="row" style={{ marginTop: 8, gap: 8 }}>
             <KeyButton variant="secondary" size="sm" icon="rules" onClick={() => setRules(!rules)} data-hint="Polymarket's rules word for word, and how Blindbook settles this market.">

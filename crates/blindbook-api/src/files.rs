@@ -19,14 +19,14 @@ pub struct Files {
     root: PathBuf,
 }
 
-fn gz(bytes: &[u8]) -> std::io::Result<Vec<u8>> {
+pub(crate) fn gz(bytes: &[u8]) -> std::io::Result<Vec<u8>> {
     let mut e = GzEncoder::new(Vec::new(), Compression::best());
     e.write_all(bytes)?;
     e.finish()
 }
 
 /// Write via a temporary file and rename, so a reader never sees half a file.
-fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let tmp = path.with_extension("tmp");
     std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)

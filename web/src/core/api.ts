@@ -115,6 +115,18 @@ export interface Live {
   duel_fills: { at_ms: number; duel: string; signatures: { index: number; amount: number; id: string; C_: string; dleq: { e: string; s: string } }[] }[];
 }
 
+/** One price sample of `/v1/history.json.gz`: Unix minute, our price of outcome A and
+ *  Polymarket's mid of A, in basis points. */
+export type PricePoint = [number, number, number];
+
+/** A market's price history: one-minute samples for 2 h, 15-minute for a week, 2-hour since
+ *  listing (crates/blindbook-api/src/history.rs). */
+export interface PriceHistory {
+  m1: PricePoint[];
+  m15: PricePoint[];
+  h2: PricePoint[];
+}
+
 export interface OpenDuel {
   duel: string;
   market: string;

@@ -1,7 +1,7 @@
 // The app's state and actions: transport (mixnet or dev fetch), the polls every visitor makes
 // identically (head, live, catalog), the vault and the wallet.
 
-import { Api, ApiError, DirectTransport, type Head, type Live, type Transport } from '../core/api';
+import { Api, ApiError, DirectTransport, type Head, type Live, type PriceHistory, type Transport } from '../core/api';
 import { Wallet, newWalletData, type HistoryEntry, type LocalData, type MyDuel, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
 import { blankOutputs } from '../core/blind';
 import { restore, type DeltaLike } from '../core/restore';
@@ -52,6 +52,8 @@ export interface AppState {
   live?: Live;
   markets: MarketMeta[];
   series: Record<string, Point[]>;
+  /** Price history of every market, from the one file every visitor downloads. */
+  prices: Record<string, PriceHistory>;
   vault: VaultState;
   wraps: Wrap[];
   balance: number;
@@ -75,6 +77,7 @@ export const app = createStore<AppState>({
   link: 'linking',
   markets: [],
   series: {},
+  prices: {},
   vault: 'checking',
   wraps: [],
   balance: 0,
@@ -177,6 +180,15 @@ async function pollCatalog() {
   }
 }
 
+async function pollPrices() {
+  try {
+    const h = await api.json<{ markets: Record<string, PriceHistory> }>('/v1/history.json.gz');
+    app.set({ prices: h.markets ?? {} });
+  } catch {
+    /* a fresh deployment has no history yet; retried */
+  }
+}
+
 async function pollHead() {
   try {
     app.set({ head: await api.head() });
@@ -238,6 +250,8 @@ export async function start() {
   setInterval(pollLive, 3_000);
   setInterval(pollHead, 15_000);
   setInterval(pollCatalog, 30_000);
+  void pollPrices();
+  setInterval(pollPrices, 300_000);
 }
 
 function openWallet(data: WalletData) {

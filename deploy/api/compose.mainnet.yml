@@ -1,0 +1,23 @@
+# The mainnet proof next to the testnet playground on the same host:
+#   docker compose -f compose.yml -f compose.mainnet.yml up -d
+# It has its own configuration (api-main.env, config-main/) and data (data-main/); add its host to
+# BB_SITES in api.env so Caddy serves it.
+services:
+  api-main:
+    image: blindbook:latest
+    command: ["blindbook-api"]
+    env_file: api-main.env
+    environment:
+      BB_DATA: /data
+      BB_LISTEN: 0.0.0.0:8080
+      BB_MARKETS: /config/markets.json
+      BB_UIVK: /config/deposit-uivk.txt
+      BB_RESERVE_UFVK: /config/reserve-ufvk.txt
+    volumes:
+      - ./data-main:/data
+      - ./config-main:/config:ro
+    restart: unless-stopped
+    expose: ["8080"]
+
+  caddy:
+    depends_on: [api, api-main]

@@ -161,11 +161,12 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
         `keysets      ${r.keysetsOk ? '✓ every listed market uses keys derived from M' : '✗ a market uses keys not derived from M'}`,
         `supply       ${r.supplyOk ? '✓ nothing spent beyond what was issued' : '✗ more spent than issued'}`,
         r.reserve
-          ? `solvency     ${r.solventOk ? '✓' : '✗'} reserve ${zat(r.reserve.reserveZat + r.reserve.unsweptZat)} vs liabilities ${zat(r.reserve.owedZat)} ${COIN} at blk ${height(r.reserve.height)}`
+          ? `solvency     ${r.solventOk ? '✓' : '✗'} reserve ${zat(r.reserve.reserveZat + r.reserve.unsweptZat)} vs liabilities ${zat(r.reserve.owedZat)} ${COIN} at blk ${height(r.reserve.height)} · owed now ${zat(r.liabilitiesZat)}${r.creditedSinceZat ? ` (+${zat(r.creditedSinceZat)} topped up since)` : ''}`
           : `solvency     no reserve report yet · liabilities ${zat(r.liabilitiesZat)} ${COIN}`,
         `anchors      ${r.anchors.length} on-chain · ${(r.ms / 1000).toFixed(1)} s in this browser`,
-        r.chainOk && r.sigsOk === r.sigs && r.keysetsOk && r.supplyOk && r.replay?.failures.length === 0 && (r.solventOk || !r.reserve) ? 'LEDGER MATCH ✓' : 'MISMATCH ✗',
-      ]);
+        r.chainOk && r.sigsOk === r.sigs && r.keysetsOk && r.supplyOk && r.replay?.failures.length === 0 ? 'LEDGER MATCH ✓' : 'MISMATCH ✗',
+        r.reserve && !r.solventOk ? 'NOT COVERED ✗ the reserve reported is below what is owed' : '',
+      ].filter(Boolean));
     }
     case 'status': {
       const batch = s.live?.recent.at(-1)?.batch_id;

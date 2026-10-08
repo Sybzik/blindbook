@@ -1,0 +1,19 @@
+# VPS-2 (private): the signer. It holds every key, opens no port and dials the API itself.
+# Configure signer.env (copy signer.env.example); keys and wallets live in ./secrets.
+name: blindbook-signer
+
+services:
+  signer:
+    image: blindbook:latest
+    command: ["blindbook-signer", "run"]
+    env_file: signer.env
+    environment:
+      BB_SIGNER_KEY: /secrets/master.key
+      BB_SIGNER_DATA: /data
+      BB_TREASURY_DIR: /secrets/treasury
+      BB_VOUCHERS: /secrets/voucher-hashes.txt
+    volumes:
+      - ./secrets:/secrets
+      - ./data:/data
+    restart: unless-stopped
+    # No ports: the signer only makes outbound connections (the API, lightwalletd, Polygon).

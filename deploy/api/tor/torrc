@@ -1,0 +1,9 @@
+# Only an onion service: no SOCKS port, no relay, no exit.
+SocksPort 0
+DataDirectory /var/lib/tor
+HiddenServiceDir /var/lib/tor/blindbook
+HiddenServiceVersion 3
+# The onion's port 80 is Caddy's plain-HTTP site for the mirror (static app + /v1).
+HiddenServicePort 80 caddy:8081
+# Tor logs nothing about connections at this level.
+Log notice stderr

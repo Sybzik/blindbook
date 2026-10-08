@@ -63,6 +63,8 @@ export interface Result {
   liabilitiesZat: number;
   /** The last reserve report and the liabilities at that point of the log. */
   reserve: { height: number; reserveZat: number; unsweptZat: number; owedZat: number } | null;
+  /** Top-ups credited since the last report (their money is in the deposit account). */
+  creditedSinceZat: number;
   solventOk: boolean;
   /** The engine's replay of every batch (wasm), null before it ran. */
   replay: { batches: number; failures: string[] } | null;
@@ -136,6 +138,7 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'>
   let reserve: Result['reserve'] = null;
   let solventOk = true;
   let owed = 0;
+  let creditedSince = 0;
   const out = (name: string) => {
     const v = supply.get(name);
     return v ? Math.max(0, v[0] - v[1]) : 0;
@@ -171,6 +174,7 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'>
       else if (e.type === 'payout_sent') for (const c of e.commitments ?? []) queued.delete(c);
       else if (e.type === 'resolved' && e.market && e.den !== undefined && e.num) resolved.set(e.market, { den: e.den, num: e.num });
       else if (e.type === 'reserve_reported') reports.push(e);
+      else if (e.type === 'topup_credited') creditedSince += (e.amount ?? 0) * 1_000;
       else if (e.type === 'duel_opened' && e.duel) duels.set(e.duel, e.stake ?? 0);
       else if ((e.type === 'duel_taken' || e.type === 'duel_cancelled') && e.duel) duels.delete(e.duel);
     }
@@ -196,6 +200,7 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'>
       const uns = r.unswept_zat ?? 0;
       if (res + uns < owed) solventOk = false;
       reserve = { height: r.height ?? d.height, reserveZat: res, unsweptZat: uns, owedZat: owed };
+      creditedSince = 0;
     }
   }
   // Rows named for people: "P202 NAVI" instead of a market id.
@@ -219,7 +224,9 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'>
     anchors,
     liabilitiesZat: owed,
     reserve,
-    solventOk: reserve !== null && solventOk,
+    creditedSinceZat: creditedSince,
+    // At every report, and now: what is owed now against the last report plus the top-ups since.
+    solventOk: reserve !== null && solventOk && owed <= reserve.reserveZat + reserve.unsweptZat + creditedSince,
   };
 }
 
@@ -379,6 +386,16 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
               </div>
               <Bars label="RESERVE" value={res.reserve.reserveZat + res.reserve.unsweptZat} max={Math.max(res.reserve.reserveZat + res.reserve.unsweptZat, res.reserve.owedZat)} />
               <Bars label="LIABILITIES" value={res.reserve.owedZat} max={Math.max(res.reserve.reserveZat + res.reserve.unsweptZat, res.reserve.owedZat)} />
+              {res.liabilitiesZat > res.reserve.reserveZat + res.reserve.unsweptZat + res.creditedSinceZat ? (
+                <p className="bb-conditions" style={{ color: 'var(--alarm)' }}>
+                  NOW: {zat(res.liabilitiesZat)} {COIN} owed, more than the {zat(res.reserve.reserveZat + res.reserve.unsweptZat)} reported at blk {height(res.reserve.height)}
+                  {res.creditedSinceZat ? ` plus ${zat(res.creditedSinceZat)} topped up since` : ''}. Not covered until a reserve report shows more; the signer reports at least every 48 blocks.
+                </p>
+              ) : (
+                <p className="bb-conditions">
+                  NOW: {zat(res.liabilitiesZat)} {COIN} owed, covered by that report{res.creditedSinceZat ? ` and the ${zat(res.creditedSinceZat)} topped up since` : ''}.
+                </p>
+              )}
               <p className="bb-conditions">
                 Liabilities: every CREDIT slip outstanding, the most either outcome of each market can pay, withdrawals not paid yet and stakes held by open duels, all from the log above.
                 The reserve figure ({zat(res.reserve.reserveZat)} {COIN}{res.reserve.unsweptZat ? ` + ${zat(res.reserve.unsweptZat)} not swept yet` : ''}) is the signer's report. The reserve's viewing key is public: the command-line verifier below, with --chain, syncs it from the chain and checks the real balance.

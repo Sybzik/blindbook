@@ -83,10 +83,11 @@ pub async fn resolutions_on_polygon(
             }
         }
     }
-    out.push(format!(
-        "resolutions: all {} match Polygon",
-        resolutions.len()
-    ));
+    out.push(if resolutions.is_empty() {
+        "resolutions: none in the log yet".to_owned()
+    } else {
+        format!("resolutions: all {} match Polygon", resolutions.len())
+    });
     Ok(out)
 }
 

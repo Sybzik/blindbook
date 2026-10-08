@@ -100,14 +100,14 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 
 | Endpoint | Body | Executes | Returns |
 |---|---|---|---|
-| `POST /v1/topup` | `amount_zat` (a top-up denomination), `credit_outputs[]`, `claim_hash = SHA256(topup_secret)` | on SEEN (within 0-conf caps) or 1 confirmation | `{topup_id, address, expires_height}` |
+| `POST /v1/topup` | `amount_zat` (a top-up denomination), `credit_outputs[]`, `claim_hash = SHA256(topup_secret)` | on SEEN (within 0-conf caps) or 1 confirmation | `{topup_id, address, expires_height}`; the same request again answers the same address (idempotent by `claim_hash`) |
 | `GET /v1/topup/{id}` | | | `{status: awaiting / seen / credited / confirmed, privacy: SHIELDED / AMOUNT_VISIBLE / EXPOSED, paid_zat, signatures[]}` |
 | `POST /v1/trade` | `inputs[]` (CREDIT slips for a buy, position slips for a sell), `market, side (buy/sell), outcome (0/1), limit_bp, amount, outputs[], change_outputs[], tag` | next 2 s batch | `{batch_id, fill: {tag, status, kept, out, fee, refund, avg_price_bp}, signatures[], stored_record}` |
 | `POST /v1/swap` | `inputs[], outputs[]` (same keyset, equal sum) | immediately | `{signatures[], stored_record}` |
 | `POST /v1/redeem` | `inputs[]` (a resolved outcome's keyset), `outputs[]` (31 blank CREDIT outputs) | immediately after resolution | `{paid, signatures[], stored_record}` |
 | `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount` (units, a standard denomination, THREAT_MODEL X6), `change_outputs[]`, `address_sealed` (`bbseal1:`, sealed to the signer's pinned X25519 key; format in `crates/blindbook-seal`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{signatures[] (change), stored_record}`; payout shown in the log as `PayoutSent {txid, commitments}` |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
-| `POST /v1/voucher` | `code, outputs[]` | immediately | judge vouchers: a single-use code (case and spaces ignored) exchanged for CREDIT slips |
+| `POST /v1/voucher` | `code, outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips. The signer knows `SHA256` of its canonical form: letters and digits only, uppercase, O→0, I/L→1 (`ops::voucher_hash`), so a code typed by hand still matches |
 | `POST /v1/duel/open`, `/take`, `/cancel` | see §7.1 | immediately | `{signatures[], stored_record}` |
 
 - Output counts are capped at 32 per keyset per request; a request spends at most 64 slips.
@@ -118,6 +118,8 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
   - Each list always holds **31** blank outputs, enough for any amount below 2³¹ units, so every trade request has the same shape. Unused outputs are never signed, and zero-query restore skips them (gap limit 96 counters).
 - **P600 transparency:** every write response includes `stored_record`, the exact row the server stored for that request (batch, tag, market, outcome, side, size, price, height). The app keeps these in the vault and shows them on P600, with no extra request.
 - **API-side validation:** PoW, schema, and inputs not already spent or pending; the signer then checks every slip's signature (§9).
+- **Bounded work:** a batch takes at most 500 trade requests and the top-up desk holds at most 500 open (unpaid, unexpired) requests; beyond that the answer is `429 busy`, which spends nothing. An unpaid request drops its blank outputs a day after expiry; a payment that still arrives is claimed with `/v1/topup/claim`. Proof-of-work can be replayed, so every write is either one-time (it spends slips or a code) or idempotent (top-ups).
+- **Requests in doubt (normative client behaviour):** a 4xx is a refusal before anything was spent. No answer, or a 5xx, may still have been processed (the API can replay an operation the signer applied while the link was down). The wallet records every spending request before it leaves (its inputs and its output counter ranges) and holds those slips back until it knows: it reads the deltas published after the request left, the same files every verifier reads, and settles it as done when it finds signatures on its own `B_` or its inputs' `Y` spent, or as never processed after 3 blocks without either. The server can't tell which outputs a reader looks for.
 - **The API never signs.** It hands batches to the signer over the signer's outbound stream (§9) and relays the signatures back.
 
 ## 5. Pricing and batch clearing (normative)

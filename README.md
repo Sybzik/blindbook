@@ -148,6 +148,7 @@ The development build talks to the server directly. The production build (`VITE_
 | [SUBMISSION](docs/SUBMISSION.md) | the Zecathon rules check, the description, the judge quickstart, the video plan |
 | [RESEARCH](docs/RESEARCH.md) | Zcash after Ironwood, Polymarket, Nym, Cashu, prior art |
 | [DESIGN](docs/DESIGN.md) | the Blind Booth: clarity rules, usability targets, hard privacy constraints |
+| [DEPLOY](deploy/README.md) | two servers and a static host: keys, Compose, Caddy, Tor, the app builds, checks |
 | [SECURITY](SECURITY.md) | how to report a leak |
 
 ## Status
@@ -173,6 +174,7 @@ web/                      the app: vault, slip wallet, mixnet client, terminal U
 spikes/                   the Gate 1 experiments and their measurements
 design/                   the design system and screen exports
 docs/                     everything above
+deploy/                   Docker image, Compose files, Caddy and Tor configuration, app build script
 ```
 
 ## Built with

@@ -276,6 +276,8 @@ Polymarket data and Polygon settlement are always the real mainnet ones; only th
 | **VPS-2 (private)**, ideally another provider and jurisdiction | signer: its own indexer and engine replica, mint keys, spending keys | **no inbound ports** (firewall drops everything; SSH by key only, ideally over Tor); dials out to VPS-1 |
 | Static hosting, separate from the API (and the same files on the .onion) | the web app | sees app loads, never orders (N7) |
 
+The configuration for all of it is in [`deploy/`](../deploy/README.md): one image for the three binaries, a Compose file per server, the Caddy and Tor configuration, and the two app builds (mixnet and .onion), each pinning the deployment's own keys.
+
 Compromising the public server, or even its hosting provider, gives an attacker neither keys nor funds. **The API can't log requests:** whatever the log configuration says, its filter switches the HTTP stack's logging off, the handlers never see a client address, and a test fails if the code ever reads one, reads a proxy header or adds request tracing. The reverse proxy runs without an access log. Next production step: FROST 2-of-3 across independent signers.
 
 ## Tech stack
@@ -292,7 +294,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Web | Vite 8, React 19, TypeScript, the design system's own CSS tokens and components (no Tailwind), three.js for the 3D booth (procedural, a lazy chunk; the 2D booth without WebGL), constant-URL navigation, an installable PWA (a service worker generated at build), strict CSP and SRI injected at build, `SHA256SUMS` of every built file (two builds of one commit match), a headless-browser leak check in CI |
 | Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones; optional on computers), Argon2id via `hash-wasm` for the passphrase (m = 64 MiB, t = 3, p = 1: ~0.13 s on a desktop; the default on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | the browser only checks the shape of a withdrawal address as a hint; the signer parses it with `zcash_address` and refuses anything without an Orchard-protocol receiver before any CREDIT is spent |
-| Infra | Docker Compose, Caddy, Tor; static app hosted separately from the API |
+| Infra | Docker Compose, Caddy (JSON config: no access log, TLS session tickets off, `Connection: close` on every POST, forwarding headers stripped), Tor onion service; static app hosted separately from the API; step by step in [deploy/README.md](../deploy/README.md) |
 | Video | planned: scripted headless-browser capture of the real app, iPhone screen recording, edited in code |
 
 ## Decisions

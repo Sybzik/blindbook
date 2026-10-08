@@ -1,0 +1,122 @@
+{
+  "admin": {
+    "disabled": true
+  },
+  "apps": {
+    "tls": {
+      "session_tickets": {
+        "disabled": true
+      }
+    },
+    "http": {
+      "servers": {
+        "public": {
+          "listen": [
+            ":443"
+          ],
+          "routes": [
+            __ROUTES__
+          ]
+        },
+        "onion": {
+          "listen": [
+            ":8081"
+          ],
+          "automatic_https": {
+            "disable": true
+          },
+          "routes": [
+            {
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": {
+                    "set": {
+                      "X-Content-Type-Options": [
+                        "nosniff"
+                      ],
+                      "Referrer-Policy": [
+                        "no-referrer"
+                      ],
+                      "X-Frame-Options": [
+                        "SAMEORIGIN"
+                      ],
+                      "Content-Security-Policy": [
+                        "frame-ancestors 'self'"
+                      ],
+                      "Permissions-Policy": [
+                        "camera=(self), microphone=(), geolocation=(), interest-cohort=()"
+                      ]
+                    },
+                    "delete": [
+                      "Server"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "match": [
+                {
+                  "method": [
+                    "POST"
+                  ]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "headers",
+                  "response": {
+                    "set": {
+                      "Connection": [
+                        "close"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            {
+              "match": [
+                {
+                  "path": [
+                    "/v1/*"
+                  ]
+                }
+              ],
+              "handle": [
+                {
+                  "handler": "reverse_proxy",
+                  "upstreams": [
+                    {
+                      "dial": "api:8080"
+                    }
+                  ],
+                  "headers": {
+                    "request": {
+                      "delete": [
+                        "X-Forwarded-For",
+                        "X-Real-Ip",
+                        "Forwarded",
+                        "Via"
+                      ]
+                    }
+                  }
+                }
+              ],
+              "terminal": true
+            },
+            {
+              "handle": [
+                {
+                  "handler": "file_server",
+                  "root": "/srv/onion"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

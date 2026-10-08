@@ -1,0 +1,9 @@
+target
+**/target
+web
+design
+spikes
+docs
+deploy
+.git
+.github

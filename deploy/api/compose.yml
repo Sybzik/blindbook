@@ -1,0 +1,50 @@
+# VPS-1 (public): the secretless API, Caddy in front of it (TLS, no access log, no TLS session
+# resumption, Connection: close on every write) and a Tor onion service for the .onion mirror.
+# Everything is configured in api.env (copy api.env.example) and the files under config/.
+name: blindbook-api
+
+services:
+  api:
+    image: blindbook:latest
+    command: ["blindbook-api"]
+    env_file: api.env
+    environment:
+      BB_DATA: /data
+      BB_LISTEN: 0.0.0.0:8080
+      BB_MARKETS: /config/markets.json
+      BB_UIVK: /config/deposit-uivk.txt
+      BB_RESERVE_UFVK: /config/reserve-ufvk.txt
+    volumes:
+      - ./data:/data
+      - ./config:/config:ro
+    restart: unless-stopped
+    # Reachable only from Caddy and Tor on this host.
+    expose: ["8080"]
+
+  caddy:
+    image: caddy:2
+    entrypoint: ["/bin/sh", "/etc/caddy/entrypoint.sh"]
+    env_file: api.env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy.json.tmpl:/etc/caddy/caddy.json.tmpl:ro
+      - ./caddy-site.json.tmpl:/etc/caddy/caddy-site.json.tmpl:ro
+      - ./caddy-entrypoint.sh:/etc/caddy/entrypoint.sh:ro
+      - ./onion-site:/srv/onion:ro
+      - caddy-data:/data
+    depends_on: [api]
+    restart: unless-stopped
+
+  tor:
+    build: ./tor
+    volumes:
+      # The onion's keys live here: back this volume up, or the .onion address changes.
+      - tor-data:/var/lib/tor
+    depends_on: [caddy]
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  tor-data:

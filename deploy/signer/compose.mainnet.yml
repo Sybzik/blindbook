@@ -1,0 +1,17 @@
+# The mainnet signer next to the testnet one: its own keys (secrets-main/), journal (data-main/)
+# and configuration (signer-main.env).
+#   docker compose -f compose.yml -f compose.mainnet.yml up -d
+services:
+  signer-main:
+    image: blindbook:latest
+    command: ["blindbook-signer", "run"]
+    env_file: signer-main.env
+    environment:
+      BB_SIGNER_KEY: /secrets/master.key
+      BB_SIGNER_DATA: /data
+      BB_TREASURY_DIR: /secrets/treasury
+      BB_VOUCHERS: /secrets/voucher-hashes.txt
+    volumes:
+      - ./secrets-main:/secrets
+      - ./data-main:/data
+    restart: unless-stopped

@@ -59,6 +59,8 @@ export interface AppState {
   prices: Record<string, PriceHistory>;
   /** Requests that got no answer and are being settled from the public log. */
   doubts: number;
+  /** False after three live polls in a row got no answer: trading waits for the server. */
+  reachable: boolean;
   vault: VaultState;
   wraps: Wrap[];
   balance: number;
@@ -84,6 +86,7 @@ export const app = createStore<AppState>({
   series: {},
   prices: {},
   doubts: 0,
+  reachable: true,
   vault: 'checking',
   wraps: [],
   balance: 0,
@@ -155,6 +158,8 @@ async function settleDoubts(seq: number) {
   }
 }
 
+let missed = 0;
+
 async function pollLive() {
   try {
     const live = await api.live();
@@ -164,13 +169,15 @@ async function pollLive() {
       const s = (series[m.id] ?? []).concat({ t: live.at_ms, ours: m.price_a_ppm / 10_000, ref: m.reference.mid_ppm / 10_000 });
       series[m.id] = s.slice(-240);
     }
-    app.set({ live, series });
+    missed = 0;
+    app.set({ live, series, ...(app.get().reachable ? {} : { reachable: true }) });
     void claimDuels(live);
     void notePayouts(live);
     void pollTopups();
     void settleDoubts(live.head.seq);
   } catch {
-    // The lamp shows the link state; a missed poll is retried.
+    // The lamp shows the link state; a missed poll is retried. Three in a row: the server is out.
+    if (++missed >= 3 && app.get().reachable) app.set({ reachable: false });
   }
 }
 

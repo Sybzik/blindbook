@@ -300,6 +300,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   const series = useStore(app, (s) => s.series[id]);
   const hist = useStore(app, (s) => s.prices[id]);
   const link = useStore(app, (s) => s.link);
+  const reachable = useStore(app, (s) => s.reachable);
   const [rules, setRules] = useState(false);
   const [range, setRange] = useState<Range>('1D');
   const { pager } = useContext(WinCtx);
@@ -307,7 +308,7 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   if (!meta) return <Win title="MARKET" onClose={onClose}><p className="bb-text">Loading…</p></Win>;
   const st = statusOf(meta, live);
   const lockReason =
-    link !== 'linked' ? 'Mixnet is not linked. Trading is locked; your balance is safe.' : st === 'HALTED' ? haltText(live?.halt ?? null) : st === 'RESOLVING' ? 'Trading has closed. Waiting for the result on Polygon.' : st === 'RESOLVED' ? 'Resolved: winning slips cash in under F2 SLIPS.' : null;
+    link !== 'linked' ? 'Mixnet is not linked. Trading is locked; your balance is safe.' : !reachable ? "The server doesn't answer right now. Trading waits for it; your balance is safe." : st === 'HALTED' ? haltText(live?.halt ?? null) : st === 'RESOLVING' ? 'Trading has closed. Waiting for the result on Polygon.' : st === 'RESOLVED' ? 'Resolved: winning slips cash in under F2 SLIPS.' : null;
   const fills = (recent ?? []).filter((f) => f.market === id && f.fill.out > 0).slice(-3).reverse();
   const named = !(meta.outcomes[0] === 'Yes' && meta.outcomes[1] === 'No');
   const ref = live ? Math.round(live.reference.mid_ppm / 10_000) : 0;

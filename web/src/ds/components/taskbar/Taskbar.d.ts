@@ -17,7 +17,7 @@ export interface TaskbarProps {
   startMenu?: React.ReactNode;
   balance?: string;
   unit?: string;
-  mixnet?: 'linked' | 'relinking' | 'down' | 'off' | 'tor';
+  mixnet?: 'linked' | 'relinking' | 'down' | 'off' | 'tor' | 'noanswer';
   block?: number | string;
   /** fixed clock text for specimens; live HH:MM otherwise */
   clock?: string;
@@ -46,7 +46,7 @@ export interface StartMenuProps {
 }
 /** MIXNET ● LINKED / RELINKING (blinking) / DOWN (alarm). */
 export interface MixnetLampProps {
-  state?: 'linked' | 'relinking' | 'down' | 'off' | 'tor';
+  state?: 'linked' | 'relinking' | 'down' | 'off' | 'tor' | 'noanswer';
   /** e.g. "3 HOPS · COVER ON" */
   detail?: string;
   /** hide the word MIXNET (pager status strip) */

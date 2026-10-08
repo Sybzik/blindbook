@@ -126,7 +126,7 @@ export class Vault {
     try {
       key = await open(kek, wrap.iv, wrap.wrapped);
     } catch {
-      throw new Error('wrong passphrase');
+      throw new Error('Wrong passphrase: the vault stays closed. Try again, or restore from your 12 words.');
     }
     const data = JSON.parse(new TextDecoder().decode(await open(key, r.iv, r.ct)));
     this.key = key;

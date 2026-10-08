@@ -62,6 +62,7 @@ const TELETEXT: Record<string, [string, string]> = {
 export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proof?: string; duel?: string; onIntro: () => void }) {
   const vault = useStore(app, (s) => s.vault);
   const link = useStore(app, (s) => s.link);
+  const reachable = useStore(app, (s) => s.reachable);
   const head = useStore(app, (s) => s.head);
   const balance = useStore(app, (s) => s.balance);
   const positions = useStore(app, (s) => s.positions);
@@ -454,7 +455,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
           <span className="pg-bal">
             BAL <span className={vault === 'unlocked' ? 'bb-a' : 'bb-dim'}>{vault === 'unlocked' ? coin(balance) : 'LOCKED'}</span>
           </span>
-          <MixnetLamp state={config.onion ? 'tor' : config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'} compact />
+          <MixnetLamp state={config.mixnet ? (link === 'linking' ? 'relinking' : link) : !reachable ? 'noanswer' : config.onion ? 'tor' : 'off'} compact />
           <SplitFlap value={(head?.height ?? 0).toLocaleString('en-US')} size="sm" label="block height" />
         </div>
         <div className="pg-body" onPointerDown={onDown} onPointerUp={onUp}>
@@ -597,7 +598,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
       <Taskbar
         balance={vault === 'unlocked' ? coin(balance) : '—'}
         unit={COIN}
-        mixnet={config.onion ? 'tor' : config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'}
+        mixnet={config.mixnet ? (link === 'linking' ? 'relinking' : link) : !reachable ? 'noanswer' : config.onion ? 'tor' : 'off'}
         block={head?.height ?? 0}
         windows={tabs}
         focused={focused}

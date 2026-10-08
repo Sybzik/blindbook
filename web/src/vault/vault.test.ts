@@ -9,7 +9,7 @@ describe('vault', () => {
     await v.create({ hello: 'world' }, 'correct horse');
     expect(JSON.stringify(store.r)).not.toContain('world');
     v.lock();
-    await expect(v.unlockWithPassphrase('wrong')).rejects.toThrow(/wrong passphrase/);
+    await expect(v.unlockWithPassphrase('wrong')).rejects.toThrow(/Wrong passphrase/);
     expect(await v.unlockWithPassphrase('correct horse')).toEqual({ hello: 'world' });
     await v.save({ hello: 'again' });
     const w = new Vault(store);

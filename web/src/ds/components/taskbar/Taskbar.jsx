@@ -11,6 +11,8 @@ const LAMP = {
   off: { text: 'OFF', led: '', color: 'var(--text-dim)' },
   /* The .onion mirror: Tor carries the requests instead of the mixnet. */
   tor: { text: 'VIA TOR', led: 'is-on', color: 'var(--phosphor)', word: 'NETWORK' },
+  /* No mixnet in this build and the server doesn't answer. */
+  noanswer: { text: 'NO ANSWER', led: 'is-alert', color: 'var(--alarm)', word: 'NETWORK' },
 };
 
 /* The mixnet lamp: the only thing in the chrome that moves on its own. */

@@ -187,7 +187,7 @@ export function Landing({ onEnter, block, markets, link, coin, prices }) {
         <div className="ld-brand"><Logo size={28} /><Wordmark height={14} /></div>
         <p className="bb-label">A PRIVATE PREDICTION MARKET ON ZCASH</p>
       </header>
-      <div className="ld-tr"><MixnetLamp state={link === 'off' ? 'off' : link === 'linked' ? 'linked' : link === 'down' ? 'down' : 'relinking'} /><span>· BLK {block.toLocaleString('en-US')}</span></div>
+      <div className="ld-tr"><MixnetLamp state={link === 'off' || link === 'tor' ? link : link === 'linked' ? 'linked' : link === 'down' ? 'down' : 'relinking'} /><span>· BLK {block.toLocaleString('en-US')}</span></div>
     </div>
   );
 }

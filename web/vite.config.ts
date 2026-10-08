@@ -108,8 +108,27 @@ function integrityPlugin(): Plugin {
   };
 }
 
+/** A build for real users (through the mixnet) must pin the deployment's own keys and API: the
+ *  devserver's test keys are public, and a withdrawal sealed to the test seal key could be opened
+ *  by anyone (THREAT_MODEL X2). */
+function pinnedKeysPlugin(): Plugin {
+  return {
+    name: 'bb-pinned-keys',
+    apply: 'build',
+    configResolved(c) {
+      const mixnet = c.env.VITE_BB_MIXNET === '1';
+      const onion = c.env.VITE_BB_ONION === '1';
+      if (mixnet && onion) throw new Error('a build is either for the mixnet or for the .onion mirror');
+      if (!mixnet && !onion) return;
+      // The .onion build talks to its own origin; the mixnet build to the API's address.
+      const missing = ['VITE_BB_M', 'VITE_BB_SEAL_PK', ...(mixnet ? ['VITE_BB_API'] : [])].filter((k) => !c.env[k]);
+      if (missing.length) throw new Error(`a ${mixnet ? 'mixnet' : '.onion'} build needs ${missing.join(', ')} (never the devserver's test keys)`);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), cspPlugin(), serviceWorkerPlugin(), integrityPlugin()],
+  plugins: [react(), pinnedKeysPlugin(), cspPlugin(), serviceWorkerPlugin(), integrityPlugin()],
   build: {
     target: 'es2022',
     sourcemap: false,

@@ -116,6 +116,43 @@ pub enum CreditClaim {
     Voucher { code_hash: H32 },
 }
 
+/// The hash a judge voucher is known by. Letter case, spaces, dashes and the look-alikes O/0 and
+/// I/L/1 don't matter (codes use Crockford base32), so a code typed by hand still works.
+pub fn voucher_hash(code: &str) -> H32 {
+    let canon: String = code
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| match c.to_ascii_uppercase() {
+            'O' => '0',
+            'I' | 'L' => '1',
+            c => c,
+        })
+        .collect();
+    H32(crate::canonical::sha256(canon.as_bytes()))
+}
+
+#[cfg(test)]
+mod voucher_tests {
+    #[test]
+    fn a_code_typed_by_hand_still_matches() {
+        let h = super::voucher_hash("BB-7K2M-Q9XD-3HTR-W6PN");
+        for typed in [
+            "bb 7k2m q9xd 3htr w6pn",
+            "BB7K2MQ9XD3HTRW6PN",
+            " bb-7K2M-q9xd-3HTR-W6PN
+",
+        ] {
+            assert_eq!(super::voucher_hash(typed), h, "{typed}");
+        }
+        assert_eq!(
+            super::voucher_hash("DEV-0001"),
+            super::voucher_hash("dev-OOO1")
+        );
+        assert_eq!(super::voucher_hash("A1B"), super::voucher_hash("aIb"));
+        assert_ne!(super::voucher_hash("BB-7K2M-Q9XD-3HTR-W6PM"), h);
+    }
+}
+
 /// What applying an operation did.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]

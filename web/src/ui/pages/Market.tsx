@@ -25,6 +25,7 @@ import { BET_UNITS, COIN, config } from '../../app/config';
 import { coin, countdown, haltText, height, utc } from '../../app/format';
 import type { FillRecord, LiveMarket, RecentFill, TradeAnswer } from '../../core/api';
 import { RANGES, pointsFor, type Range } from '../../app/prices';
+import { quoteBuy } from '../../app/pricing';
 import { calledItSecret, encodeProof } from '../../core/codes';
 import { currentWallet, earnStamp, setMixDelay } from '../../app/services';
 import { ToggleSwitch } from '../../ds';
@@ -180,8 +181,11 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
   const a = priceA(live);
   const price = side === 'a' ? a : 100 - a;
   const label = meta.outcomes[side === 'a' ? 0 : 1].toUpperCase();
-  const limit = maxCents ?? Math.min(99, Math.ceil(price) + 3);
-  const payout = ((units * 0.99) / (price / 100)) / 100_000;
+  // What this bet should come to: its own size moves the price (PROTOCOL 5), so the default max
+  // price follows the expected average, not the current price.
+  const quote = quoteBuy(meta, live, side === 'a' ? 0 : 1, units);
+  const limit = maxCents ?? quote.limit;
+  const payout = quote.shares / 100_000;
   const profit = payout - units / 100_000;
   const tooMuch = units > balance;
   const disabled = locked || tooMuch || vault !== 'unlocked';

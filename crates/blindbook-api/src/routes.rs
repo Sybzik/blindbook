@@ -62,6 +62,7 @@ fn bad(what: &str) -> Response {
 fn from_api_error(e: ApiError) -> Response {
     match e {
         ApiError::Rejected(r) => answer(StatusCode::UNPROCESSABLE_ENTITY, json!({ "error": r })),
+        ApiError::Busy => answer(StatusCode::TOO_MANY_REQUESTS, json!({ "error": "busy" })),
         ApiError::Halted | ApiError::Signer(_) => answer(
             StatusCode::SERVICE_UNAVAILABLE,
             json!({ "error": "unavailable", "detail": e.to_string() }),
@@ -71,6 +72,12 @@ fn from_api_error(e: ApiError) -> Response {
             json!({ "error": "internal" }),
         ),
     }
+}
+
+/// Compare a secret without leaking where it first differs (the time doesn't depend on it).
+fn same_secret(a: &[u8], b: &[u8]) -> bool {
+    let (ha, hb) = (sha256(a), sha256(b));
+    ha.iter().zip(hb.iter()).fold(0u8, |d, (x, y)| d | (x ^ y)) == 0
 }
 
 /// Check the work, then parse the rest of the body.
@@ -445,15 +452,14 @@ pub async fn voucher(State(state): State<AppState>, Json(body): Json<Value>) -> 
         Ok(b) => b,
         Err(r) => return r,
     };
-    let code = b.code.trim().to_ascii_uppercase();
-    if code.is_empty() || code.len() > 64 {
+    if b.code.len() > 64 || !b.code.chars().any(|c| c.is_ascii_alphanumeric()) {
         return bad("malformed code");
     }
     let op = Op::Credit {
         amount: state.voucher_units,
         outputs: b.outputs,
         claim: CreditClaim::Voucher {
-            code_hash: H32(sha256(code.as_bytes())),
+            code_hash: blindbook_ledger::ops::voucher_hash(&b.code),
         },
     };
     match submit(&state, op).await {
@@ -510,7 +516,11 @@ pub async fn topup_create(State(state): State<AppState>, Json(body): Json<Value>
                 "stored_record": { "kind": "topup", "amount_zat": t.amount_zat, "expires_height": t.expires_height },
             }),
         ),
-        Err(_) => from_api_error(ApiError::Internal("topup".into())),
+        Err(crate::topup::CreateError::Busy) => from_api_error(ApiError::Busy),
+        Err(crate::topup::CreateError::Reused) => bad("claim hash already used"),
+        Err(crate::topup::CreateError::Failed(_)) => {
+            from_api_error(ApiError::Internal("topup".into()))
+        }
     }
 }
 
@@ -645,7 +655,7 @@ pub async fn signer(
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| {
             v.strip_prefix("Bearer ")
-                .is_some_and(|t| t.as_bytes() == token.as_bytes())
+                .is_some_and(|t| same_secret(t.as_bytes(), token.as_bytes()))
         });
     if !ok {
         return StatusCode::UNAUTHORIZED.into_response();

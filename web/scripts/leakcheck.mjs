@@ -4,6 +4,9 @@
 // and every window, then fails on the first stray request or CSP violation.
 //
 // Usage (after `pnpm build`): CHROME_PATH=/path/to/chrome node scripts/leakcheck.mjs
+// A deployed app: APP=https://example.org CHROME_PATH=… node scripts/leakcheck.mjs. A mixnet
+// build may also reach the mixnet client's bootstrap (Nym's directory over HTTPS, the entry
+// gateway over WebSocket; THREAT_MODEL N5), and nothing else.
 
 import { spawn } from 'node:child_process';
 import puppeteer from 'puppeteer-core';
@@ -14,9 +17,12 @@ if (!chrome) {
   process.exit(2);
 }
 const PORT = 4173;
-const origin = `http://127.0.0.1:${PORT}`;
-const preview = spawn('pnpm', ['exec', 'vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { shell: process.platform === 'win32', stdio: 'ignore' });
+const deployed = process.env.APP?.replace(/\/$/, '');
+const origin = deployed ?? `http://127.0.0.1:${PORT}`;
+const preview = deployed ? null : spawn('pnpm', ['exec', 'vite', 'preview', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], { shell: process.platform === 'win32', stdio: 'ignore' });
+const bootstrap = (u) => !!deployed && (u.startsWith('https://validator.nymtech.net/') || u.startsWith('wss://'));
 const stop = () => {
+  if (!preview) return;
   try {
     if (process.platform === 'win32') spawn('taskkill', ['/pid', String(preview.pid), '/T', '/F'], { shell: true });
     else preview.kill('SIGTERM');
@@ -93,7 +99,7 @@ try {
   await wait(1500);
   await browser.close();
 
-  const stray = requests.filter((u) => !u.startsWith(origin) && !u.startsWith('data:') && !u.startsWith('blob:'));
+  const stray = requests.filter((u) => !u.startsWith(origin) && !u.startsWith('data:') && !u.startsWith('blob:') && !bootstrap(u));
   console.log(`${requests.length} requests, ${new Set(requests.map((u) => new URL(u, origin).pathname)).size} distinct paths`);
   if (stray.length) {
     failed = true;

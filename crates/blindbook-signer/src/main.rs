@@ -33,8 +33,8 @@ use std::sync::{Arc, Mutex};
 use blindbook_indexer::{ChainEvent, DepositKeys, Net};
 use blindbook_ledger::H32;
 use blindbook_ledger::ledger::MarketParams;
+use blindbook_mint::MasterKey;
 use blindbook_mint::cashu::SecretKey;
-use blindbook_mint::{MasterKey, sha256};
 use blindbook_polymarket::net::http_client;
 use blindbook_polymarket::polygon::{DEFAULT_RPCS, PolygonReader, Settlement};
 use blindbook_signer::link::{Station, run};
@@ -83,7 +83,7 @@ fn vouchers(n: usize, codes: &Path, hashes: &Path) -> Result<(), String> {
             &chars[8..12],
             &chars[12..16]
         );
-        hash_lines.push_str(&format!("{}\n", H32(sha256(code.as_bytes()))));
+        hash_lines.push_str(&format!("{}\n", blindbook_ledger::ops::voucher_hash(&code)));
         code_lines.push_str(&code);
         code_lines.push('\n');
     }

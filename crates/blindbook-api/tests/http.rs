@@ -205,7 +205,7 @@ async fn http_end_to_end_and_restart() {
     let _ = std::fs::remove_dir_all(&data);
     let mut signer = Signer::new(master()).unwrap();
     let m = signer.public_key();
-    signer.add_vouchers([H32(sha256(b"JUDGE-0001"))], 50_000);
+    signer.add_vouchers([blindbook_ledger::ops::voucher_hash("JUDGE-0001")], 50_000);
     let signer = Arc::new(Mutex::new(signer));
     let (base, tx) = serve(&data, signer.clone(), m).await;
     blindbook_polymarket::net::install_crypto_provider();
@@ -467,7 +467,10 @@ async fn http_blind_duel() {
     let mut signer = Signer::new(master()).unwrap();
     let m = signer.public_key();
     signer.add_vouchers(
-        [H32(sha256(b"DUEL-0001")), H32(sha256(b"DUEL-0002"))],
+        [
+            blindbook_ledger::ops::voucher_hash("DUEL-0001"),
+            blindbook_ledger::ops::voucher_hash("DUEL-0002"),
+        ],
         50_000,
     );
     let signer = Arc::new(Mutex::new(signer));

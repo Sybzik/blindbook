@@ -29,6 +29,9 @@ export interface MarketMeta {
   resolved: { den: number; num: [number, number] } | null;
   volume: number | null;
   group: string | null;
+  /** The market's LMSR liquidity and fee (the same for every market of a network). */
+  b: number;
+  feeBp: number;
 }
 
 export interface Point {
@@ -54,6 +57,8 @@ export interface AppState {
   series: Record<string, Point[]>;
   /** Price history of every market, from the one file every visitor downloads. */
   prices: Record<string, PriceHistory>;
+  /** Requests that got no answer and are being settled from the public log. */
+  doubts: number;
   vault: VaultState;
   wraps: Wrap[];
   balance: number;
@@ -78,6 +83,7 @@ export const app = createStore<AppState>({
   markets: [],
   series: {},
   prices: {},
+  doubts: 0,
   vault: 'checking',
   wraps: [],
   balance: 0,
@@ -105,7 +111,7 @@ export function getApi(): Api {
 
 function refreshWallet() {
   if (!wallet) {
-    app.set({ balance: 0, positions: [], history: [], topups: [], local: {}, outbox: [], duels: [] });
+    app.set({ balance: 0, positions: [], history: [], topups: [], local: {}, outbox: [], duels: [], doubts: 0 });
     return;
   }
   const positions: Position[] = [];
@@ -124,7 +130,29 @@ function refreshWallet() {
     local: { ...wallet.data.local },
     outbox: [...(wallet.data.outbox ?? [])],
     duels: [...(wallet.data.duels ?? [])],
+    doubts: wallet.inDoubt(),
   });
+}
+
+let settling = false;
+let settledAt = -1;
+
+/** Requests without an answer: look them up in the public log once per new block. */
+async function settleDoubts(seq: number) {
+  if (!wallet || settling || wallet.inDoubt() === 0 || seq === settledAt) return;
+  settling = true;
+  try {
+    const n = await wallet.settleDoubts();
+    settledAt = seq;
+    if (n > 0) {
+      refreshWallet();
+      app.set({ notice: `Settled from the public log: ${n === 1 ? 'a request that got no answer' : n + ' requests that got no answer'}. Your balance is up to date.` });
+    }
+  } catch {
+    /* retried with the next block */
+  } finally {
+    settling = false;
+  }
 }
 
 async function pollLive() {
@@ -140,6 +168,7 @@ async function pollLive() {
     void claimDuels(live);
     void notePayouts(live);
     void pollTopups();
+    void settleDoubts(live.head.seq);
   } catch {
     // The lamp shows the link state; a missed poll is retried.
   }
@@ -151,6 +180,7 @@ interface CatalogEntry {
   end_ms: number;
   event_start_ms: number | null;
   status: { state: 'open' } | { state: 'resolved'; den: number; num: [number, number] };
+  params: { b: number; fee_bp: number };
   info: { slug: string; question: string; outcomes: [string, string]; description: string; resolution_source: string; volume_24h_usd: number | null; group_item_title: string | null } | null;
 }
 
@@ -172,6 +202,8 @@ async function pollCatalog() {
       resolved: m.status.state === 'resolved' ? { den: m.status.den, num: m.status.num } : null,
       volume: m.info!.volume_24h_usd,
       group: m.info!.group_item_title,
+      b: m.params.b,
+      feeBp: m.params.fee_bp,
     }));
     app.set({ markets });
     refreshWallet();
@@ -362,6 +394,9 @@ const PLAIN: Record<string, string> = {
   bad_cancel: 'Only the challenger can cancel this duel.',
   supply_guard: 'Withdrawals are paused while the operator checks the books. Your slips keep their value.',
   unavailable: 'The service is busy for a moment. Nothing was spent; try again.',
+  busy: 'Too many requests right now. Nothing was spent; try again in a moment.',
+  'malformed code': 'That is not a judge code. Codes look like BB-XXXX-XXXX-XXXX-XXXX.',
+  'claim hash already used': 'That top-up request clashed with another. Nothing was paid; start the top-up again.',
   'proof-of-work': 'The request was malformed. Nothing was spent.',
   'malformed request': 'The request was malformed. Nothing was spent.',
 };

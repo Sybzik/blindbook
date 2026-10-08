@@ -24,6 +24,23 @@ use crate::sequencer::Cmd;
 /// Blocks a top-up address is advertised for (later payments are still credited).
 pub const ADDRESS_LIFETIME: u64 = 120;
 
+/// Unpaid, unexpired top-up requests the desk holds at most; past that, new ones are refused as
+/// busy until some expire. Proof-of-work alone doesn't bound what a fast machine can ask for.
+pub const MAX_OPEN: usize = 500;
+
+/// Blocks after expiry (about a day) after which an unpaid request drops its blank outputs; a
+/// payment that still arrives is credited through `/v1/topup/claim` with the request's secret.
+pub const PRUNE_AFTER: u64 = 1_152;
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CreateError {
+    /// Too many open requests: try again later.
+    Busy,
+    /// The claim hash belongs to a different request.
+    Reused,
+    Failed(String),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
@@ -98,6 +115,7 @@ pub struct TopupBook {
     caps: ZeroConfCaps,
     /// Credited before confirmation, by txid (units).
     unconfirmed: HashMap<String, u64>,
+    max_open: usize,
 }
 
 fn random_id() -> String {
@@ -122,6 +140,7 @@ impl TopupBook {
             by_index: HashMap::new(),
             caps,
             unconfirmed: HashMap::new(),
+            max_open: MAX_OPEN,
         };
         for mut t in stored.topups {
             // A credit in flight when the process stopped is retried on the next event.
@@ -161,11 +180,28 @@ impl TopupBook {
         outputs: Vec<BlindedMessage>,
         claim_hash: H32,
         height: u64,
-    ) -> Result<Topup, String> {
+    ) -> Result<Topup, CreateError> {
+        // The same request again (a lost answer, or a replay of its proof-of-work): the same
+        // address, nothing new stored.
+        if let Some(t) = self.topups.values().find(|t| t.claim_hash == claim_hash) {
+            return if t.amount_zat == amount_zat && t.outputs == outputs {
+                Ok(t.clone())
+            } else {
+                Err(CreateError::Reused)
+            };
+        }
+        let open = self
+            .topups
+            .values()
+            .filter(|t| t.status == Status::Awaiting && t.expires_height > height)
+            .count();
+        if open >= self.max_open {
+            return Err(CreateError::Busy);
+        }
         let index = self.next_index;
         let address = keys
             .address_r0(u128::from(index))
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CreateError::Failed(e.to_string()))?;
         self.next_index += 1;
         let t = Topup {
             id: random_id(),
@@ -181,8 +217,14 @@ impl TopupBook {
         };
         self.by_index.insert(index, t.id.clone());
         self.topups.insert(t.id.clone(), t.clone());
-        self.save().map_err(|e| e.to_string())?;
+        self.save()
+            .map_err(|e| CreateError::Failed(e.to_string()))?;
         Ok(t)
+    }
+
+    /// Lower the cap on open requests (tests).
+    pub fn set_max_open(&mut self, n: usize) {
+        self.max_open = n;
     }
 
     pub fn get(&self, id: &str) -> Option<&Topup> {
@@ -213,8 +255,11 @@ impl TopupBook {
             self.unconfirmed.remove(&p.txid);
         }
         let units = rec.value_zat / 1_000;
-        let first_uncredited =
-            !rec.credited && !rec.crediting && matches!(t.status, Status::Awaiting | Status::Seen);
+        // A pruned request has no outputs left: its payment waits for a claim.
+        let first_uncredited = !rec.credited
+            && !rec.crediting
+            && !t.outputs.is_empty()
+            && matches!(t.status, Status::Awaiting | Status::Seen);
         let confirmed = rec.mined_height.is_some();
         if t.status == Status::Awaiting {
             t.status = Status::Seen;
@@ -314,6 +359,14 @@ impl TopupBook {
     pub fn set_scanned(&mut self, h: u64) {
         if h > self.scanned_height {
             self.scanned_height = h;
+            for t in self.topups.values_mut() {
+                if t.status == Status::Awaiting
+                    && t.payments.is_empty()
+                    && t.expires_height + PRUNE_AFTER <= h
+                {
+                    t.outputs.clear();
+                }
+            }
             let _ = self.save();
         }
     }

@@ -98,7 +98,7 @@ export function App() {
       key={intro}
       block={head?.height ?? 0}
       markets={markets.length}
-      link={config.mixnet ? link : 'off'}
+      link={config.onion ? 'tor' : config.mixnet ? link : 'off'}
       coin={COIN}
       prices={prices}
       onEnter={enterFromLanding}
@@ -116,7 +116,7 @@ export function App() {
             shieldedActions: block?.shielded_actions ?? null,
             resolved: resolvedMarket ? `Latest settled: ${resolvedMarket.page} · ${resolvedMarket.question}.` : null,
           }}
-          link={config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'}
+          link={config.onion ? 'tor' : config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'}
           onEnter={enterFromLanding}
           onFail={() => setFailed3d(true)}
         />
@@ -129,7 +129,7 @@ export function App() {
           key={intro}
           block={head?.height ?? 0}
           markets={markets.length}
-          link={config.mixnet ? link : 'off'}
+          link={config.onion ? 'tor' : config.mixnet ? link : 'off'}
           coin={COIN}
           prices={prices}
           onEnter={(to?: string) => {

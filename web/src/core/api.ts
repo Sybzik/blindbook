@@ -173,6 +173,11 @@ export class Api {
     return this.headCache;
   }
 
+  /** The log's head seq as last seen (0 before the first head). */
+  get seq(): number {
+    return this.headCache?.seq ?? 0;
+  }
+
   async live(): Promise<Live> {
     return check<Live>(await this.transport.request('GET', '/v1/live'));
   }

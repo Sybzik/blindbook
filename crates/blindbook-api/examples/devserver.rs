@@ -185,7 +185,7 @@ async fn main() {
     let m = master.public_key();
     let mut signer = Signer::new(master).unwrap();
     signer.add_vouchers(
-        (1..100).map(|i| H32(sha256(format!("DEV-{i:04}").as_bytes()))),
+        (1..100).map(|i| blindbook_ledger::ops::voucher_hash(&format!("DEV-{i:04}"))),
         50_000,
     );
     let seal_sk: [u8; 32] = sha256(SEAL_LABEL);

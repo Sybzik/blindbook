@@ -6,6 +6,7 @@ import { app, actions } from '../app/services';
 import { BET_UNITS, COIN, config } from '../app/config';
 import { coin, coinLabel, height, zat } from '../app/format';
 import { runAudit } from './pages/Verify';
+import { quoteBuy } from '../app/pricing';
 import { ui, type Theme } from './uistate';
 import { setSound } from './sound';
 import type { Out } from './Console';
@@ -120,7 +121,7 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
         const units = Math.round(amount * 100_000);
         if (!BET_UNITS.includes(units)) return out(`standard sizes only: ${BET_UNITS.map((u) => coin(u, 2)).join(' · ')} ${COIN} (odd sizes can be linked)`, 'err');
         const max = flag(args, '--max');
-        const limit = max !== undefined ? Math.round((max < 1 ? max * 100 : max)) : Math.min(99, Math.ceil(price) + 3);
+        const limit = max !== undefined ? Math.round(max < 1 ? max * 100 : max) : quoteBuy(m, s.live?.markets.find((x) => x.id === m.id), o, units).limit;
         out(`buying ${label} for ${coin(units, 2)} ${COIN} at up to ${limit}¢ · batch closes in ≤ 2 s`, 'sys');
         const r = await actions.buy(m.id, o, units, limit * 100);
         const f = r.fill;
@@ -169,7 +170,7 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
     case 'status': {
       const batch = s.live?.recent.at(-1)?.batch_id;
       return out([
-        config.mixnet ? `mixnet ● ${s.link}` : `mixnet ○ off in this development build (requests go straight to the server)`,
+        config.mixnet ? `mixnet ● ${s.link}` : config.onion ? 'network ● Tor (.onion mirror): requests go through Tor to the onion service' : `mixnet ○ off in this development build (requests go straight to the server)`,
         `blk ${s.head ? height(s.head.height) : '—'} · log seq ${s.head?.seq ?? '—'}${batch ? ` · last batch ${batch}` : ''}${s.head?.halted ? ' · HALTED' : ''}`,
         `vault ${s.vault} · network ${config.network}`,
       ]);
@@ -180,7 +181,7 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
       return out(on ? 'verbose on · the crypto pipeline prints here as it runs (blinding, proof-of-work, DLEQ, seals)' : 'verbose off');
     }
     case 'trace': {
-      if (!config.mixnet) out('note: this development build has no mixnet; this is the path production requests take', 'sys');
+      if (!config.mixnet) out(config.onion ? 'note: this .onion mirror sends requests through Tor; the mixnet build takes this path' : 'note: this development build has no mixnet; this is the path production requests take', 'sys');
       const hops = ['you · a Sphinx packet, layered encryption', 'entry gateway · sees that an IP uses Nym, nothing else', 'mix node 1 · delays, reorders, strips one layer', 'mix node 2 · same, plus cover traffic', 'mix node 3 · same', 'exit (IP packet router) · sees a request, not who sent it', 'blindbook api · answers; never had your IP'];
       for (const [i, h] of hops.entries()) {
         await wait(320);

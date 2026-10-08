@@ -9,15 +9,17 @@ const LAMP = {
   down: { text: 'DOWN', led: 'is-alert', color: 'var(--alarm)' },
   /* A development build without the mixnet says so instead of pretending. */
   off: { text: 'OFF', led: '', color: 'var(--text-dim)' },
+  /* The .onion mirror: Tor carries the requests instead of the mixnet. */
+  tor: { text: 'VIA TOR', led: 'is-on', color: 'var(--phosphor)', word: 'NETWORK' },
 };
 
 /* The mixnet lamp: the only thing in the chrome that moves on its own. */
 export function MixnetLamp({ state = 'linked', detail, compact = false, className = '' }) {
   const l = LAMP[state] || LAMP.linked;
   return (
-    <span className={'bb-lamp ' + className} role="status" aria-label={'Mixnet ' + l.text.toLowerCase()}>
+    <span className={'bb-lamp ' + className} role="status" aria-label={(l.word ? 'Network ' : 'Mixnet ') + l.text.toLowerCase()}>
       <span className={'bb-led ' + l.led} aria-hidden="true" />
-      {!compact && <span className="bb-lamp__word">MIXNET</span>}
+      {!compact && <span className="bb-lamp__word">{l.word || 'MIXNET'}</span>}
       <span style={{ color: l.color }}>{l.text}</span>
       {detail && <span className="bb-lamp__detail">· {detail}</span>}
     </span>

@@ -14,10 +14,17 @@ export const config = {
   api: (env.VITE_BB_API as string | undefined) ?? '',
   /** Use the mixnet (production) or plain fetch (development). */
   mixnet: (env.VITE_BB_MIXNET as string | undefined) === '1',
+  /** The .onion mirror: plain requests to its own origin, carried by Tor. */
+  onion: (env.VITE_BB_ONION as string | undefined) === '1',
   ipr: env.VITE_BB_IPR as string | undefined,
   network: ((env.VITE_BB_NETWORK as string | undefined) ?? 'testnet') as 'testnet' | 'mainnet',
   dev: !!env.DEV,
 };
+
+// The test keys are public: never run for real users with them (vite.config.ts refuses the build).
+if ((config.mixnet || config.onion) && (config.m === DEV_M || config.sealPk === DEV_SEAL)) {
+  throw new Error('This build pins the development test keys; it must not run for real users.');
+}
 
 export const COIN = config.network === 'mainnet' ? 'ZEC' : 'TAZ';
 

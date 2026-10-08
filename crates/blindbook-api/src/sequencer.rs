@@ -32,6 +32,10 @@ use crate::link::{LinkError, SignerLink};
 pub const BATCH_EVERY: Duration = Duration::from_secs(2);
 /// How long recent fills stay in `/v1/live`.
 pub const RECENT_MS: u64 = 120_000;
+
+/// Trade requests one batch takes (more get `busy` and try the next batch): keeps a batch, and
+/// the signer's message for it, bounded whatever arrives.
+pub const MAX_BATCH: usize = 500;
 /// Payouts stay in the live JSON for 30 minutes, so a browser that was away still sees its own.
 pub const PAYOUTS_MS: u64 = 1_800_000;
 
@@ -43,6 +47,9 @@ pub enum ApiError {
     Signer(#[from] LinkError),
     #[error("the service is halted for an operator check")]
     Halted,
+    /// Too many requests at once: refused before anything was spent.
+    #[error("busy")]
+    Busy,
     #[error("internal: {0}")]
     Internal(String),
 }
@@ -512,6 +519,10 @@ impl Sequencer {
     ) {
         if self.shared.halted.load(Ordering::SeqCst) {
             let _ = reply.send(Err(ApiError::Halted));
+            return;
+        }
+        if self.pending.len() >= MAX_BATCH {
+            let _ = reply.send(Err(ApiError::Busy));
             return;
         }
         match self.ledger.check_trade(&req, &self.pending_ys) {

@@ -3,6 +3,8 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { KeyButton, TerminalWindow } from '../ds';
 import { openWindow } from './uistate';
+import { app } from '../app/services';
+import { useStore } from '../app/store';
 
 export const WinCtx = createContext<{ narrow: boolean; hint: ReactNode; pager?: boolean }>({ narrow: false, hint: null });
 
@@ -69,5 +71,16 @@ export function InstallHint() {
         opens without loading anything. A vault made here in Safari stays in Safari.
       </p>
     </div>
+  );
+}
+
+/** Requests that got no answer, settled from the public log with each block. */
+export function DoubtLine() {
+  const n = useStore(app, (s) => s.doubts);
+  if (!n) return null;
+  return (
+    <p className="bb-conditions" role="status">
+      {n === 1 ? 'A request' : `${n} requests`} got no answer, so the public log is checked with each new block. The slips involved are held back until it shows what happened; nothing is lost.
+    </p>
   );
 }

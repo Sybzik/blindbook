@@ -53,3 +53,13 @@ design/*/uploads/
 
 # Built from crates/blindbook-engine-wasm by web/scripts/wasm.mjs
 web/src/wasm/
+
+# --- deployment: filled-in configuration, keys, data and build output stay on the servers ---
+deploy/*/*.env
+deploy/*/data/
+deploy/*/config/
+deploy/api/onion-site/
+deploy/web/site/
+deploy/*/data-main/
+deploy/*/config-main/
+deploy/*/secrets-main/

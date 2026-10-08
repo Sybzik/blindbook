@@ -4,8 +4,8 @@
 //   BB_DEV_API=http://127.0.0.1:8090 pnpm vitest run wallet.it
 import { describe, expect, it } from 'vitest';
 import { sha256 } from '@noble/hashes/sha2.js';
-import { Api, DirectTransport, type PowFn } from './api';
-import { Wallet, newWalletData, type WalletData } from './wallet';
+import { Api, DirectTransport, type PowFn, type Transport } from './api';
+import { InDoubtError, Wallet, newWalletData, type WalletData } from './wallet';
 import { utf8 } from './bytes';
 import { withPow } from './pow';
 import { restore, type DeltaLike } from './restore';
@@ -94,4 +94,58 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     expect(r.trades.map((t) => t.side)).toEqual(['buy', 'sell']);
     expect(r.calledNext).toBe(w.data.calledNext);
   }, 90_000);
+
+  it('a request without an answer is settled from the public log', async () => {
+    // A transport that loses the next POST: after the server answered ('after'), or before it
+    // ever reached it ('before').
+    let lose: 'after' | 'before' | null = null;
+    const inner = new DirectTransport(BASE);
+    const lossy: Transport = {
+      async request(method, path, body, timeoutMs) {
+        if (method === 'POST' && lose === 'before') {
+          lose = null;
+          throw new Error('deadline');
+        }
+        const r = await inner.request(method, path, body, timeoutMs);
+        if (method === 'POST' && lose === 'after') {
+          lose = null;
+          throw new Error('deadline');
+        }
+        return r;
+      },
+      bytes: (path, timeoutMs) => inner.bytes(path, timeoutMs),
+    };
+    const api = new Api(lossy, pow);
+    const w = new Wallet(newWalletData(sha256(utf8('carol' + Date.now()))), M, api, async () => {});
+    const market = (await api.live()).markets[0]!.id;
+    const pos = w.keysetOf(market, 0);
+    await api.head();
+    expect(await w.voucher('DEV-0099')).toBe(50_000);
+    const nextBlock = async (after: number) => {
+      for (let i = 0; i < 120 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
+    };
+
+    // The bet went through, its answer was lost: the slips it spent are held back, then its
+    // shares and change come back from the log.
+    lose = 'after';
+    await expect(w.buy(market, 0, 2_000, 9_500)).rejects.toBeInstanceOf(InDoubtError);
+    expect(w.inDoubt()).toBe(1);
+    expect(w.creditBalance()).toBeLessThan(50_000);
+    await nextBlock(api.seq);
+    expect(await w.settleDoubts()).toBe(1);
+    expect(w.inDoubt()).toBe(0);
+    expect(w.balance(pos.id)).toBeGreaterThan(0);
+    expect(w.creditBalance()).toBeGreaterThanOrEqual(48_000);
+    expect(w.data.history.at(-1)?.kind).toBe('buy');
+
+    // A bet that never reached the server: its slips come back once three blocks show nothing.
+    const credit = w.creditBalance();
+    lose = 'before';
+    await expect(w.buy(market, 0, 1_000, 9_500)).rejects.toBeInstanceOf(InDoubtError);
+    expect(w.creditBalance()).toBeLessThan(credit);
+    const sent = api.seq;
+    await nextBlock(sent + 2);
+    expect(await w.settleDoubts()).toBe(1);
+    expect(w.creditBalance()).toBe(credit);
+  }, 150_000);
 });

@@ -61,7 +61,7 @@ export function RecordPage({ onClose }: { onClose: () => void }) {
           </div>
           <div>
             <p className="bb-label bb-hi tk-sec">WHAT IT DOES NOT HAVE</p>
-            <LeaderRow label="YOUR IP" value={config.mixnet ? 'not received (mixnet)' : 'DEV BUILD: received, no mixnet'} tone={config.mixnet ? undefined : 'alarm'} />
+            <LeaderRow label="YOUR IP" value={config.mixnet ? 'not received (mixnet)' : config.onion ? 'not received (Tor, .onion)' : 'DEV BUILD: received, no mixnet'} tone={config.mixnet || config.onion ? undefined : 'alarm'} />
             <LeaderRow label="ACCOUNT" value="none exists" />
             <LeaderRow label="NAME · EMAIL" value={<Redacted text="xxxxxxxx" />} />
             <LeaderRow label="YOUR BALANCE" value="unknown" />

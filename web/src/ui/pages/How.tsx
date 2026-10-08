@@ -93,7 +93,7 @@ export function HowPage({ onClose, onOpen }: { onClose: () => void; onOpen?: (id
             </div>
           ))}
           <p className="bb-ui bb-dim">
-            This build: {config.mixnet ? 'requests go through the Nym mixnet.' : 'DEVELOPMENT, requests go straight to the server (no mixnet).'} Network: {config.network}.
+            This build: {config.mixnet ? 'requests go through the Nym mixnet.' : config.onion ? 'the .onion mirror: requests go through Tor to the onion service.' : 'DEVELOPMENT, requests go straight to the server (no mixnet).'} Network: {config.network}.
           </p>
         </div>
       )}

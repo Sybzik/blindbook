@@ -7,9 +7,10 @@ import { BettingSlip, KeyButton, LeaderRow, TeletextHeader, TextInput, Wordmark 
 import { Qr } from '../Qr';
 import { Scan } from '../Scan';
 import { creditKeyset } from '../../core/keysets';
+import { estimateSell } from '../../app/pricing';
 import { isSlipCode } from '../../core/codes';
 import { config, COIN } from '../../app/config';
-import { Win, OpenVault } from '../win';
+import { Win, OpenVault, DoubtLine } from '../win';
 import { app, actions, type Position } from '../../app/services';
 import { useStore } from '../../app/store';
 import { coin, coinLabel, utc } from '../../app/format';
@@ -31,7 +32,7 @@ function PaperSlip({ h }: { h: Handed }) {
         <span>BEARER SLIP</span>
       </div>
       <div style={{ display: 'flex', justifyContent: 'center' }}>
-        <Qr value={h.code} size={220} paper title={'Bearer slip ' + p.serial} />
+        <Qr value={h.code} size={260} paper ecc="L" title={'Bearer slip ' + p.serial} />
       </div>
       <p className="bb-print__market">{p.market}</p>
       <LeaderRow label="OUTCOME" value={p.outcome} medium="paper" />
@@ -97,7 +98,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
       <Win title="P300 · HAND OVER" onClose={() => setHanded(null)} maxWidth={560} style={{ alignSelf: 'center', width: '100%' }}>
         <p className="bb-label" style={{ margin: 0 }}>{handed.title}</p>
         <div className="tk-unfold" style={{ display: 'flex', justifyContent: 'center', margin: '16px 0' }}>
-          <Qr value={handed.code} size={240} title="Slip code" />
+          <Qr value={handed.code} size={300} ecc="L" title="Slip code" />
         </div>
         <p className="bb-ui" style={{ wordBreak: 'break-all' }}>{handed.code}</p>
         <p className="bb-conditions">Bearer e-cash: whoever takes this code over first owns it, so send it only over a channel you trust. Nothing on the chain shows it moved. Until it is taken over you can take it back from P300.</p>
@@ -147,6 +148,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
   return (
     <Win title="P300 · SLIPS" onClose={onClose}>
       <TeletextHeader page="P300" title="YOUR SLIPS" />
+      <DoubtLine />
       <div style={{ maxWidth: 560, marginTop: 12 }}>
         <LeaderRow label="FREE BALANCE" value={coinLabel(balance)} tone="hi" />
         <LeaderRow label="OPEN POSITIONS" value={positions.length} />
@@ -189,9 +191,12 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
           const status = resolved ? (won ? 'won' : 'lost') : 'open';
           const a = lm?.price_a_ppm ? lm.price_a_ppm / 10_000 : 50;
           const price = Math.round(p.outcome === 0 ? a : 100 - a);
-          const bid = lm ? Math.max(1, Math.floor(lm.reference.bid_ppm[p.outcome] / 100) - 300) : 1;
-          // What selling now would roughly bring: our price for this outcome, less the 1% fee.
-          const sellNow = Math.floor((p.units * price) / 100 * 0.99);
+          // What selling now should bring by the engine's formulas (the sale itself moves the price),
+          // and a floor below it: the expected average or Polymarket's bid less 3¢, whichever is lower.
+          const est = estimateSell({ priceA: a / 100, outcome: p.outcome, shares: p.units, b: m.b, feeBp: m.feeBp, bid: lm ? lm.reference.bid_ppm[p.outcome] / 1_000_000 : 0 });
+          const sellNow = est.proceeds;
+          const bidCents = lm ? lm.reference.bid_ppm[p.outcome] / 10_000 : 1;
+          const bid = Math.max(1, Math.floor(Math.min(bidCents - 3, est.avgCents - 2))) * 100;
           const outcome = m.outcomes[p.outcome].toUpperCase();
           const serial = p.keyset.slice(2, 8).toUpperCase();
           return (
@@ -203,7 +208,7 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
                 {status === 'won' ? (
                   <KeyButton size="sm" disabled={!!busy} onClick={() => actions.redeem(p.market, p.outcome).then((n) => setMsg(`Cashed in: ${coinLabel(n)} added to your balance.`)).catch(() => undefined)} data-hint="Moves the winnings into your free balance.">CASH IN</KeyButton>
                 ) : (
-                  <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint={`Sells the whole slip at the price of the next batch: about ${coin(sellNow)} ${COIN} now, never below Polymarket's bid minus 3¢.`}>SELL · ≈{coin(sellNow, 3)}</KeyButton>
+                  <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint={`Sells the whole slip at the price of the next batch: about ${coin(sellNow)} ${COIN} now, never below ${bid / 100}¢ a share.`}>SELL · ≈{coin(sellNow, 3)}</KeyButton>
                 )}
                 <KeyButton variant="secondary" size="sm" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`)} data-hint="Hands the slip to someone as a code. No chain transaction, no record of who held it.">HAND OVER</KeyButton>
                 <KeyButton variant="secondary" size="sm" icon="qr" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`, { market: m.question, outcome, shares: coin(p.units), serial })} data-hint="Prints bearer paper. Whoever scans it owns it.">PRINT</KeyButton>

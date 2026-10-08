@@ -27,7 +27,7 @@ fn master() -> MasterKey {
 fn station(dir: &std::path::Path) -> Station {
     std::fs::create_dir_all(dir).unwrap();
     let mut s = Signer::new(master()).unwrap();
-    s.add_vouchers([H32(sha256(b"JUDGE-REMOTE"))], 4_096);
+    s.add_vouchers([blindbook_ledger::ops::voucher_hash("JUDGE-REMOTE")], 4_096);
     Station::open(s, &dir.join("signer-journal.jsonl")).unwrap()
 }
 
@@ -190,7 +190,8 @@ async fn lost_answer_is_recovered_exactly_once() {
     let st = Arc::new(Mutex::new(station(&dir.join("signer"))));
     {
         let mut s = st.lock().unwrap();
-        s.signer.add_vouchers([H32(sha256(b"JUDGE-TWO"))], 4_096);
+        s.signer
+            .add_vouchers([blindbook_ledger::ops::voucher_hash("JUDGE-TWO")], 4_096);
     }
 
     // A flaky signer: applies the first operation, then drops the link without answering.

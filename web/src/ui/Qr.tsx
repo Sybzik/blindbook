@@ -4,8 +4,9 @@
 
 import qrcode from 'qrcode-generator';
 
-export function Qr({ value, size = 220, paper = false, title }: { value: string; size?: number; paper?: boolean; title?: string }) {
-  const q = qrcode(0, 'M');
+/** `ecc` L packs long codes (slip codes) into fewer, larger modules; M for short links. */
+export function Qr({ value, size = 220, paper = false, title, ecc = 'M' }: { value: string; size?: number; paper?: boolean; title?: string; ecc?: 'L' | 'M' }) {
+  const q = qrcode(0, ecc);
   q.addData(value, 'Byte');
   q.make();
   const n = q.getModuleCount();

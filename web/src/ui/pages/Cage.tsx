@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { AmountChips, KeyButton, LeaderRow, PreflightChecklist, TeletextHeader, TextInput, ThermalReceipt } from '../../ds';
-import { Win, OpenVault, InstallHint } from '../win';
+import { Win, OpenVault, InstallHint, DoubtLine } from '../win';
 import { Qr } from '../Qr';
 import { app, actions, setLocal, walletWords } from '../../app/services';
 import { WordCheck, WordList } from '../WordCheck';
@@ -23,15 +23,21 @@ function Preflight({ amount, onReady }: { amount: string; onReady: (ok: boolean)
   const backedUp = useStore(app, (s) => s.local.backedUp ?? false);
   const [n, setN] = useState(0);
   const [backup, setBackup] = useState(false);
-  const mixOk = config.mixnet && link === 'linked';
+  // The network line: the mixnet must be linked; the .onion mirror rides Tor; only the local
+  // development server runs without either.
+  const net = config.onion
+    ? { label: 'TOR CIRCUIT', ok: 'VIA .ONION', fail: '', pass: true }
+    : config.mixnet
+      ? { label: 'MIXNET LINKED', ok: '3 HOPS', fail: 'NOT LINKED YET', pass: link === 'linked' }
+      : { label: 'MIXNET LINKED', ok: 'DEV SERVER ONLY', fail: 'NO MIXNET IN THIS BUILD', pass: config.dev };
   const testnet = config.network === 'testnet';
   const items = [
-    { label: 'MIXNET LINKED', ok: '3 HOPS', fail: config.mixnet ? 'NOT LINKED YET' : 'DEV BUILD: NO MIXNET' },
+    { label: net.label, ok: net.ok, fail: net.fail },
     { label: 'PHRASE BACKED UP', ok: backedUp ? 'BACKED UP' : 'OPTIONAL ON TESTNET', fail: 'BACK UP FIRST' },
     { label: 'STANDARD AMOUNT', ok: `${amount} ${COIN}`, fail: 'NON-STANDARD' },
     { label: 'PAY FROM YOUR SHIELDED BALANCE', ok: 'SHIELDED ONLY', fail: 'TRANSPARENT' },
   ];
-  const real: Check[] = [mixOk ? 'ok' : 'fail', backedUp || testnet ? 'ok' : 'fail', 'ok', 'ok'];
+  const real: Check[] = [net.pass ? 'ok' : 'fail', backedUp || testnet ? 'ok' : 'fail', 'ok', 'ok'];
   useEffect(() => {
     setN(0);
     let i = 0;
@@ -310,6 +316,7 @@ export function CagePage({ onClose }: { onClose: () => void }) {
   return (
     <Win title="P350 · CAGE" onClose={onClose}>
       <TeletextHeader page="P350" title="THE CAGE" meta={coinLabel(balance)} />
+      <DoubtLine />
       {vault !== 'unlocked' ? (
         <OpenVault>Open your vault first. Money in and out goes through here.</OpenVault>
       ) : (

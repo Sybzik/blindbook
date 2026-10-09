@@ -25,9 +25,9 @@ pub const PAYOUT_FEE_ZAT: u64 = 40_000;
 pub struct Schedule {
     pub server: String,
     pub data: PathBuf,
-    /// Anchor the log root every this many blocks (testnet 48).
+    /// Anchor the log root every this many blocks (default 144, about an hour at 25 s).
     pub anchor_every: u64,
-    /// Sweep deposits every this many blocks (48).
+    /// Sweep deposits every this many blocks (default 144).
     pub sweep_every: u64,
 }
 

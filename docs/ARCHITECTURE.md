@@ -128,7 +128,7 @@ Polymarket keeps your balance under a public wallet address; a typical custodial
 There is no App Store or Google Play app. The same static app runs in the phone's browser and can be added to the home screen as an app icon.
 
 - **Install:** iPhone: Safari → Share → *Add to Home Screen* (iOS shows no install prompt, so the app offers a pager-style instruction card); Android: Chrome's install prompt. Everything also works in the browser without installing.
-- **Installed,** it opens full-screen with its own icon and a splash screen, and the service worker serves the app from its cache, so later starts send no request for the app itself (N7).
+- **Installed,** it opens full-screen with its own icon and a splash screen, and the service worker serves the app from its cache (the mixnet worker comes from the browser's cache), so later starts send almost no request for the app itself (N7).
 - **iPhone details we design for:**
   - a home-screen app has **its own storage, separate from Safari**: a vault created in Safari doesn't appear in the installed app. The app suggests installing before the first top-up; otherwise the 12 words restore everything (zero-query restore);
   - Safari can delete a site's data after 7 days without a visit, but WebKit counts days of use separately for each home-screen app, so an installed app you use keeps its data. Installing is the recommended protection for bearer slips (D2 in the threat model);

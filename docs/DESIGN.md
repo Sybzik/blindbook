@@ -64,4 +64,4 @@ Nobody has to install an extension or an app-store app, make an account, connect
 - Motion is physical: relays, flaps and paper, 120–400 ms, mechanical easing. `prefers-reduced-motion` starts with CLEAN SIGNAL on.
 - Sound is on by default and one tap mutes it: the speaker on the landing page, the taskbar and the pager (remembered on the device). It is procedural WebAudio, no audio files; on iPhone it is an ambient sound that the silent switch mutes. Nothing plays on its own: every sound answers something on screen (a key, a window, a cue from `app/cues.ts`).
 - Real text everywhere: the CRT look is CSS layers over the DOM, never text drawn in a canvas. WCAG AA contrast. Full keyboard: F-keys, the console on `` ` ``, ESC ESC locks the vault.
-- App shell under 300 KB gzip (checked in CI); the 3D booth is a lazy chunk and falls back to a 2D booth without WebGL; the mixnet module loads during the boot and is cached by the service worker.
+- App shell under 300 KB gzip (checked in CI); the 3D booth is a lazy chunk and falls back to a 2D booth without WebGL; the mixnet module loads during the boot and the browser's cache keeps it.

@@ -449,7 +449,13 @@ async function pollTopups() {
         w = new Wallet(wallet.data, config.m, new Api(cage, powInWorkers), (d) => vault.save(d));
       }
       const before = t.status;
-      const rec = await w.topupPoll(t.id);
+      const rec = await w.topupPoll(t.id).catch((e: unknown) => {
+        // A cage whose route stopped answering is replaced by a fresh one on the next tick (a new
+        // identity, still not the betting one).
+        cages.get(t.id)?.close();
+        cages.delete(t.id);
+        throw e;
+      });
       if (rec.status === 'credited' || rec.status === 'confirmed') {
         cages.get(t.id)?.close();
         cages.delete(t.id);

@@ -10,7 +10,8 @@
 // - The app talks to each frame over its own MessageChannel (see tunnel.ts).
 // - Every request has an app-level deadline (mix-fetch has none). A tunnel that misses one is
 //   replaced while the lamp shows RELINKING, and a warm spare is kept so the swap is instant.
-// - Top-ups and withdrawals use a separate "cage" tunnel, opened for one operation and destroyed.
+// - Top-ups and withdrawals use a separate "cage" tunnel, opened for one operation and destroyed;
+//   it races two tunnels the same way, so a dead route doesn't fail the operation.
 
 import type { Transport } from '../core/api';
 import { randomBytes, toHex } from '../core/bytes';
@@ -273,14 +274,33 @@ export class MixnetTransport implements Transport {
   }
 }
 
-/** A one-off tunnel with its own identity for a top-up or a withdrawal (the "cage"). */
+/** A one-off tunnel with its own identity for a top-up or a withdrawal (the "cage"): two race,
+ *  the first to answer GET /v1/head stays (up to three rounds), the other is destroyed. */
 export async function openCage(api: string, ipr?: string): Promise<Transport & { close(): void }> {
   if (!mixnetSupported()) throw new Error('this browser cannot run the mixnet client (no WebAssembly)');
-  const t = new Tunnel(ipr);
-  await t.ready;
+  let t: Tunnel | undefined;
+  for (let round = 0; round < 3 && !t; round++) {
+    const a = new Tunnel(ipr);
+    const b = new Tunnel(ipr);
+    const probe = async (x: Tunnel) => {
+      await x.ready;
+      const r = await x.fetch('GET', api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
+      if (r.status !== 200) throw new Error(`head ${r.status}`);
+      return x;
+    };
+    try {
+      t = await Promise.any([probe(a), probe(b)]);
+      (t === a ? b : a).destroy();
+    } catch {
+      a.destroy();
+      b.destroy();
+    }
+  }
+  if (!t) throw new DeadlineError();
+  const tunnel = t;
   const tr: Transport & { close(): void } = {
     async request(method, path, body, timeoutMs = 20_000) {
-      const r = await t.fetch(method, api + path, body === undefined ? undefined : JSON.stringify(body), false, timeoutMs);
+      const r = await tunnel.fetch(method, api + path, body === undefined ? undefined : JSON.stringify(body), false, timeoutMs);
       let parsed: unknown = null;
       try {
         parsed = r.text ? JSON.parse(r.text) : null;
@@ -290,11 +310,11 @@ export async function openCage(api: string, ipr?: string): Promise<Transport & {
       return { status: r.status, body: parsed };
     },
     async bytes(path, timeoutMs = 30_000) {
-      const r = await t.fetch('GET', api + path, undefined, true, timeoutMs);
+      const r = await tunnel.fetch('GET', api + path, undefined, true, timeoutMs);
       if (!r.bytes) throw new Error('no body');
       return r.bytes;
     },
-    close: () => t.destroy(),
+    close: () => tunnel.destroy(),
   };
   return tr;
 }

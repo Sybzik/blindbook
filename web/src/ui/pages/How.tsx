@@ -25,6 +25,8 @@ const WHO: [string, string][] = [
   ['A chain observer', 'sees shielded transactions, not who, how much or why'],
   ['Us, or anyone who hacks the server', 'sees bets and blind slips, never which person or which payout'],
   ['Your internet provider', 'sees that this app was loaded and that the mixnet is used, not what you bet'],
+  ['The web host', 'sees the app being loaded, never what you do in it (after the first visit it loads from your device)'],
+  ['The mixnet’s entry node', 'sees that your device runs a mixnet client, not which site it is for or what it sends'],
   ['An exchange you withdrew from', 'sees a payment to a one-time address that is not linked to Blindbook'],
   ['Someone with your phone', 'sees nothing without your Face ID or passphrase'],
 ];

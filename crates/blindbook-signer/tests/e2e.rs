@@ -210,7 +210,14 @@ fn signer_and_api_replica_end_to_end() {
     // List the market; a wrong keyset id is refused.
     let entry = MarketEntry {
         id: MARKET,
-        params: MarketParams::testnet(),
+        // A small buffer (the first testnet's, b = 0.2, L = 0.05), so a 0.15 order exercises the
+        // shrink below; the live testnet is deeper.
+        params: MarketParams {
+            b: 20_000,
+            l: 5_000,
+            max_trade: 20_000,
+            ..MarketParams::testnet()
+        },
         event_start_ms: None,
         end_ms: u64::MAX,
         pool: Pool::default(),

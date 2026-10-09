@@ -21,7 +21,7 @@ What the configuration guarantees, and where:
 - A domain: one host name for the API on VPS-1 (`api.example.org`) and one for the app on the static host (`example.org`). Point the API name's A record at VPS-1.
 - Two VPS with Docker (Compose v2), ideally from different providers. VPS-1 needs ports 80 and 443 open; VPS-2 needs nothing open (SSH by key only).
 - Check that VPS-1 can read Polymarket: `curl -s 'https://gamma-api.polymarket.com/markets?limit=1'` must return JSON.
-- On testnet, about 2 TAZ for the reserve (market buffers and judge codes; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
+- On testnet, about 40 TAZ for the reserve (1 TAZ buffers for up to 12 markets and 0.25 TAZ codes for judges and testers; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
 
 ## 2. The image (on both servers)
 
@@ -70,7 +70,7 @@ docker compose logs -f api               # "catalog loaded", then "market listed
 
 Until the signer connects, the API logs that it can't close blocks or list markets yet: that is expected, and both happen as soon as the signer is in.
 
-`BB_VOUCHER_UNITS` must be the same on both servers (5000 = 0.05 TAZ per judge code).
+`BB_VOUCHER_UNITS` must be the same on both servers (25000 = 0.25 TAZ per judge code).
 
 ## 5. VPS-2: the signer
 
@@ -80,7 +80,7 @@ docker compose up -d
 docker compose logs -f signer            # "signer ready"; the API logs that it admitted the signer
 ```
 
-Then fund the reserve: send TAZ from your wallet to the reserve address `init` printed. The reserve must cover the liabilities plus the open markets' buffers (0.05 TAZ each on testnet); the verifier shows the margin.
+Then fund the reserve: send TAZ from your wallet to the reserve address `init` printed. The reserve must cover the liabilities plus the open markets' buffers (1 TAZ each on testnet); the verifier shows the margin.
 
 ## 6. The app
 
@@ -135,7 +135,7 @@ The same build with micro stakes, next to the playground on the same two servers
 - **Backups:** VPS-2 `secrets/` (offline, encrypted) and `data/`; VPS-1 `data/` and the `tor-data` volume (the onion's key). Both servers rebuild their state from their journals on start.
 - **Updates:** `git pull`, rebuild the image, `docker compose up -d` on each server. The API keeps an operation in doubt until the signer is back and both agree on the count.
 - **Stop everything safely:** stop the signer. Nothing can be signed, spent or paid until it returns; slips keep their value.
-- **Markets during judging (Oct 29 – Nov 22):** a market must end before judging ends, so new ones have to follow as others close. The API reads `config/markets.json` again every minute: find new ones with `docker compose run --rm api blindbook-api candidates`, add their slugs, and they are checked against the rules and listed, with no restart (keep the slugs of markets still open or unresolved in the file). `BB_AUTO_LIST=6` in `api.env` makes the API keep at least six markets open by itself, from the same candidates (matches and games with Polymarket's own start time); each open market ties up 0.05 TAZ of the reserve's buffer, at most twice that many at a time. A plan that keeps the playground useful for the whole period: a few markets that stay open for weeks (questions that resolve in the second half of November, with `event_start_ms` at the moment the answer can become known, or at the end for a "by <date>" question), the headline events inside the window (the US midterm elections on Nov 3), and same-day matches refreshed every few days. `docker compose logs api` names every market a rule kept out.
+- **Markets during judging (Oct 29 – Nov 22):** a market must end before judging ends, so new ones have to follow as others close. The API reads `config/markets.json` again every minute: find new ones with `docker compose run --rm api blindbook-api candidates`, add their slugs, and they are checked against the rules and listed, with no restart (keep the slugs of markets still open or unresolved in the file). `BB_AUTO_LIST=6` in `api.env` makes the API keep at least six markets open by itself, from the same candidates (matches and games with Polymarket's own start time); each open market ties up 1 TAZ of the reserve's buffer, at most twice that many at a time. A plan that keeps the playground useful for the whole period: a few markets that stay open for weeks (questions that resolve in the second half of November, with `event_start_ms` at the moment the answer can become known, or at the end for a "by <date>" question), the headline events inside the window (the US midterm elections on Nov 3), and same-day matches refreshed every few days. `docker compose logs api` names every market a rule kept out.
 - **Judge codes:** give out the codes from `voucher-codes.txt`; to revoke unused ones after judging, remove their hashes from `voucher-hashes.txt` and restart the signer.
 - **After judging:** once the playground is closed, give the testnet reserve's TAZ back to a faucet (Valar's "give back" address): on VPS-2, `docker compose stop signer`, then `docker compose run --rm signer blindbook-signer drain /secrets/treasury <address>` (if it reports a sweep of deposits first, run it again a few blocks later).
 - **Logs** hold the service's own events (markets listed, blocks, payouts, errors), never a request.

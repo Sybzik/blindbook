@@ -28,8 +28,8 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | anchor tx | every `BB_ANCHOR_EVERY` blocks (default 144, about an hour at NU7's 25 s blocks), only when the log root has changed since the last anchor | each costs 0.0001 ZEC |
 | PoW difficulty | top-up, voucher, withdraw: **20 bits**; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast. Measured with a WASM SHA-256 on one desktop thread: 16 bits ≈ 35 ms median, 20 bits ≈ 0.5 s (2.1 s p95); the client solves in 2–4 workers |
 | connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off); the next poll opens the connection the next write uses | see §4 |
-| LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
-| exposure buffer `L_m` | per market: testnet 0.05 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market, covered by the reserve. Every market of a network has the same parameters; the signer refuses a listing with others |
+| LMSR `b` | per market: testnet 4 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
+| exposure buffer `L_m` | per market: testnet 1 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market, covered by the reserve. Every market of a network has the same parameters; the signer refuses a listing with others |
 | listing rules | Polymarket mid ∈ [0.10, 0.90], a deep book, an event start still ahead, an end before judging ends | checked by the API on the live book ([MARKETS.md](MARKETS.md#listing)) |
 
 Rounding (normative): share and credit amounts round **down** to whole units. Every remainder goes to the house balance and is logged.
@@ -202,7 +202,7 @@ Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete
 - Integer units at every boundary, rounding down.
 - CI asserts that native and WASM builds of `blindbook-engine` produce byte-identical batch results.
 
-### 5.7 Worked examples (b = 0.2, fee 1%)
+### 5.7 Worked examples (b = 0.2, L = 0.05, fee 1%: small numbers that are easy to follow; the testnet runs at b = 4, L = 1)
 
 | Case | Result |
 |---|---|
@@ -210,7 +210,7 @@ Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete
 | Buy A with 0.05 (0.0495 after fee), ask 0.61 | 0.076785 shares at average **0.6447**; guard not binding; our price after: **0.6877** |
 | Then Polymarket moves to 0.65 | our A price **0.7316**: we follow Polymarket, still shifted by our users' A position |
 | Or Polymarket moves to 0.55 | our A price **0.6421** |
-| House exposure after that buy | collected 0.0495 vs. 0.0768 payout if A wins → W = 0.0273, within the testnet buffer `L` = 0.05 |
+| House exposure after that buy | collected 0.0495 vs. 0.0768 payout if A wins → W = 0.0273, within the example's buffer `L` = 0.05 |
 | A 0.05 and B 0.01 in one batch (mid 0.60) | 0.024750 complete sets matched at 0.60; residual A moves the curve. A side average **0.6222**, B side **0.4000**, price after **0.6636**. Cost = paid = 0.059400 ✓ |
 | Starting at 50/50 instead, while Polymarket says 0.90 | the first trader buys a ~0.90 share for ~0.50 and takes ~0.40 per share from the house. **This is why we never start at 50/50.** |
 
@@ -224,6 +224,8 @@ Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with
 | 0.1 | → 0.524 | → 0.548 | → 0.697 |
 | 0.2 | → 0.512 | → 0.524 | → 0.611 |
 | 0.5 | → 0.505 | → 0.510 | → 0.548 |
+| 1 | → 0.502 | → 0.505 | → 0.524 |
+| 4 (testnet) | → 0.501 | → 0.501 | → 0.506 |
 
 ## 6. "Called it" receipts
 

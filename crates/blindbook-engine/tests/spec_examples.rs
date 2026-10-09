@@ -25,9 +25,20 @@ fn buy(id: u64, outcome: u8, zec: f64) -> Order {
     }
 }
 
+/// The parameters of PROTOCOL 5.7's worked examples: b = 0.2, L = 0.05, fee 1% (the live testnet
+/// is deeper; the arithmetic is the same).
+fn example() -> Params {
+    Params {
+        b: 20_000,
+        l: 5_000,
+        max_trade: 20_000,
+        ..Params::testnet()
+    }
+}
+
 #[test]
 fn untouched_market_quotes_polymarket() {
-    let p = Params::testnet();
+    let p = example();
     close(
         price_a_ppm(&Market::default(), &p, 600_000) as f64 / 1e6,
         0.6000,
@@ -39,7 +50,7 @@ fn untouched_market_quotes_polymarket() {
 #[test]
 fn buy_a_005_at_mid_060() {
     // b = 0.2, fee 1%, ask 0.61 (guard not binding).
-    let p = Params::testnet();
+    let p = example();
     let r = Reference::with_spread(600_000, 10_000);
     let mut m = Market::default();
     let rep = clear_batch(
@@ -77,7 +88,7 @@ fn buy_a_005_at_mid_060() {
 
 #[test]
 fn a_and_b_in_one_batch_zero_spread() {
-    let p = Params::testnet();
+    let p = example();
     let r = Reference::with_spread(600_000, 0);
     let mut m = Market::default();
     let rep = clear_batch(
@@ -119,7 +130,7 @@ fn a_and_b_in_one_batch_zero_spread() {
 #[test]
 fn a_and_b_in_one_batch_with_a_real_book_binds_bs_guard() {
     // The same batch with Polymarket at 0.59 / 0.61: B's ask is 0.41, so B pays 0.41.
-    let p = Params::testnet();
+    let p = example();
     let r = Reference::with_spread(600_000, 10_000);
     let mut m = Market::default();
     let rep = clear_batch(
@@ -151,7 +162,7 @@ fn sells_respect_the_exposure_invariant() {
     // PROTOCOL 5.5: L = 0.02, u_A = u_B = c = 0.10, Polymarket jumps to 0.85, someone sells 0.10 A.
     let p = Params {
         l: 2_000,
-        ..Params::testnet()
+        ..example()
     };
     let r = Reference::with_spread(850_000, 0);
     let mut m = Market {

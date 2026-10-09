@@ -3,7 +3,7 @@
 // against keys derived from the pinned M, and the supply per keyset. It also checks a CALLED IT
 // proof carried after "#p=" in a link: the proof never reaches any server.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import * as cashu from '@cashu/cashu-ts';
@@ -230,14 +230,29 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'>
   };
 }
 
+/** The root a list of deltas chains up to (the hash chain the audit checks, PROTOCOL section 8). */
+function chainRoot(list: Delta[]): string {
+  let prev = GENESIS;
+  for (const d of list) prev = toHex(sha256(concat(fromHex(prev), sha256(utf8(canonical(d))))));
+  return prev;
+}
+
+/** How many new blocks a proof link waits for before it says NOT FOUND (about 3 minutes). */
+const PROOF_WAIT_BLOCKS = 8;
+
 function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string }) {
   const markets = useStore(app, (s) => s.markets);
+  const head = useStore(app, (s) => s.head);
   const [text, setText] = useState(proof ?? '');
-  const [res, setRes] = useState<{ ok: boolean; line: string } | null>(null);
-  const check = (t = text) => {
+  // `ok: null`: opened from a link right after the call, which isn't in the log yet.
+  const [res, setRes] = useState<{ ok: boolean | null; line: string } | null>(null);
+  // Blocks published after the verifier's download, read while a proof link waits.
+  const [extra, setExtra] = useState<Delta[]>([]);
+  const waited = useRef(0);
+  const check = (t = text, list: Delta[] = [...(deltas ?? []), ...extra], fromLink = false) => {
     try {
       const p = decodeProof(t);
-      for (const d of deltas ?? []) {
+      for (const d of list) {
         for (const b of d.batches) {
           const i = b.orders.findIndex((o) => o.tag === p.tag);
           if (i < 0) continue;
@@ -252,6 +267,11 @@ function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string 
           return;
         }
       }
+      if (fromLink && waited.current < PROOF_WAIT_BLOCKS) {
+        waited.current++;
+        setRes({ ok: null, line: 'This call is newer than the log this browser downloaded: a bet reaches the public log with the next block. Checking again as each new block is published…' });
+        return;
+      }
       setRes({ ok: false, line: 'This proof is not in the public log: it is not genuine, or the log you downloaded is older than the call.' });
     } catch {
       setRes({ ok: false, line: 'That is not a CALLED IT proof: the link is incomplete or was changed.' });
@@ -259,11 +279,47 @@ function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string 
   };
   // Opened from a proof link: check it as soon as the log is in.
   useEffect(() => {
-    if (proof && deltas) check(proof);
+    setExtra([]);
+    waited.current = 0;
+    if (proof && deltas) check(proof, deltas, true);
   }, [deltas]);
+  // While it waits: the blocks published since, on the same hash chain as the log already checked.
+  useEffect(() => {
+    if (!res || res.ok !== null || !deltas || !head) return;
+    const have = [...deltas, ...extra];
+    const last = have.at(-1)?.seq ?? 0;
+    if (head.seq <= last) return;
+    let gone = false;
+    void (async () => {
+      try {
+        const api = getApi();
+        const h = await api.head();
+        const more = (await deltaTexts(api, last + 1, h.seq, h.seq)).map((t) => JSON.parse(t) as Delta);
+        if (gone) return;
+        const all = [...have, ...more];
+        if (chainRoot(all) !== h.root) {
+          setRes({ ok: false, line: 'The new blocks do not link up to the log already checked. Run the verifier again.' });
+          return;
+        }
+        setExtra((e) => [...e, ...more]);
+        check(proof ?? text, all, true);
+      } catch {
+        /* the next block tries again */
+      }
+    })();
+    return () => {
+      gone = true;
+    };
+  }, [head?.seq, res?.ok]);
   return (
     <div style={{ maxWidth: 640, marginTop: 24 }}>
-      {res && (
+      {res && res.ok === null && (
+        <div className="tk-proofres" role="status">
+          <p className="bb-label" style={{ margin: 0 }}>WAITING FOR THE NEXT BLOCK</p>
+          <p className="bb-ui">{res.line}</p>
+        </div>
+      )}
+      {res && res.ok !== null && (
         <div className="tk-proofres" role="status">
           <Stamp tone={res.ok ? 'phosphor' : 'alarm'} size="lg" rotate={-4} worn={false} slam>{res.ok ? 'VERIFIED ✓' : 'NOT FOUND'}</Stamp>
           <p className="bb-ui">{res.line}</p>

@@ -12,7 +12,9 @@ import { WordCheck, WordList } from '../WordCheck';
 
 type Mode = 'unlock' | 'choose' | 'words' | 'confirm' | 'secure' | 'restore' | 'restored';
 
-export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismiss?: () => void }) {
+/** `onHold(true)` before an action that opens the vault, so the desk keeps this window up for
+ *  what it shows next (the unlock, a restore's findings); `onOpen` when it is done. */
+export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void; onDismiss?: () => void; onHold?: (hold: boolean) => void }) {
   const vault = useStore(app, (s) => s.vault);
   const wraps = useStore(app, (s) => s.wraps);
   const [mode, setMode] = useState<Mode>(vault === 'none' ? 'choose' : 'unlock');
@@ -41,10 +43,12 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
       return;
     }
     setSt('unlocking');
+    onHold?.(true);
     try {
       await unlockWithPassphrase(pass);
       done();
     } catch (e) {
+      onHold?.(false);
       setSt('error');
       setErr(String((e as Error).message));
     }
@@ -52,10 +56,12 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
 
   const faceId = async () => {
     setSt('unlocking');
+    onHold?.(true);
     try {
       await unlockWithPasskey();
       done();
     } catch (e) {
+      onHold?.(false);
       setSt('error');
       setErr(String((e as Error).message));
     }
@@ -67,10 +73,12 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
       return;
     }
     setErr(null);
+    onHold?.(true);
     try {
       await createVault(words, withPasskey ? (pass && pass === pass2 ? pass : null) : pass, withPasskey, backedUp);
       done();
     } catch (e) {
+      onHold?.(false);
       setErr(String((e as Error).message));
     }
   };
@@ -81,11 +89,13 @@ export function VaultWindow({ onOpen, onDismiss }: { onOpen: () => void; onDismi
       return;
     }
     setErr(null);
+    onHold?.(true);
     try {
       const r = await restoreFromWords(typed, pass, setProgress);
       setSummary({ slips: r.slips.length, trades: r.trades.length, balance: app.get().balance, foreign: r.foreign.length });
       setMode('restored');
     } catch (e) {
+      onHold?.(false);
       setErr(String((e as Error).message));
     } finally {
       setProgress(null);

@@ -123,6 +123,11 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const [hint, setHint] = useState<string | null>(null);
   // Someone opening a proof link came to check it, not to open a vault.
   const [vaultWin, setVaultWin] = useState(vault !== 'unlocked' && !proof && !duel);
+  // The vault window stays up through what it shows after the vault opens (the unlock, a
+  // restore's findings and any warning about the log's keysets), under the key it had then.
+  const [vaultHold, setVaultHold] = useState(false);
+  const vaultKey = useRef<string>(vault);
+  if (!vaultHold) vaultKey.current = vault;
   const firstVault = useRef(true);
   const [idle, setIdle] = useState(false);
   const [insider, setInsider] = useState(false);
@@ -414,7 +419,11 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const market = markets.find((m) => m.id === mid);
   const titleOf = (id: string) => (id === 'market' ? `${market?.page ?? 'P2xx'} · MARKET` : id.startsWith('tt:') ? `P${id.slice(3)} · TELETEXT` : TITLES[id] ?? id);
   const isApp = (id: string) => (APP_ICONS as { id: string }[]).some((a) => a.id === id);
-  const showVault = vaultWin && vault !== 'unlocked' && vault !== 'checking';
+  const showVault = vaultWin && vault !== 'checking' && (vault !== 'unlocked' || vaultHold);
+  const closeVault = () => {
+    setVaultHold(false);
+    setVaultWin(false);
+  };
   const focused = showVault ? 'vault' : page;
 
   const render = (id: string) => {
@@ -499,7 +508,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             </AlarmBanner>
           )}
           <WinCtx.Provider value={{ narrow: true, hint: null, pager: true }}>
-            {showVault && !menu && <VaultWindow key={vault} onOpen={() => setVaultWin(false)} onDismiss={() => setVaultWin(false)} />}
+            {showVault && !menu && <VaultWindow key={vaultKey.current} onHold={setVaultHold} onOpen={closeVault} onDismiss={closeVault} />}
             {menu && (
               <section className="pg-chan pg-menu" aria-label="Menu">
                 <TeletextHeader page="MENU" title="BLINDBOOK" />
@@ -597,7 +606,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             </AlarmBanner>
           )}
           <WinCtx.Provider value={{ narrow, hint: hint ?? defHint }}>
-            {showVault && <VaultWindow key={vault} onOpen={() => setVaultWin(false)} onDismiss={() => setVaultWin(false)} />}
+            {showVault && <VaultWindow key={vaultKey.current} onHold={setVaultHold} onOpen={closeVault} onDismiss={closeVault} />}
             {open.map((id) => (
               <div key={id === 'market' ? 'market:' + mid : id} className="tk-win" hidden={showVault || id !== page}>
                 <WindowGuard title={titleOf(id)} onClose={() => close(id)}>{render(id)}</WindowGuard>

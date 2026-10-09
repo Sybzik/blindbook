@@ -21,16 +21,18 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::sequencer::Cmd;
 
-/// Blocks a top-up address is advertised for (later payments are still credited).
-pub const ADDRESS_LIFETIME: u64 = 120;
+/// Blocks a top-up address is advertised for (later payments are still credited): about 2.5 h
+/// at NU7's 25-second blocks.
+pub const ADDRESS_LIFETIME: u64 = 360;
 
 /// Unpaid, unexpired top-up requests the desk holds at most; past that, new ones are refused as
 /// busy until some expire. Proof-of-work alone doesn't bound what a fast machine can ask for.
 pub const MAX_OPEN: usize = 500;
 
-/// Blocks after expiry (about a day) after which an unpaid request drops its blank outputs; a
-/// payment that still arrives is credited through `/v1/topup/claim` with the request's secret.
-pub const PRUNE_AFTER: u64 = 1_152;
+/// Blocks after expiry (about a day at 25-second blocks) after which an unpaid request drops its
+/// blank outputs; a payment that still arrives is credited through `/v1/topup/claim` with the
+/// request's secret.
+pub const PRUNE_AFTER: u64 = 3_456;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CreateError {

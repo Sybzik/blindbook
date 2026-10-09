@@ -102,11 +102,13 @@ The bet panel repeats the key conditions in one line under the BUY key: `Fills i
 
 **The source of truth is the Polygon chain, not Polymarket's website or API.**
 
-1. After a market's end date, the API's resolver reads the ConditionalTokens contract every 5 minutes on **two independent Polygon RPC providers** (`polygon-bor-rpc.publicnode.com` and `polygon.drpc.org`, which agreed when checked on Oct 6; `polygon-rpc.com` and Ankr now require keys): `payoutDenominator(conditionId)` (selector `0xdd34de67`).
+1. For every open market, the API's resolver reads the ConditionalTokens contract every 5 minutes on **two independent Polygon RPC providers** (`polygon-bor-rpc.publicnode.com` and `polygon.drpc.org`, which agreed when checked on Oct 6; `polygon-rpc.com` and Ankr now require keys): `payoutDenominator(conditionId)` (selector `0xdd34de67`).
 2. Once it is greater than 0 on both, it reads `payoutNumerators(conditionId, 0..1)` (selector `0x0504c814`). If the providers disagree, nothing is recorded and the operator is alerted.
 3. **The signer reads the same result itself**, once a minute, from its own pair of RPCs, and refuses a resolution that differs from it: the internet-facing API can't settle a market its own way.
 4. The numerators, the Polygon block and the resolution transaction go into the public log, and the market becomes **RESOLVED**. `blindbook-verify --polygon public` reads every recorded result from Polygon again.
 5. Holders cash in: each winning share pays `num_i / den` ZEC as CREDIT, which can be withdrawn or reused.
+
+A result counts as soon as it is final on Polygon, not at Polymarket's end date: for a match that is usually an hour or two after it ends (the optimistic oracle's challenge period), while the end date is often a week later. A market whose result appears early is resolved at once and stops trading.
 
 ### Why not Gamma's `outcomePrices`
 

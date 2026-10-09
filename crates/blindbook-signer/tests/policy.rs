@@ -78,8 +78,8 @@ fn a_listing_with_other_parameters_is_refused() {
 fn a_resolution_counts_only_if_the_signer_read_the_same_from_polygon() {
     let mut s = signer();
     s.handle(&listing(&s, MarketParams::testnet())).unwrap();
-    assert_eq!(s.unconfirmed_due(500), vec![], "not past its end yet");
-    assert_eq!(s.unconfirmed_due(2_000), vec![MARKET]);
+    // Read from listing on, not only past the end date: a result can be final days before it.
+    assert_eq!(s.unconfirmed(), vec![MARKET]);
 
     // Nothing read yet: refused.
     let (reply, applied) = s.handle(&resolve(1, [1, 0])).unwrap();
@@ -89,7 +89,7 @@ fn a_resolution_counts_only_if_the_signer_read_the_same_from_polygon() {
 
     // Polygon says B won: A winning is refused, B winning goes through.
     s.confirm_resolution(MARKET, 1, [0, 1]);
-    assert_eq!(s.unconfirmed_due(2_000), vec![]);
+    assert_eq!(s.unconfirmed(), vec![]);
     let (reply, _) = s.handle(&resolve(1, [1, 0])).unwrap();
     assert_eq!(reply.invalid, vec![0]);
     assert_eq!(s.ledger.markets[&MARKET].status, MarketStatus::Open);

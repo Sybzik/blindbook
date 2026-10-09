@@ -235,7 +235,7 @@ Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with
 
 ## 7. Resolution and redemption
 
-1. After the end date, the API's resolver polls the Polygon ConditionalTokens contract every 5 minutes on **two independent RPC providers**, which must agree:
+1. For every open market (a result is final as soon as it is on Polygon, often days before the end date), the API's resolver polls the Polygon ConditionalTokens contract every 5 minutes on **two independent RPC providers**, which must agree:
    - `payoutDenominator(conditionId)` = `0xdd34de67`;
    - `payoutNumerators(conditionId, i)` = `0x0504c814`.
 2. When the denominator is greater than 0 on both: the API proposes `resolve {market, den, num, polygon_block, polygon_tx}`. **The signer reads the result itself** (once a minute, its own pair of RPCs, `BB_POLYGON_RPCS`) and refuses a resolution that doesn't match it, so the internet-facing API can't settle a market its own way. Once applied, the market is **RESOLVED** and the log records the numerators, the Polygon block and the resolution transaction; `blindbook-verify --polygon public` reads each one from Polygon again.

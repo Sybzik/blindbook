@@ -314,8 +314,8 @@ async fn serve() -> Result<(), String> {
     Ok(())
 }
 
-/// Once a minute, read the result of every market past its end date from Polygon (two RPCs that
-/// must agree) and remember it: the API's resolution must match it.
+/// Once a minute, read the result of every open market from Polygon (two RPCs that must agree)
+/// and remember it: the API's resolution must match it.
 async fn read_results(station: Arc<Mutex<Station>>) {
     let rpcs: Vec<String> = match std::env::var("BB_POLYGON_RPCS") {
         Ok(v) => v.split(',').map(|s| s.trim().to_owned()).collect(),
@@ -332,14 +332,11 @@ async fn read_results(station: Arc<Mutex<Station>>) {
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(60));
     loop {
         tick.tick().await;
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis() as u64);
         let due = station
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .signer
-            .unconfirmed_due(now);
+            .unconfirmed();
         for id in due {
             match poly.settle(&format!("0x{id}")).await {
                 Ok(Settlement::Final { den, num, .. }) => {

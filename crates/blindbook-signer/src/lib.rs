@@ -207,15 +207,17 @@ impl Signer {
         }
     }
 
-    /// Open markets past their end date whose result the signer hasn't read yet.
-    pub fn unconfirmed_due(&self, now_ms: u64) -> Vec<H32> {
+    /// Open markets whose result the signer hasn't read yet. A result is final as soon as it is
+    /// on Polygon, which for a match is hours after it ends and often days before Polymarket's
+    /// end date, so every open market is read, not only those past that date.
+    pub fn unconfirmed(&self) -> Vec<H32> {
         let Some(r) = &self.resolutions else {
             return Vec::new();
         };
         self.ledger
             .markets
             .values()
-            .filter(|m| m.status == MarketStatus::Open && m.end_ms <= now_ms)
+            .filter(|m| m.status == MarketStatus::Open)
             .filter(|m| !r.contains_key(&m.id))
             .map(|m| m.id)
             .collect()

@@ -77,8 +77,9 @@ async fn op(tx: &mpsc::Sender<Cmd>, op: Op) -> Result<(), String> {
 /// overrides it.
 const JUDGING_END_MS: u64 = 1_795_392_000_000;
 
-/// After a market's end, read its payout from Polygon every 5 minutes; settle when both RPCs
-/// agree (MARKETS "Settlement").
+/// Read every open market's payout from Polygon every 5 minutes; settle when both RPCs agree
+/// (MARKETS "Settlement"). A result is final as soon as it is there, often days before
+/// Polymarket's end date.
 async fn resolver(http: reqwest::Client, tx: mpsc::Sender<Cmd>, shared: Arc<Shared>) {
     let poly = PolygonReader::new(http, DEFAULT_RPCS.iter().map(|s| s.to_string()).collect());
     let mut tick = tokio::time::interval(Duration::from_secs(300));
@@ -89,7 +90,7 @@ async fn resolver(http: reqwest::Client, tx: mpsc::Sender<Cmd>, shared: Arc<Shar
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .values()
-            .filter(|m| m.status == MarketStatus::Open && m.end_ms <= now_ms())
+            .filter(|m| m.status == MarketStatus::Open)
             .map(|m| m.id)
             .collect();
         for id in due {

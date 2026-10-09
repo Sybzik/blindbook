@@ -59,7 +59,6 @@ mkdir -p config data && sudo chown -R 10001:10001 data
 # config/deposit-uivk.txt : the deposit UIVK printed by init
 # config/reserve-ufvk.txt : secrets/treasury/reserve-ufvk.txt from VPS-2
 # config/markets.json     : the markets to list (markets.json.example; rules in docs/MARKETS.md)
-docker compose build api
 docker compose run --rm api blindbook-api candidates 20   # markets that pass the rules now, as markets.json entries
 docker compose up -d --build
 docker compose logs -f api               # "catalog loaded", then "market listed" or the rule that kept a market out

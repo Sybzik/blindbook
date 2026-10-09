@@ -153,7 +153,7 @@ The development build talks to the server directly. The production build (`VITE_
 
 ## Status
 
-Built and tested: every server component (live on Zcash testnet), the web app on desktop and phone, both verifiers, and the [deployment package](deploy/README.md) (both servers run in Docker end to end against testnet and live Polymarket data). Still ahead before submission (Oct 27): running it on the two servers with a domain, the iPhone test with the mixnet and Face ID, the testnet playground for judges, a mainnet proof with micro stakes, and the video. Details in the [roadmap](docs/ROADMAP.md).
+Built and tested: every server component (live on Zcash testnet), the web app on desktop and phone, its mixnet link in Chromium, Firefox and WebKit, both verifiers, and the [deployment package](deploy/README.md) (both servers run in Docker end to end against testnet and live Polymarket data). Still ahead before submission (Oct 27): running it on the two servers with a domain, the iPhone test with the mixnet and Face ID, the testnet playground for judges, a mainnet proof with micro stakes, and the video. Details in the [roadmap](docs/ROADMAP.md).
 
 ### Repository layout
 

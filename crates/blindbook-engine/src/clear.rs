@@ -48,15 +48,16 @@ pub struct Params {
 }
 
 impl Params {
-    /// Testnet parameters from PROTOCOL section 1: b = 4 TAZ, L = 1 TAZ, fee 1%. Deep enough that
-    /// a standard 0.05 bet moves the price by well under a cent and fills whole on any outcome
-    /// above ~5¢; the reserve covers 1 TAZ per open market.
+    /// Testnet parameters from PROTOCOL section 1: b = 4 TAZ, L = 0.5 TAZ, fee 1%. Deep enough
+    /// that a standard 0.05 bet moves the price by under a cent and fills whole on any outcome
+    /// above ~9¢, while the reserve covers only 0.5 TAZ per open market (the playground runs on
+    /// at most 50 TAZ).
     pub fn testnet() -> Self {
         Params {
             b: 400_000,
-            l: 100_000,
+            l: 50_000,
             fee_bp: 100,
-            max_trade: 400_000,
+            max_trade: 200_000,
             halt_ask_ppm: 980_000,
             stale_ms: 10_000,
             drop_rule: DropRule::LowestTier,

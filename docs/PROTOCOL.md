@@ -29,7 +29,7 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | PoW difficulty | top-up, voucher, withdraw: **20 bits**; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast. Measured with a WASM SHA-256 on one desktop thread: 16 bits ≈ 35 ms median, 20 bits ≈ 0.5 s (2.1 s p95); the client solves in 2–4 workers |
 | connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off); the next poll opens the connection the next write uses | see §4 |
 | LMSR `b` | per market: testnet 4 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |
-| exposure buffer `L_m` | per market: testnet 1 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market, covered by the reserve. Every market of a network has the same parameters; the signer refuses a listing with others |
+| exposure buffer `L_m` | per market: testnet 0.5 TAZ, mainnet 0.002 ZEC | the house's maximum loss in that market, covered by the reserve. Every market of a network has the same parameters; the signer refuses a listing with others |
 | listing rules | Polymarket mid ∈ [0.10, 0.90], a deep book, an event start still ahead, an end before judging ends | checked by the API on the live book ([MARKETS.md](MARKETS.md#listing)) |
 
 Rounding (normative): share and credit amounts round **down** to whole units. Every remainder goes to the house balance and is logged.
@@ -202,7 +202,7 @@ Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete
 - Integer units at every boundary, rounding down.
 - CI asserts that native and WASM builds of `blindbook-engine` produce byte-identical batch results.
 
-### 5.7 Worked examples (b = 0.2, L = 0.05, fee 1%: small numbers that are easy to follow; the testnet runs at b = 4, L = 1)
+### 5.7 Worked examples (b = 0.2, L = 0.05, fee 1%: small numbers that are easy to follow; the testnet runs at b = 4, L = 0.5)
 
 | Case | Result |
 |---|---|

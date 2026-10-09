@@ -186,4 +186,4 @@ Blindbook is an independent project. It is not affiliated with Polymarket, Zcash
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The bundled fonts keep their own licenses, the SIL Open Font License 1.1 (IBM Plex Mono, VT323, Departure Mono; the license files sit next to the fonts in `web/src/design/fonts/`); libraries keep theirs.

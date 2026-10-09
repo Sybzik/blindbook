@@ -284,12 +284,6 @@ async fn main() -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     *shared_slot.write().unwrap_or_else(|e| e.into_inner()) = Some(running.shared.clone());
 
-    let slugs = Arc::new(RwLock::new(
-        catalog
-            .values()
-            .map(|(_, l)| l.slug.clone())
-            .collect::<Vec<_>>(),
-    ));
     tokio::spawn(listing::list_markets(
         running.tx.clone(),
         running.shared.clone(),
@@ -301,7 +295,6 @@ async fn main() -> Result<(), String> {
     tokio::spawn(listing::refresh_catalog(
         http.clone(),
         running.shared.clone(),
-        slugs.clone(),
     ));
     tokio::spawn(listing::follow(listing::Follow {
         http: http.clone(),
@@ -310,7 +303,6 @@ async fn main() -> Result<(), String> {
         m,
         params,
         mirrors: mirrors.clone(),
-        slugs,
         file: markets_file,
         auto_file,
         cache,

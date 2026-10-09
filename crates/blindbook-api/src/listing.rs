@@ -249,17 +249,28 @@ pub async fn list_markets(
     }
 }
 
-/// Keep `closed` / `acceptingOrders` fresh from Gamma, for every slug in the catalog.
-pub async fn refresh_catalog(
-    http: reqwest::Client,
-    shared: Arc<Shared>,
-    slugs: Arc<RwLock<Vec<String>>>,
-) {
+/// The catalog's slugs, all of them or only those of markets not resolved yet.
+fn catalog_slugs(shared: &Shared, unresolved_only: bool) -> Vec<String> {
+    let catalog = shared.catalog.read().unwrap_or_else(|e| e.into_inner());
+    let markets = shared.markets.read().unwrap_or_else(|e| e.into_inner());
+    catalog
+        .iter()
+        .filter(|(id, _)| {
+            !unresolved_only
+                || markets
+                    .get(id)
+                    .is_none_or(|m| m.status == MarketStatus::Open)
+        })
+        .map(|(_, info)| info.slug.clone())
+        .collect()
+}
+
+/// Keep `closed` / `acceptingOrders` fresh from Gamma, for every market not resolved yet.
+pub async fn refresh_catalog(http: reqwest::Client, shared: Arc<Shared>) {
     let mut tick = tokio::time::interval(Duration::from_secs(60));
     loop {
         tick.tick().await;
-        let now: Vec<String> = slugs.read().unwrap_or_else(|e| e.into_inner()).clone();
-        for slug in &now {
+        for slug in &catalog_slugs(&shared, true) {
             if let Ok(info) = gamma::fetch_market(&http, slug).await
                 && let Some(id) = H32::parse(&info.condition_id)
             {
@@ -281,8 +292,6 @@ pub struct Follow {
     pub m: PublicKey,
     pub params: MarketParams,
     pub mirrors: Arc<Mirrors>,
-    /// Every slug in the catalog (shared with [`refresh_catalog`]).
-    pub slugs: Arc<RwLock<Vec<String>>>,
     pub file: Option<PathBuf>,
     pub auto_file: PathBuf,
     pub cache: PathBuf,
@@ -390,10 +399,6 @@ pub async fn follow(f: Follow) {
                 catalog.insert(*id, info.clone());
             }
         }
-        f.slugs
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .extend(added.values().map(|(_, l)| l.slug.clone()));
         tracing::info!(
             markets = added.len(),
             "new markets in the catalog; checking the listing rules"
@@ -433,13 +438,7 @@ async fn auto_pick(f: &Follow) -> Vec<Listing> {
     if need == 0 {
         return Vec::new();
     }
-    let known: BTreeSet<String> = f
-        .slugs
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .iter()
-        .cloned()
-        .collect();
+    let known: BTreeSet<String> = catalog_slugs(&f.shared, false).into_iter().collect();
     let judging_end = env_num("BB_JUDGING_END_MS", JUDGING_END_MS);
     let found =
         match candidates::find(&f.http, now, judging_end, need + known.len().min(50) + 5).await {

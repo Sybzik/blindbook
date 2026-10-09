@@ -20,7 +20,8 @@
 //!                        Turns on the signer's own indexer (every top-up credit is checked
 //!                        against it), sealed withdrawals, payouts, sweeps and anchors
 //!     BB_SIGNER_UFVK     without a treasury: a deposit full viewing key for the own indexer only
-//!     BB_ANCHOR_EVERY    blocks between anchors (default 48); BB_SWEEP_EVERY likewise
+//!     BB_ANCHOR_EVERY    blocks between anchors (default 144: an hour at NU7's 25 s blocks);
+//!                        BB_SWEEP_EVERY likewise (an hour of deposits per sweep)
 //!     BB_ZCASH_NET       test (default) | main | regtest[:heights]
 //!     BB_LWD             lightwalletd / Zaino: zecrocks (default) or host:port
 //!     BB_NETWORK         testnet (default) | mainnet: the 0-conf caps and the only market
@@ -317,11 +318,11 @@ async fn serve() -> Result<(), String> {
         });
     }
     if let Some(t) = treasury {
-        let every = |k: &str| {
+        let every = |k: &str, default: u64| {
             std::env::var(k)
                 .ok()
                 .and_then(|v| v.parse().ok())
-                .unwrap_or(48)
+                .unwrap_or(default)
         };
         tokio::spawn(blindbook_signer::payouts::run(
             t,
@@ -329,8 +330,8 @@ async fn serve() -> Result<(), String> {
             blindbook_signer::payouts::Schedule {
                 server: server.clone(),
                 data: data.clone(),
-                anchor_every: every("BB_ANCHOR_EVERY"),
-                sweep_every: every("BB_SWEEP_EVERY"),
+                anchor_every: every("BB_ANCHOR_EVERY", 144),
+                sweep_every: every("BB_SWEEP_EVERY", 144),
             },
         ));
         tracing::info!("treasury running: payouts, sweeps, anchors");

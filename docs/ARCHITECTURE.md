@@ -159,7 +159,7 @@ Sell, swap, transfer and redeem work the same way and take seconds.
 ## "Called it": anonymous by default, provable by choice
 
 1. With every trade the browser attaches `tag = SHA256("bb-called-it" ‖ s)`, where `s` is a per-trade secret derived from the vault seed.
-2. The batch result publishes `tag`, the market, the outcome, the size, the average price and the block height. It's part of the public log, whose root is anchored on-chain every 48 blocks (about an hour) whenever it has changed.
+2. The batch result publishes `tag`, the market, the outcome, the size, the average price and the block height. It's part of the public log, whose root is anchored on-chain every 144 blocks (about an hour at 25-second blocks) whenever it has changed.
 3. **To prove a call later,** reveal `s`, for example as a link that carries the secret after `#` (never sent to any server or link-preview bot) or as a printable "CALLED IT" receipt card. Anyone's browser recomputes the tag, finds it in the anchored log and shows: *"bought Legacy at 44¢ at block 3,514,220 · verified ✓"*.
 4. **What gets revealed:** that one trade, and only to the people you hand the secret to. Nothing links it to your other trades, your balance or your payout.
 5. **Bonus:** the same proof settles disputes ("I did place this trade") without the operator ever learning anything new.

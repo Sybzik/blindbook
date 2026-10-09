@@ -24,8 +24,8 @@ Wire formats, algorithms and parameters. The architecture and its rationale are 
 | withdrawal fee | 20,000 zatoshi | |
 | payout batch | every block while the queue is non-empty | fixed 8-action shape |
 | withdrawal privacy delay | uniform random 0–60 s, client-side | before sending, from the separate top-up/withdrawal tunnel |
-| sweep | every 48 blocks (~1 h), only if there are deposits | |
-| anchor tx | every `BB_ANCHOR_EVERY` blocks (default 48, about an hour), only when the log root has changed since the last anchor | each costs 0.0001 ZEC |
+| sweep | every `BB_SWEEP_EVERY` blocks (default 144, about an hour), only if there are deposits | |
+| anchor tx | every `BB_ANCHOR_EVERY` blocks (default 144, about an hour at NU7's 25 s blocks), only when the log root has changed since the last anchor | each costs 0.0001 ZEC |
 | PoW difficulty | top-up, voucher, withdraw: **20 bits**; trade, swap, redeem: 16 bits (published in `head`) | trades also spend valid slips, so they need little PoW and stay fast. Measured with a WASM SHA-256 on one desktop thread: 16 bits ≈ 35 ms median, 20 bits ≈ 0.5 s (2.1 s p95); the client solves in 2–4 workers |
 | connection policy | a fresh TCP+TLS connection per write (the API sends `Connection: close`; TLS session resumption off); the next poll opens the connection the next write uses | see §4 |
 | LMSR `b` | per market: testnet 0.2 TAZ, mainnet 0.01 ZEC | how strongly our users' flow moves our price |

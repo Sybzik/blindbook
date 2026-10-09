@@ -1,7 +1,7 @@
 export type PixelIconName =
   | 'markets' | 'slips' | 'cage' | 'verify' | 'how' | 'console' | 'rules' | 'stamp' | 'lock' | 'warning'
   | 'check' | 'qr' | 'lamp' | 'zebra' | 'bonsai' | 'phone' | 'mug' | 'drawer' | 'eye'
-  | 'snake' | 'calculator' | 'tracker' | 'notepad' | 'radio';
+  | 'snake' | 'calculator' | 'tracker' | 'notepad' | 'radio' | 'speaker' | 'mute';
 
 /** 7x7 pixel icon. Render at multiples of 7 (7, 14, 21, 28, 42, 56) for crisp pixels. */
 export interface PixelIconProps {

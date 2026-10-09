@@ -2,7 +2,7 @@
 // identically (head, live, catalog), the vault and the wallet.
 
 import { Api, ApiError, DirectTransport, type Head, type Live, type PriceHistory, type Transport } from '../core/api';
-import { Wallet, newWalletData, type HistoryEntry, type LocalData, type MyDuel, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
+import { InDoubtError, Wallet, newWalletData, type HistoryEntry, type LocalData, type MyDuel, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
 import { blankOutputs } from '../core/blind';
 import { restore, type DeltaLike } from '../core/restore';
 import { SEGMENT, deltaTexts } from '../core/log';
@@ -10,6 +10,7 @@ import { yOf } from '../core/blind';
 import { IdbStore, Vault, newMnemonic, seedFromMnemonic, type Wrap } from '../vault/vault';
 import { createPasskey, prfSupported, unlockPasskey } from '../vault/passkey';
 import { MixnetTransport, cleanupIdentities, mixnetSupported, openCage, type LinkState } from '../net/mixnet';
+import { cue, type Cue } from './cues';
 import { powInWorkers } from '../net/powpool';
 import { config } from './config';
 import { createStore } from './store';
@@ -157,6 +158,7 @@ async function settleDoubts(seq: number) {
       app.set({ notice: `Settled from the public log: ${n === 1 ? 'a request that got no answer' : n + ' requests that got no answer'}. Your balance is up to date.` });
     }
     if (wallet.takeRedirected() > 0) {
+      cue('redirected');
       app.set({
         error:
           'A request was changed on its way: the public log shows the slips it spent, and not one of the slips it asked for was signed. An honest server cannot do that. Nothing about you was revealed; the record is in your history (P600).',
@@ -223,8 +225,21 @@ async function pollCatalog() {
       b: m.params.b,
       feeBp: m.params.fee_bp,
     }));
+    const before = new Map(app.get().markets.map((m) => [m.id, m.resolved]));
     app.set({ markets });
     refreshWallet();
+    // A market the user holds shares of has just been settled: did their side win?
+    let won = false;
+    let lost = false;
+    for (const m of markets) {
+      if (!m.resolved || !before.has(m.id) || before.get(m.id)) continue;
+      for (const p of app.get().positions.filter((x) => x.market === m.id)) {
+        if (m.resolved.num[p.outcome] > 0) won = true;
+        else lost = true;
+      }
+    }
+    if (won) cue('resolved.win');
+    else if (lost) cue('resolved.loss');
   } catch {
     /* retried */
   }
@@ -284,8 +299,18 @@ export async function start() {
   started = true;
   if (config.mixnet) {
     await cleanupIdentities();
-    const mt = new MixnetTransport(config.api, config.ipr, (yes) => app.set({ linkTrouble: yes ? 'unreachable' : null }));
-    mt.onState((s) => app.set({ link: s }));
+    const mt = new MixnetTransport(config.api, config.ipr, (yes) => {
+      app.set({ linkTrouble: yes ? 'unreachable' : null });
+      if (yes) cue('link.trouble');
+    });
+    mt.onState((s) => {
+      const was = app.get().link;
+      app.set({ link: s });
+      if (s === was) return;
+      if (s === 'linked') cue('link.linked');
+      else if (s === 'down') cue('link.down');
+      else if (s === 'relinking' && was === 'linked') cue('link.relinking');
+    });
     transport = mt;
     api = new Api(transport, powInWorkers);
     if (mixnetSupported()) void mt.boot();
@@ -324,6 +349,7 @@ export async function createVault(words: string, passphrase: string | null, pass
   if (passkey) await addPasskey();
   app.set({ wraps: await vault.wraps() });
   openWallet(data);
+  cue('vault.created');
 }
 
 export async function addPasskey(): Promise<boolean> {
@@ -337,6 +363,7 @@ export async function addPasskey(): Promise<boolean> {
 
 export async function unlockWithPassphrase(passphrase: string) {
   openWallet((await vault.unlockWithPassphrase(passphrase)) as WalletData);
+  cue('vault.unlocked');
 }
 
 export async function unlockWithPasskey() {
@@ -345,6 +372,7 @@ export async function unlockWithPasskey() {
   const prf = await unlockPasskey(w.credential, w.salt);
   if (!prf) throw new Error('the passkey did not unlock');
   openWallet((await vault.unlockWithPrf(prf)) as WalletData);
+  cue('vault.unlocked');
 }
 
 export function lockVault() {
@@ -352,6 +380,7 @@ export function lockVault() {
   wallet = undefined;
   refreshWallet();
   app.set({ vault: 'locked' });
+  cue('vault.locked');
 }
 
 /** Rebuild a vault from 12 words with zero-query restore over the public files. */
@@ -372,6 +401,7 @@ export async function restoreFromWords(words: string, passphrase: string | null,
   await vault.create(data, passphrase ?? undefined);
   app.set({ wraps: await vault.wraps() });
   openWallet(data);
+  cue('vault.restored');
   return r;
 }
 
@@ -385,6 +415,7 @@ async function act<T>(label: string, f: (w: Wallet) => Promise<T>): Promise<T> {
   } catch (e) {
     const msg = e instanceof ApiError ? plainError(e) : String((e as Error)?.message ?? e);
     app.set({ error: msg });
+    cue(e instanceof InDoubtError ? 'doubt' : e instanceof ApiError ? 'refused' : 'error');
     throw e;
   } finally {
     app.set({ busy: null });
@@ -465,6 +496,7 @@ async function pollTopups() {
       if (rec.status === 'credited' || rec.status === 'confirmed') {
         cages.get(t.id)?.close();
         cages.delete(t.id);
+        cue('credit');
         app.set({ notice: `Top-up credited: +${(rec.amount_zat / 1e8).toFixed(4)} ${config.network === 'mainnet' ? 'ZEC' : 'TAZ'} is in your balance.` });
       } else if (before === 'awaiting' && rec.status === 'seen') {
         app.set({ notice: 'Top-up SEEN in the mempool: crediting…' });
@@ -493,6 +525,7 @@ async function notePayouts(live: Live) {
     }
   }
   if (fresh) {
+    cue('payout');
     await setLocal({ paid });
     app.set({ notice: fresh === 1 ? 'Your withdrawal was paid. The address is forgotten.' : `${fresh} withdrawals were paid. The addresses are forgotten.` });
   }
@@ -510,6 +543,7 @@ async function claimDuels(live: Live) {
     let n = 0;
     for (const f of fills) n += await wallet.duelClaim(f.duel, f.signatures);
     refreshWallet();
+    cue('duel.taken');
     app.set({ notice: `Your duel was taken: ${(n / 100_000).toFixed(4)} shares are in your slips.` });
   } catch {
     /* retried on the next poll */
@@ -545,13 +579,23 @@ export async function recoverDuel(duel: string): Promise<number> {
   return 0;
 }
 
+/** Pass a result through, sounding its cue on the way. */
+const after =
+  (c: Cue) =>
+  <T>(v: T): T => {
+    cue(c);
+    return v;
+  };
+
 export const actions = {
-  voucher: (code: string) => act('REDEEMING CODE', (w) => w.voucher(code)),
+  voucher: (code: string) => act('REDEEMING CODE', (w) => w.voucher(code)).then(after('credit')),
   buy: (market: string, outcome: 0 | 1, units: number, limitBp: number) =>
     act('PRINTING', async (w) => {
       await mixWait();
+      cue('bet.sent');
       return w.buy(market, outcome, units, limitBp);
     }).then(async (r) => {
+      cue(r.fill.out === 0 ? 'bet.unfilled' : r.fill.status === 'shrunk' ? 'bet.partial' : 'bet.filled');
       if (r.fill.out > 0) await earnStamp('FIRST SLIP');
       return r;
     }),
@@ -559,15 +603,16 @@ export const actions = {
     act('SELLING', async (w) => {
       await mixWait();
       return w.sell(market, outcome, units, limitBp);
-    }),
-  redeem: (market: string, outcome: 0 | 1) => act('CASHING IN', (w) => w.redeem(market, outcome)),
-  send: (keyset: string, units: number, paper = false) => act('PREPARING SLIPS', (w) => w.send(keyset, units, paper)),
-  reclaim: (code: string) => act('TAKING BACK', (w) => w.reclaim(code)),
-  duelOpen: (market: string, outcome: 0 | 1, shares: number, priceBp: number) => act('OPENING THE DUEL', (w) => w.duelOpen(market, outcome, shares, priceBp)),
-  duelTake: (d: { duel: string; market: string; outcome: 0 | 1; shares: number; price_bp: number; stake: number }) => act('TAKING THE DUEL', (w) => w.duelTake(d)),
-  duelCancel: (duel: string) => act('CANCELLING', (w) => w.duelCancel(duel)),
+    }).then(after('sell.filled')),
+  redeem: (market: string, outcome: 0 | 1) => act('CASHING IN', (w) => w.redeem(market, outcome)).then(after('cashin')),
+  send: (keyset: string, units: number, paper = false) => act('PREPARING SLIPS', (w) => w.send(keyset, units, paper)).then(after('slip.sent')),
+  reclaim: (code: string) => act('TAKING BACK', (w) => w.reclaim(code)).then(after('slip.back')),
+  duelOpen: (market: string, outcome: 0 | 1, shares: number, priceBp: number) => act('OPENING THE DUEL', (w) => w.duelOpen(market, outcome, shares, priceBp)).then(after('duel.opened')),
+  duelTake: (d: { duel: string; market: string; outcome: 0 | 1; shares: number; price_bp: number; stake: number }) => act('TAKING THE DUEL', (w) => w.duelTake(d)).then(after('duel.taken')),
+  duelCancel: (duel: string) => act('CANCELLING', (w) => w.duelCancel(duel)).then(after('duel.cancelled')),
   receive: (code: string) =>
     act('TAKING OVER SLIPS', (w) => w.receiveCode(code)).then(async (n) => {
+      cue('slip.received');
       await earnStamp('PASSED IN THE DARK');
       return n;
     }),
@@ -575,11 +620,12 @@ export const actions = {
    *  betting tunnel never touches it. */
   async topupStart(amountZat: number) {
     return act('OPENING THE CAGE', async (w) => {
-      if (!config.mixnet) return w.topupStart(amountZat);
+      if (!config.mixnet) return w.topupStart(amountZat).then(after('topup.opened'));
       const cage = await openCage(config.api, config.ipr);
       try {
         const rec = await new Wallet(w.data, config.m, new Api(cage, powInWorkers), (d) => vault.save(d)).topupStart(amountZat);
         cages.set(rec.id, cage);
+        cue('topup.opened');
         return rec;
       } catch (e) {
         cage.close();
@@ -597,11 +643,11 @@ export const actions = {
       } finally {
         app.set({ delayUntil: null });
       }
-      if (!config.mixnet) return w.withdraw(units, address, config.sealPk);
+      if (!config.mixnet) return w.withdraw(units, address, config.sealPk).then(after('withdraw.sent'));
       const cage = await openCage(config.api, config.ipr);
       try {
         const cw = new Wallet(w.data, config.m, new Api(cage, powInWorkers), (d) => vault.save(d));
-        return await cw.withdraw(units, address, config.sealPk);
+        return await cw.withdraw(units, address, config.sealPk).then(after('withdraw.sent'));
       } finally {
         cage.close();
       }

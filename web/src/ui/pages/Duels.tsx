@@ -12,7 +12,6 @@ import { useStore } from '../../app/store';
 import { BET_UNITS, COIN } from '../../app/config';
 import { coin, coinLabel, utc } from '../../app/format';
 import type { OpenDuel } from '../../core/api';
-import { play } from '../sound';
 
 const duelLink = (id: string) => `${location.origin}/#d=${id}`;
 
@@ -31,7 +30,6 @@ function Challenge({ d, m, mine, focus, vault }: { d: OpenDuel; m: MarketMeta | 
   const take = async () => {
     try {
       const n = await actions.duelTake(d);
-      play('stamp');
       setDone(`Taken: ${coin(n)} ${t.yours} shares are in your slips. They pay ${coin(n)} ${COIN} if ${t.yours} wins.`);
     } catch {
       /* shown */
@@ -87,7 +85,6 @@ function NewDuel({ initial, onOpened }: { initial?: { market?: string; side?: 'a
   const create = async () => {
     try {
       const d = await actions.duelOpen(m.id, outcome, shares, price * 100);
-      play('print');
       onOpened(d.duel);
     } catch {
       /* shown */

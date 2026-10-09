@@ -122,7 +122,6 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
   const takeOver = async (code: string) => {
     try {
       const n = await actions.receive(code.trim());
-      play('stamp');
       setMsg(`Taken over: ${coinLabel(n)} is yours now; the old code is void.`);
       setIncoming('');
     } catch {

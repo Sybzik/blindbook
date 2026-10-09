@@ -1,0 +1,43 @@
+/* The Bookie's booth: bottom of the right-hand column on wide desks, of the left-hand one on
+   middling desks, the MENU page on phones (Bookie.tsx, modeFor). */
+/* The stall's own colors (rig.ts PALETTE): the theme's quiet greens for the stall, the room's
+   dark for outlines, a light shirt. On paper: soft ink for the stall, dark ink for outlines. */
+.bk{--bk-line:var(--line);--bk-dim:var(--redact-screen);--bk-edge:var(--void);--bk-shirt:var(--phosphor-hi)}
+:root[data-theme="paper"] .bk{--bk-line:#C2B79D;--bk-dim:#9E937A;--bk-edge:#33433A;--bk-shirt:#FBF8F1}
+.bk{position:absolute;z-index:4;bottom:16px;display:flex;flex-direction:column;align-items:flex-end;pointer-events:none}
+.bk--full{right:26px}
+.bk--small{left:28px;align-items:flex-start}
+/* On a phone he lives on the MENU page, under the switches, in the page's own flow. */
+.bk--inline{position:relative;bottom:auto;align-items:center;margin:28px auto 8px}
+.bk--inline .bk__say::after{right:calc(50% - 6px)}
+.bk.is-leaving{animation:bk-leave 1.6s steps(8) forwards}
+@keyframes bk-leave{0%,60%{opacity:1}100%{opacity:0;transform:translateY(20px)}}
+
+.bk__body{position:relative}
+.bk__booth{pointer-events:auto;display:block;padding:0;margin:0;border:0;background:none;cursor:pointer;position:relative;line-height:0}
+/* In the shade like the wallpaper while idle (faded toward the desk, dark or paper); lit when he
+   acts, talks, or a pointer is on him. */
+.bk__booth canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;opacity:.62;filter:saturate(.75);transition:opacity .7s ease,filter .7s ease}
+.bk__booth.is-lit canvas,.bk__booth:hover canvas,.bk__booth:focus-visible canvas{opacity:1;filter:none;transition-duration:.25s}
+.bk__booth:focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+.bk__flash{position:absolute;inset:0;background:var(--phosphor-hi);opacity:.85;animation:bk-flash .18s ease-out forwards;pointer-events:none}
+@keyframes bk-flash{to{opacity:0}}
+
+.bk__x{pointer-events:auto;position:absolute;top:-6px;right:-6px;width:22px;height:22px;padding:0;border:1px solid var(--phosphor-mid);background:var(--void);color:var(--phosphor);font:14px/1 var(--font-ui);cursor:pointer;opacity:0;transition:opacity .15s}
+.bk:hover .bk__x,.bk__x:focus-visible{opacity:1}
+.bk--inline .bk__x{display:none}
+
+.bk__say{pointer-events:auto;position:relative;box-sizing:border-box;max-width:min(250px,calc(100vw - 32px));margin:0 0 12px;padding:9px 12px;background:var(--void);color:var(--phosphor-hi);border:2px solid var(--phosphor-mid);box-shadow:4px 4px 0 var(--line);font:13px/1.45 var(--font-ui);letter-spacing:.01em;cursor:pointer;min-height:2.9em}
+.bk__say::after{content:"";position:absolute;bottom:-9px;right:84px;width:12px;height:9px;background:var(--phosphor-mid);clip-path:polygon(0 0,100% 0,30% 100%)}
+/* The tail points at his head: 30 of the booth's 60 pixels in, times the scale. */
+.bk--small .bk__say::after{right:auto;left:54px}
+/* The bubble stays inside his column, clear of the windows (the stage starts 228px from the
+   right on wide desks, 8px past the icons on middling ones). */
+.bk--full .bk__say{max-width:194px}
+.bk--small .bk__say{max-width:calc(var(--desktop-icons-w) - 28px);font-size:12px}
+.bk--inline .bk__say{max-width:min(300px,calc(100vw - 48px))}
+.bk__sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+[data-signal="clean"] .bk__booth canvas{transition:none}
+@media (prefers-reduced-motion:reduce){.bk.is-leaving{animation:none}}
+@media print{.bk{display:none}}

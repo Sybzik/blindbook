@@ -22,7 +22,10 @@ import { Console } from './Console';
 import { Screensaver } from './Screensaver';
 import { runCommand, type DeskApi } from './commands';
 import { ui } from './uistate';
-import { play, setSound } from './sound';
+import { notify, play } from './sound';
+import { SoundToggle } from './SoundToggle';
+import { Bookie } from './bookie/Bookie';
+import { cue } from '../app/cues';
 
 const MAX_WINDOWS = 4;
 const IDLE_MS = 120_000;
@@ -100,6 +103,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const markets = useStore(app, (s) => s.markets);
   const clean = useStore(ui, (s) => s.clean);
   const sound = useStore(ui, (s) => s.sound);
+  const bookie = useStore(ui, (s) => s.bookie);
   const first = initial ?? (proof ? 'verify' : duel ? 'duels' : 'markets');
   const [duelDraft, setDuelDraft] = useState<{ market?: string; side?: 'a' | 'b' } | undefined>(undefined);
   const request = useStore(ui, (s) => s.request);
@@ -130,7 +134,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const notice = useStore(app, (s) => s.notice);
   useEffect(() => {
     if (!notice) return;
-    play('stamp');
+    notify();
     setToast(notice);
     const t = setTimeout(() => {
       setToast((x) => (x === notice ? null : x));
@@ -178,7 +182,6 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     addEventListener('resize', r);
     return () => removeEventListener('resize', r);
   }, []);
-  useEffect(() => setSound(sound), [sound]);
   useEffect(() => {
     if (vault === 'checking') return;
     const first = firstVault.current;
@@ -212,14 +215,6 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     setVaultWin(false);
     go(request.id);
   }, [request?.n]);
-  // The split-flap block clock clacks on every new block (when sound is on).
-  const lastHeight = useRef(0);
-  useEffect(() => {
-    if (!head) return;
-    if (lastHeight.current && head.height !== lastHeight.current) play('flap');
-    lastHeight.current = head.height;
-  }, [head?.height]);
-
   const go = (id: string) => {
     setCalled(null);
     setHint(null);
@@ -239,13 +234,14 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
       return [...n, id];
     });
     setPage(id);
-    play('click');
+    play(open.includes(id) ? 'tab' : 'open');
   };
   const openMarket = (id: string) => {
     setMid(id);
     go('market');
   };
   const close = (id: string) => {
+    play('close');
     setCalled(null);
     const rest = open.filter((p) => p !== id);
     const next = rest.length ? rest : ['markets'];
@@ -397,6 +393,11 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     };
   }, []);
 
+  // Every key on the desk clicks like a key.
+  const keyClick = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest?.('.bb-key')) play('key');
+  };
+
   const onHover = (e: React.SyntheticEvent) => {
     const el = (e.target as HTMLElement).closest?.('[data-hint]');
     if (el) setHint(el.getAttribute('data-hint'));
@@ -420,7 +421,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     const onClose = () => close(id);
     if (id === 'market') {
       if (called) return <CalledItPage slip={called} onBack={() => setCalled(null)} />;
-      return mid ? <MarketPage id={mid} onClose={onClose} onCalledIt={setCalled} /> : <MarketsIndex onOpen={openMarket} onClose={onClose} />;
+      return mid ? <MarketPage id={mid} onClose={onClose} onCalledIt={(s) => { cue('calledit'); setCalled(s); }} /> : <MarketsIndex onOpen={openMarket} onClose={onClose} />;
     }
     if (id === 'markets') return <MarketsIndex onOpen={openMarket} onClose={onClose} />;
     if (id === 'slips') return <SlipsPage onClose={onClose} />;
@@ -488,8 +489,9 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
           </span>
           <MixnetLamp state={config.mixnet ? (link === 'linking' ? 'relinking' : link) : !reachable ? 'noanswer' : config.onion ? 'tor' : 'off'} compact />
           <SplitFlap value={(head?.height ?? 0).toLocaleString('en-US')} size="sm" label="block height" />
+          <SoundToggle />
         </div>
-        <div className="pg-body" onPointerDown={onDown} onPointerUp={onUp}>
+        <div className="pg-body" onPointerDown={(e) => { keyClick(e); onDown(e); }} onPointerUp={onUp}>
           <LinkBanner short />
           {head?.halted && (
             <AlarmBanner title="SERVICE HALTED" action="" onAction={undefined}>
@@ -522,6 +524,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
                 <div className="pg-switches">
                   <ToggleSwitch label="CLEAN SIGNAL" checked={clean} onChange={(v: boolean) => ui.set({ clean: v })} />
                   <ToggleSwitch label="SOUND" checked={sound} onChange={(v: boolean) => ui.set({ sound: v })} />
+                  <ToggleSwitch label="THE BOOKIE" checked={bookie} onChange={(v: boolean) => ui.set({ bookie: v })} />
                 </div>
                 <div className="col" style={{ gap: 8 }}>
                   <KeyButton variant="secondary" icon="console" onClick={() => { setMenu(false); setCon(true); }}>CONSOLE</KeyButton>
@@ -532,6 +535,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
                   )}
                   <KeyButton variant="secondary" icon="eye" onClick={onIntro}>REPLAY INTRO</KeyButton>
                 </div>
+                <Bookie page="menu" inline />
               </section>
             )}
             {open.map((id) => (
@@ -581,7 +585,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   }
 
   return (
-    <div className={'tk-app' + (degauss ? ' tk-degauss' : '')} data-signal={clean ? 'clean' : undefined} onMouseOver={onHover} onFocus={onHover} onClick={onEggClick}>
+    <div className={'tk-app' + (degauss ? ' tk-degauss' : '')} data-signal={clean ? 'clean' : undefined} onMouseOver={onHover} onFocus={onHover} onClick={onEggClick} onPointerDown={keyClick}>
       <Wallpaper className="tk-desk">
         <DesktopIcons className="tk-icons" layout={narrow ? 'row' : 'column'} items={rail} selected={showVault ? undefined : page === 'market' ? 'markets' : page} onSelect={(id: string) => { setVaultWin(false); go(id); }} bindFKeys />
         <AppIcons className="tk-apps" layout={narrow ? 'row' : 'column'} selected={showVault ? undefined : page} onSelect={(id: string) => { setVaultWin(false); go(id); }} />
@@ -617,6 +621,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             <p className="bb-display-lg bb-glow bb-hi">NOTHING OF YOU STAYS BEHIND</p>
           </div>
         )}
+        <Bookie page={focused} />
       </Wallpaper>
       <Taskbar
         balance={vault === 'unlocked' ? coin(balance) : '—'}
@@ -632,7 +637,11 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
           setPage(id);
         }}
         startOpen={startOpen}
-        onStartToggle={setStartOpen}
+        onStartToggle={(v: boolean) => {
+          if (v) play('menu');
+          setStartOpen(v);
+        }}
+        tray={<SoundToggle />}
         startMenu={
           <StartMenu
             pages={START_PAGES}
@@ -644,6 +653,8 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             onToggleClean={(v: boolean) => ui.set({ clean: v })}
             sound={sound}
             onToggleSound={(v: boolean) => ui.set({ sound: v })}
+            bookie={bookie}
+            onToggleBookie={(v: boolean) => ui.set({ bookie: v })}
             onLock={vault === 'unlocked' ? () => { setStartOpen(false); lock(); } : undefined}
           />
         }

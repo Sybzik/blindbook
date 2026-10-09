@@ -4,6 +4,7 @@
 // tally board above the booth, the curtain (main action), a brass plaque, two paper notices.
 import React from 'react';
 import { Logo, Wordmark, MixnetLamp, SplitFlap } from '../ds';
+import { SoundToggle } from './SoundToggle';
 const LD_W = 1440, LD_H = 900;
 
 function ldFolds() {
@@ -187,7 +188,7 @@ export function Landing({ onEnter, block, markets, link, coin, prices }) {
         <div className="ld-brand"><Logo size={28} /><Wordmark height={14} /></div>
         <p className="bb-label">A PRIVATE PREDICTION MARKET ON ZCASH</p>
       </header>
-      <div className="ld-tr"><MixnetLamp state={link === 'off' || link === 'tor' ? link : link === 'linked' ? 'linked' : link === 'down' ? 'down' : 'relinking'} /><span>· BLK {block.toLocaleString('en-US')}</span></div>
+      <div className="ld-tr"><MixnetLamp state={link === 'off' || link === 'tor' ? link : link === 'linked' ? 'linked' : link === 'down' ? 'down' : 'relinking'} /><span>· BLK {block.toLocaleString('en-US')}</span><SoundToggle /></div>
     </div>
   );
 }

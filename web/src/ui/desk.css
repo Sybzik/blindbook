@@ -210,3 +210,12 @@
 
 .tk-mix{display:flex;justify-content:flex-end;margin-top:6px}
 .tk-install{padding:10px 12px;border:1px dashed var(--phosphor-mid);background:color-mix(in srgb,var(--glass) 70%,transparent)}
+
+/* The speaker: sound on or off (landing, taskbar, pager). */
+.tk-sound{display:inline-flex;align-items:center;gap:6px;min-width:28px;min-height:28px;padding:0 6px;margin:0;border:1px solid transparent;background:none;color:var(--text-dim);font:inherit;letter-spacing:.06em;cursor:pointer}
+.tk-sound.is-on{color:var(--phosphor)}
+.tk-sound:hover{border-color:var(--phosphor-mid);color:var(--phosphor-hi)}
+.tk-sound:focus-visible{outline:2px solid var(--focus-ring);outline-offset:1px}
+.bb-tray__seg--extra{padding:0 4px}
+.ld-tr .tk-sound{margin-left:6px}
+.pg-status .tk-sound{min-width:36px;min-height:36px}

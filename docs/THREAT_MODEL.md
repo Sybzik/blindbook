@@ -105,7 +105,7 @@
 | D5 | Browser history, tab titles and screen sharing reveal which markets you looked at | A7, anyone watching your screen | constant URL (navigation never touches history); the tab title is always `Blindbook`; proof links are replaced in the address bar as soon as they're opened |
 | D6 | A paper slip is photographed, or a network printer keeps a copy | A7, print infrastructure | paper slips are bearer cash: the print view says "whoever scans this owns it" and recommends a printer on your own network; importing swaps the slip at once, so the paper is void; until someone scans it, the issuer can take it back |
 | D7 | Two shared NOBODY PASS images link the same person | public | the pixel face is random per save, not derived from the vault; stamps are generic; no amounts, markets or dates on the card |
-| D8 | Back-room apps or settings leak activity | A2, A3, A6, A7 | all apps run locally with no network requests (Block Radio reads only the live feed already downloaded); **everything personal** (slips, proofs, notes, stamps, scores, P600 records, duels, handed-over codes) lives in the encrypted vault; only preferences (CLEAN SIGNAL, theme, MIX DELAY) are in plain storage |
+| D8 | Back-room apps or settings leak activity | A2, A3, A6, A7 | all apps run locally with no network requests (Block Radio reads only the live feed already downloaded); **everything personal** (slips, proofs, notes, stamps, scores, P600 records, duels, handed-over codes) lives in the encrypted vault; only preferences (CLEAN SIGNAL, theme, MIX DELAY, sound, the Bookie) are in plain storage; the Bookie and the sounds react only to the kind of event (`app/cues.ts` carries no amount or market) and make no requests |
 
 ### Integrity, custody, availability
 

@@ -1,5 +1,6 @@
-// Desk-wide UI state that is not about money: preferences (cosmetic, kept in plain storage) and
-// hand-offs between windows (the odds calculator filling the bet panel, console verbose mode).
+// Desk-wide UI state that is not about money: preferences (cosmetic, kept in plain storage: they
+// say nothing about bets or balances, THREAT_MODEL D8) and hand-offs between windows (the odds
+// calculator filling the bet panel, console verbose mode).
 
 import { createStore } from '../app/store';
 
@@ -7,7 +8,10 @@ export type Theme = 'green' | 'amber' | 'paper';
 
 export interface UiState {
   clean: boolean;
+  /** Sound effects (on unless switched off; the speaker on the landing, taskbar and pager). */
   sound: boolean;
+  /** The Bookie in his booth on the desk (ui/bookie). */
+  bookie: boolean;
   theme: Theme;
   verbose: boolean;
   /** BLOCK RADIO playing (its window must be open). */
@@ -39,7 +43,8 @@ const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduce
 
 export const ui = createStore<UiState>({
   clean: load('bb-clean', reduced),
-  sound: false,
+  sound: load('bb-sound', true),
+  bookie: load('bb-bookie', true),
   theme: load<Theme>('bb-theme', 'green'),
   verbose: false,
   radio: false,
@@ -51,6 +56,8 @@ ui.subscribe(() => {
   const s = ui.get();
   keep('bb-clean', s.clean);
   keep('bb-theme', s.theme);
+  keep('bb-sound', s.sound);
+  keep('bb-bookie', s.bookie);
 });
 
 let asks = 0;

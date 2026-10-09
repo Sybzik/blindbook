@@ -32,7 +32,6 @@ import { ToggleSwitch } from '../../ds';
 import { Qr } from '../Qr';
 import { drawCalledIt, savePng } from '../cards';
 import { openWindow, ui } from '../uistate';
-import { play } from '../sound';
 
 export interface FilledSlip {
   serial: string;
@@ -193,7 +192,6 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
     try {
       const r: TradeAnswer = await actions.buy(meta.id, side === 'a' ? 0 : 1, units, limit * 100);
       const f: FillRecord = r.fill;
-      play(f.out > 0 ? 'tear' : 'error');
       const w = currentWallet();
       const entry = w?.data.history.at(-1);
       setSlip({

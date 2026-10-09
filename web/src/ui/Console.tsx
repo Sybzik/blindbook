@@ -2,6 +2,7 @@
 // verbose crypto trace) run through the same actions as the buttons; nothing typed is stored.
 
 import { useEffect, useRef, useState } from 'react';
+import { play } from './sound';
 import { onTrace } from '../core/trace';
 import { useStore } from '../app/store';
 import { ui } from './uistate';
@@ -63,7 +64,7 @@ export function Console({ onClose, run, height = 300 }: { onClose: () => void; r
       <form className="bb-console__in" onSubmit={submit} onClick={() => inp.current?.focus()}>
         <span className="bb-console__prompt" aria-hidden="true">&gt;&nbsp;</span>
         <span className="bb-console__wrap">
-          <input ref={inp} value={val} onChange={(e) => setVal(e.target.value)} aria-label="Command" spellCheck={false} autoComplete="off" autoCapitalize="off" />
+          <input ref={inp} value={val} onChange={(e) => { setVal(e.target.value); play('type'); }} aria-label="Command" spellCheck={false} autoComplete="off" autoCapitalize="off" />
           <span className="bb-cursor bb-console__cursor" style={{ left: val.length + 'ch' }} aria-hidden="true" />
         </span>
       </form>

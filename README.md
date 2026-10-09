@@ -82,6 +82,7 @@ flowchart LR
 - **P600 · What we know about you:** the exact record the server stored for each of your requests, next to what it doesn't have.
 - **NOBODY PASS:** an anonymity card with a random face, saved as an image on your device.
 - **The console:** everything has a button, and the console reaches it by typing too. `verbose on` prints the cryptography as it happens.
+- **The Bookie:** a blindfolded bookmaker in a stall at the edge of the desk. He stamps your bets without looking, counts credit blind, rings a bell when you called it and dozes when you're away; tap him for a tip. Sound throughout, procedural, one tap to mute.
 - **The back room:** Nullifier Snake, an odds calculator, Redact-a-Tracker, Dead Drop (notes kept in your vault) and Block Radio (a chord per Zcash block). All local, nothing sent.
 
 ## Check it yourself

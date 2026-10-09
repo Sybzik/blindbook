@@ -21,6 +21,8 @@ export interface TaskbarProps {
   block?: number | string;
   /** fixed clock text for specimens; live HH:MM otherwise */
   clock?: string;
+  /** one more tray segment before the clock (the app's speaker) */
+  tray?: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -39,6 +41,9 @@ export interface StartMenuProps {
   onToggleClean?: (next: boolean) => void;
   sound?: boolean;
   onToggleSound?: (next: boolean) => void;
+  /** shows THE BOOKIE switch when onToggleBookie is set */
+  bookie?: boolean;
+  onToggleBookie?: (next: boolean) => void;
   /** shows LOCK VAULT (Esc Esc) when set */
   onLock?: () => void;
   className?: string;

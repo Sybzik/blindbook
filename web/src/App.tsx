@@ -9,7 +9,7 @@ import { app, start } from './app/services';
 import { useStore } from './app/store';
 import { COIN, config } from './app/config';
 import { ui } from './ui/uistate';
-import { play } from './ui/sound';
+import { listenToCues, play, primeAudio, setSound } from './ui/sound';
 
 // The 3D booth is its own lazy chunk; the 2D booth is the fallback (no WebGL, CLEAN SIGNAL,
 // data saver, low memory, or if the 3D scene fails).
@@ -44,6 +44,13 @@ export function App() {
   const link = useStore(app, (s) => s.link);
   const clean = useStore(ui, (s) => s.clean);
   const theme = useStore(ui, (s) => s.theme);
+  const sound = useStore(ui, (s) => s.sound);
+  // Sound follows the speaker from the landing on; the cues play their effects.
+  useEffect(() => {
+    listenToCues();
+    primeAudio();
+  }, []);
+  useEffect(() => setSound(sound), [sound]);
 
   useEffect(() => {
     void start();

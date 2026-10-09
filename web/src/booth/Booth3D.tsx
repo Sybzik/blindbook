@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Logo, MixnetLamp, Wordmark } from '../ds';
 import { createBooth, type BoothAction, type BoothData, type BoothHandle } from './scene';
 import { play } from '../ui/sound';
+import { SoundToggle } from '../ui/SoundToggle';
 
 export interface EggFacts {
   block: number;
@@ -90,6 +91,7 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
       <div className="ld-tr">
         <MixnetLamp state={link as 'linked'} />
         <span>· BLK {data.block.toLocaleString('en-US')}</span>
+        <SoundToggle />
       </div>
       <nav className="bd-keys" aria-label="Booth">
         <button type="button" onClick={() => void enter()}>STEP INSIDE · ENTER</button>

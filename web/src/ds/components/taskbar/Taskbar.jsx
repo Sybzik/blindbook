@@ -63,7 +63,7 @@ function Item({ icon, label, kbd, onClick }) {
 }
 
 /* START menu: every page, APPS, CONSOLE, REPLAY INTRO, CLEAN SIGNAL, SOUND, LOCK VAULT. */
-export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onApp, onConsole, onReplayIntro, clean = false, onToggleClean, sound = false, onToggleSound, onLock, className = '', style }) {
+export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onApp, onConsole, onReplayIntro, clean = false, onToggleClean, sound = false, onToggleSound, bookie, onToggleBookie, onLock, className = '', style }) {
   return (
     <div className={'bb-start__menu ' + className} role="menu" aria-label="Start" style={style}>
       <div className="bb-start__head"><span className="bb-start__title"><span className="bb-diamond" aria-hidden="true" />BLINDBOOK</span></div>
@@ -79,6 +79,7 @@ export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onA
         {onReplayIntro && <Item icon="eye" label="REPLAY INTRO" onClick={onReplayIntro} />}
         <div className="bb-start__switch"><ToggleSwitch label="CLEAN SIGNAL" checked={clean} onChange={onToggleClean} /></div>
         <div className="bb-start__switch"><ToggleSwitch label="SOUND" checked={sound} onChange={onToggleSound} /></div>
+        {onToggleBookie && <div className="bb-start__switch"><ToggleSwitch label="THE BOOKIE" checked={!!bookie} onChange={onToggleBookie} /></div>}
       </div>
       {onLock && <div className="bb-start__group"><Item icon="lock" label="LOCK VAULT" kbd="ESC ESC" onClick={onLock} /></div>}
     </div>
@@ -87,7 +88,7 @@ export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onA
 
 /* Taskbar: always one row, fixed height. ◆ START · one tab per open window · BAL · MIXNET lamp · BLK · clock.
    Tabs that don't fit shrink to "▤ P300" (full title stays as the accessible name); they never wrap or truncate. */
-export function Taskbar({ windows = [], focused, onWindow, startOpen = false, onStartToggle, startMenu, balance = '0.1432', unit = 'ZEC', mixnet = 'linked', block = 3514229, clock, className = '', style }) {
+export function Taskbar({ windows = [], focused, onWindow, startOpen = false, onStartToggle, startMenu, balance = '0.1432', unit = 'ZEC', mixnet = 'linked', block = 3514229, clock, tray, className = '', style }) {
   const startRef = useRef(null);
   const tabsRef = useRef(null);
   const measureRef = useRef(null);
@@ -134,6 +135,7 @@ export function Taskbar({ windows = [], focused, onWindow, startOpen = false, on
         <span className="bb-tray__seg bb-tray__seg--bal">BAL <span className="bb-tray__val">{balance} {unit}</span></span>
         <span className="bb-tray__seg"><MixnetLamp state={mixnet} /></span>
         <span className="bb-tray__seg bb-tray__seg--blk">BLK <SplitFlap value={block} size="sm" label="block height" /></span>
+        {tray && <span className="bb-tray__seg bb-tray__seg--extra">{tray}</span>}
         <span className="bb-tray__seg bb-tray__clock" aria-label={'time ' + time}>{time}</span>
       </div>
     </div>

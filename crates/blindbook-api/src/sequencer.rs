@@ -625,6 +625,9 @@ impl Sequencer {
     pub async fn run(mut self, mut rx: mpsc::Receiver<Cmd>) {
         let mut tick = tokio::time::interval(BATCH_EVERY);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // While the signer is away every block fails to close (a catch-up after a restart sends
+        // hundreds at once): one line, then one a minute with the count.
+        let mut close_failed: Option<(std::time::Instant, u64)> = None;
         loop {
             tokio::select! {
                 cmd = rx.recv() => match cmd {
@@ -634,11 +637,21 @@ impl Sequencer {
                         let r = self.execute(op).await;
                         let _ = reply.send(r);
                     }
-                    Some(Cmd::Close { height, chain }) => {
-                        if let Err(e) = self.execute(Op::Close { height, chain }).await {
-                            tracing::error!(error = %e, "closing the block failed");
+                    Some(Cmd::Close { height, chain }) => match self.execute(Op::Close { height, chain }).await {
+                        Err(e) => match &mut close_failed {
+                            Some((since, n)) if since.elapsed() < Duration::from_secs(60) => *n += 1,
+                            _ => {
+                                let more = close_failed.map_or(0, |(_, n)| n);
+                                tracing::error!(error = %e, height, more, "closing the block failed (more: failures since the last line)");
+                                close_failed = Some((std::time::Instant::now(), 0));
+                            }
+                        },
+                        Ok(_) => {
+                            if close_failed.take().is_some() {
+                                tracing::info!(height, "blocks close again");
+                            }
                         }
-                    }
+                    },
                     Some(Cmd::Event(event)) => {
                         match self.execute(Op::Record { event: event.clone() }).await {
                             Ok(done) if !matches!(done.applied, Applied::Refused(_)) => {

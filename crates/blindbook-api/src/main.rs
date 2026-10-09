@@ -5,7 +5,10 @@
 //! BB_LISTEN          listen address (default 127.0.0.1:8080; Caddy terminates TLS in front)
 //! BB_M               mint master public key M (hex), pinned in the app build
 //! BB_SIGNER_TOKEN    bearer token the signer presents on /v1/signer
-//! BB_MARKETS         JSON file: [{"slug": "...", "event_start_ms": 0?, "end_ms": 0?}]
+//! BB_MARKETS         JSON file: [{"slug": "...", "event_start_ms": 0?, "end_ms": 0?}], read again
+//!                    every minute (new markets are listed without a restart)
+//! BB_AUTO_LIST       keep at least N markets open for trading from Polymarket's candidates
+//!                    (default 0: off; src/listing.rs)
 //! BB_NETWORK         testnet (default) | mainnet: market parameters (PROTOCOL section 1)
 //! BB_POW_LIGHT       proof-of-work bits for trades, swaps, redemptions (default 16)
 //! BB_POW_HEAVY       for top-ups, vouchers, withdrawals (default 20)
@@ -25,38 +28,27 @@
 //! rules now, as entries for the markets file (`src/candidates.rs`).
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use blindbook_api::routes::PowBits;
 use blindbook_api::sequencer::{Cmd, RefFn, Shared, now_ms};
-use blindbook_api::{StartConfig, outcome_ids, start};
+use blindbook_api::{StartConfig, start};
 use blindbook_ledger::H32;
 use blindbook_ledger::delta::ChainStats;
-use blindbook_ledger::ledger::{
-    MarketEntry, MarketInputs, MarketParams, MarketStatus, Pool, Reject,
-};
+use blindbook_ledger::ledger::{MarketInputs, MarketParams, MarketStatus};
 use blindbook_ledger::ops::Op;
 use blindbook_ledger::reference::RefSnapshot;
 use blindbook_mint::cashu::PublicKey;
-use blindbook_polymarket::mirror::{Mirror, MirrorConfig};
+use blindbook_polymarket::MarketInfo;
+use blindbook_polymarket::mirror::MirrorConfig;
 use blindbook_polymarket::net::{http_client, proxy_from_env};
 use blindbook_polymarket::polygon::{DEFAULT_RPCS, PolygonReader, Settlement};
-use blindbook_polymarket::reference::{DEFAULT_GUARD_SHARES, MarketFeed};
-use blindbook_polymarket::{MarketInfo, gamma};
-use serde::Deserialize;
 use tokio::sync::{mpsc, oneshot};
 
 mod candidates;
-
-#[derive(Clone, Debug, Deserialize)]
-struct Listing {
-    slug: String,
-    /// When trading halts, if Gamma has no `gameStartTime` / `eventStartTime`.
-    event_start_ms: Option<u64>,
-    end_ms: Option<u64>,
-}
+mod listing;
 
 fn env_or(k: &str, d: &str) -> String {
     std::env::var(k).unwrap_or_else(|_| d.to_owned())
@@ -67,44 +59,6 @@ fn env_num(k: &str, d: u64) -> u64 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(d)
-}
-
-/// Fetch the catalog entries of the listed slugs; fall back to the cached copy per market.
-async fn load_catalog(
-    http: &reqwest::Client,
-    listings: &[Listing],
-    cache: &Path,
-) -> BTreeMap<H32, (MarketInfo, Listing)> {
-    let cached: BTreeMap<String, MarketInfo> = std::fs::read(cache)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default();
-    let mut out = BTreeMap::new();
-    let mut fresh = BTreeMap::new();
-    for l in listings {
-        let info = match gamma::fetch_market(http, &l.slug).await {
-            Ok(i) => i,
-            Err(e) => match cached.get(&l.slug) {
-                Some(i) => {
-                    tracing::warn!(slug = %l.slug, error = %e, "Gamma unavailable; using the cached catalog entry");
-                    i.clone()
-                }
-                None => {
-                    tracing::error!(slug = %l.slug, error = %e, "market not listed: no catalog entry");
-                    continue;
-                }
-            },
-        };
-        let Some(id) = H32::parse(&info.condition_id) else {
-            continue;
-        };
-        fresh.insert(l.slug.clone(), info.clone());
-        out.insert(id, (info, l.clone()));
-    }
-    if let Ok(bytes) = serde_json::to_vec_pretty(&fresh) {
-        let _ = std::fs::write(cache, bytes);
-    }
-    out
 }
 
 async fn op(tx: &mpsc::Sender<Cmd>, op: Op) -> Result<(), String> {
@@ -122,129 +76,6 @@ async fn op(tx: &mpsc::Sender<Cmd>, op: Op) -> Result<(), String> {
 /// Judging ends Nov 22, 2026: a market must end before (MARKETS "Listing"). `BB_JUDGING_END_MS`
 /// overrides it.
 const JUDGING_END_MS: u64 = 1_795_392_000_000;
-
-/// The listing rules (MARKETS "Listing") on the live book: wait up to a minute for outcome A's
-/// snapshot, then return what keeps the market out (empty: list it). An event start entered in
-/// the markets file stands in for Polymarket's.
-async fn listing_check(mirror: &Mirror, info: &MarketInfo, l: &Listing) -> Vec<String> {
-    let mut book = None;
-    for _ in 0..60 {
-        book = mirror.book(&info.condition_id, 0);
-        if book.is_some() {
-            break;
-        }
-        tokio::time::sleep(Duration::from_secs(1)).await;
-    }
-    let Some(book) = book else {
-        return vec!["no order book snapshot from Polymarket".into()];
-    };
-    let mut info = info.clone();
-    if l.event_start_ms.is_some() {
-        info.event_start_ms = l.event_start_ms;
-    }
-    if l.end_ms.is_some() {
-        info.end_ms = l.end_ms;
-    }
-    let judging_end = env_num("BB_JUDGING_END_MS", JUDGING_END_MS);
-    blindbook_polymarket::gamma::listing_issues(
-        &info,
-        &book,
-        blindbook_polymarket::gamma::LISTING_DEPTH_MICRO,
-        now_ms(),
-        judging_end,
-    )
-    .into_iter()
-    .map(|i| format!("{i:?}"))
-    .collect()
-}
-
-/// List every catalog market the ledger doesn't know yet and that passes the listing rules
-/// (retries until the signer is there).
-async fn list_markets(
-    tx: mpsc::Sender<Cmd>,
-    shared: Arc<Shared>,
-    m: PublicKey,
-    params: MarketParams,
-    catalog: BTreeMap<H32, (MarketInfo, Listing)>,
-    mirror: Arc<Mirror>,
-) {
-    for (id, (info, l)) in catalog {
-        let known = shared
-            .markets
-            .read()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains_key(&id);
-        if !known {
-            let issues = listing_check(&mirror, &info, &l).await;
-            if !issues.is_empty() {
-                tracing::warn!(slug = %info.slug, ?issues, "not listed: the listing rules keep it out");
-                continue;
-            }
-        }
-        loop {
-            let known = shared
-                .markets
-                .read()
-                .unwrap_or_else(|e| e.into_inner())
-                .contains_key(&id);
-            if known {
-                break;
-            }
-            let entry = MarketEntry {
-                id,
-                params,
-                event_start_ms: l.event_start_ms.or(info.event_start_ms),
-                end_ms: l.end_ms.or(info.end_ms).unwrap_or(u64::MAX),
-                pool: Pool::default(),
-                status: MarketStatus::Open,
-            };
-            match op(
-                &tx,
-                Op::ListMarket {
-                    entry,
-                    keysets: outcome_ids(&m, id),
-                },
-            )
-            .await
-            {
-                Ok(()) => {
-                    tracing::info!(slug = %info.slug, "market listed");
-                    break;
-                }
-                Err(e) if e == Reject::NotConfirmed.to_string() => {
-                    tracing::error!(
-                        slug = %info.slug,
-                        "the signer refuses the listing: its parameters aren't the signer's network's (BB_NETWORK must match on both)"
-                    );
-                    break;
-                }
-                Err(e) => {
-                    tracing::warn!(slug = %info.slug, error = %e, "listing waits for the signer");
-                    tokio::time::sleep(Duration::from_secs(5)).await;
-                }
-            }
-        }
-    }
-}
-
-/// Keep `closed` / `acceptingOrders` fresh from Gamma.
-async fn refresh_catalog(http: reqwest::Client, shared: Arc<Shared>, slugs: Vec<String>) {
-    let mut tick = tokio::time::interval(Duration::from_secs(60));
-    loop {
-        tick.tick().await;
-        for slug in &slugs {
-            if let Ok(info) = gamma::fetch_market(&http, slug).await
-                && let Some(id) = H32::parse(&info.condition_id)
-            {
-                shared
-                    .catalog
-                    .write()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(id, info);
-            }
-        }
-    }
-}
 
 /// After a market's end, read its payout from Polygon every 5 minutes; settle when both RPCs
 /// agree (MARKETS "Settlement").
@@ -326,30 +157,19 @@ async fn main() -> Result<(), String> {
         "mainnet" => MarketParams::mainnet(),
         _ => MarketParams::testnet(),
     };
-    let listings: Vec<Listing> = match std::env::var("BB_MARKETS") {
-        Ok(p) => serde_json::from_slice(&std::fs::read(&p).map_err(|e| format!("{p}: {e}"))?)
-            .map_err(|e| format!("{p}: {e}"))?,
-        Err(_) => Vec::new(),
-    };
+    let markets_file = std::env::var("BB_MARKETS").ok().map(PathBuf::from);
+    let auto_file = data.join("auto-markets.json");
+    let listings = listing::read_listings(markets_file.as_deref(), &auto_file)?;
     let http = http_client().map_err(|e| e.to_string())?;
-    let catalog = load_catalog(&http, &listings, &data.join("catalog.json")).await;
+    let cache = data.join("catalog.json");
+    let catalog = listing::load_catalog(&http, &listings, &cache).await;
     tracing::info!(markets = catalog.len(), "catalog loaded");
 
-    let feeds: Vec<MarketFeed> = catalog
-        .values()
-        .map(|(info, _)| MarketFeed {
-            condition_id: info.condition_id.clone(),
-            tokens: info.token_ids.clone(),
-            guard_micro: DEFAULT_GUARD_SHARES,
-        })
-        .collect();
-    let mirror = Arc::new(Mirror::start(
-        MirrorConfig {
-            proxy: proxy_from_env(),
-            ..MirrorConfig::default()
-        },
-        feeds,
-    ));
+    let mirrors = Arc::new(listing::Mirrors::new(MirrorConfig {
+        proxy: proxy_from_env(),
+        ..MirrorConfig::default()
+    }));
+    mirrors.add(listing::feeds(&catalog));
     let catalog_flags: Arc<RwLock<BTreeMap<H32, MarketInfo>>> = Arc::new(RwLock::new(
         catalog
             .iter()
@@ -358,11 +178,11 @@ async fn main() -> Result<(), String> {
     ));
     let shared_slot: Arc<RwLock<Option<Arc<Shared>>>> = Arc::default();
     let refs: RefFn = {
-        let mirror = mirror.clone();
+        let mirrors = mirrors.clone();
         let slot = shared_slot.clone();
         let flags = catalog_flags.clone();
         Arc::new(move |id: &H32| {
-            let reference = mirror
+            let reference = mirrors
                 .snapshot(&format!("0x{id}"))
                 .unwrap_or_else(|| RefSnapshot::empty(now_ms()));
             // Prefer the refreshed catalog in Shared; fall back to the one loaded at start.
@@ -464,19 +284,39 @@ async fn main() -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     *shared_slot.write().unwrap_or_else(|e| e.into_inner()) = Some(running.shared.clone());
 
-    tokio::spawn(list_markets(
+    let slugs = Arc::new(RwLock::new(
+        catalog
+            .values()
+            .map(|(_, l)| l.slug.clone())
+            .collect::<Vec<_>>(),
+    ));
+    tokio::spawn(listing::list_markets(
         running.tx.clone(),
         running.shared.clone(),
         m,
         params,
         catalog,
-        mirror.clone(),
+        mirrors.clone(),
     ));
-    tokio::spawn(refresh_catalog(
+    tokio::spawn(listing::refresh_catalog(
         http.clone(),
         running.shared.clone(),
-        listings.iter().map(|l| l.slug.clone()).collect(),
+        slugs.clone(),
     ));
+    tokio::spawn(listing::follow(listing::Follow {
+        http: http.clone(),
+        tx: running.tx.clone(),
+        shared: running.shared.clone(),
+        m,
+        params,
+        mirrors: mirrors.clone(),
+        slugs,
+        file: markets_file,
+        auto_file,
+        cache,
+        auto_target: env_num("BB_AUTO_LIST", 0) as usize,
+        initial: listings,
+    }));
     tokio::spawn(resolver(
         http.clone(),
         running.tx.clone(),

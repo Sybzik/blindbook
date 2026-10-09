@@ -8,6 +8,8 @@
 //! ```
 //! Markets that pass every rule except a missing event start are listed apart: the operator
 //! looks up when the outcome can become known and enters it as `event_start_ms`.
+//!
+//! [`find`] is also what `BB_AUTO_LIST` lists from (`src/listing.rs`).
 
 use blindbook_polymarket::MarketInfo;
 use blindbook_polymarket::book::Book;
@@ -84,12 +86,23 @@ fn line(m: &MarketInfo, mid: Option<u32>) -> String {
     )
 }
 
-pub async fn run(
+/// What [`find`] found: markets with outcome A's mid, the most traded first.
+pub struct Found {
+    /// Open markets read that end before judging ends.
+    pub read: usize,
+    /// They pass every rule now.
+    pub ready: Vec<(MarketInfo, Option<u32>)>,
+    /// They pass every rule but have no event start on Gamma.
+    pub need_start: Vec<(MarketInfo, Option<u32>)>,
+}
+
+/// Read open markets until `want` pass every rule (or the pages run out).
+pub async fn find(
     http: &reqwest::Client,
     now_ms: u64,
     judging_end_ms: u64,
     want: usize,
-) -> Result<(), String> {
+) -> Result<Found, String> {
     let mut ready: Vec<(MarketInfo, Option<u32>)> = Vec::new();
     let mut need_start: Vec<(MarketInfo, Option<u32>)> = Vec::new();
     let mut read = 0;
@@ -157,6 +170,25 @@ pub async fn run(
             }
         }
     }
+    Ok(Found {
+        read,
+        ready,
+        need_start,
+    })
+}
+
+/// Print what [`find`] finds, as entries for the markets file.
+pub async fn run(
+    http: &reqwest::Client,
+    now_ms: u64,
+    judging_end_ms: u64,
+    want: usize,
+) -> Result<(), String> {
+    let Found {
+        read,
+        ready,
+        need_start,
+    } = find(http, now_ms, judging_end_ms, want).await?;
     println!(
         "{read} open markets read that end between now and {} (the end of judging).",
         &iso(judging_end_ms)[..10]

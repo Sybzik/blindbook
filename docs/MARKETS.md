@@ -31,7 +31,9 @@ The operator names the markets in a JSON file (`BB_MARKETS`):
  { "slug": "fed-decision-in-october", "event_start_ms": 1793210400000 }]
 ```
 
-`event_start_ms` (and `end_ms`) are needed only when Gamma has no start time, for example for a Fed decision: trading must close when the event begins. At start, the API loads each market from Gamma, waits up to a minute for Polymarket's live order book, and **lists only the markets that pass every rule below**. A market that fails stays out, and the log line names the rule (`crates/blindbook-polymarket/src/gamma.rs`, `listing_issues`).
+`event_start_ms` (and `end_ms`) are needed only when Gamma has no start time, for example for a Fed decision: trading must close when the event begins. The API reads the file at start and **again every minute**, so a market added to it is listed without a restart (`crates/blindbook-api/src/listing.rs`). For each new market it loads Gamma's entry, starts a live mirror of its order books (the markets already listed keep theirs untouched), waits up to a minute for the books, and **lists only the markets that pass every rule below**. A market that fails stays out, and the log line names the rule (`crates/blindbook-polymarket/src/gamma.rs`, `listing_issues`); changing its entry in the file (adding an event start, say) has it checked again. A listed market's schedule is fixed in the log at listing.
+
+**Auto-listing (`BB_AUTO_LIST=N`, off by default):** the API keeps at least N markets open for trading by listing candidates that pass every rule with Polymarket's own event start (matches and games, which are public events with a clear result) and open for at least an hour, at most 2N unresolved at a time, so the reserve's buffers stay bounded. It remembers them in `auto-markets.json` in its data directory, so a restart lists them again.
 
 | Rule (checked by the API) | Why |
 |---|---|

@@ -5,7 +5,7 @@
 import type { Api } from './api';
 
 /** Deltas per segment, as the server writes them (crates/blindbook-api/src/files.rs). */
-export const SEGMENT = 128;
+export const SEGMENT = 384;
 
 interface Job {
   start: number;

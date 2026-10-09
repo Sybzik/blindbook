@@ -427,10 +427,38 @@ impl Treasury {
             return Ok(None);
         }
         let to = r0_zaddr(&self.address_of(self.reserve)?, &self.net);
+        let usk = self.usk_deposit.clone();
+        self.send_max(client, self.deposit, usk, to).await.map(Some)
+    }
+
+    /// Send everything the reserve can spend to one address (tools only: test TAZ back to a
+    /// faucet once judging is over, or out of a test install). `None` if there is nothing to send.
+    pub async fn drain(
+        &mut self,
+        client: &mut Client,
+        to: ZcashAddress,
+    ) -> Result<Option<TxId>, Error> {
+        let lock = self.lock.clone();
+        let _g = lock.lock().await;
+        if self.balances()?.reserve_spendable < 20_000 {
+            return Ok(None);
+        }
+        let usk = self.usk_reserve.clone();
+        self.send_max(client, self.reserve, usk, to).await.map(Some)
+    }
+
+    /// One transaction moving all of `from`'s spendable notes to `to`, the fee taken from them.
+    async fn send_max(
+        &mut self,
+        client: &mut Client,
+        from: zcash_client_sqlite::AccountUuid,
+        usk: UnifiedSpendingKey,
+        to: ZcashAddress,
+    ) -> Result<TxId, Error> {
         let proposal = propose_send_max_transfer::<_, _, _, std::convert::Infallible>(
             &mut self.db,
             &self.net,
-            self.deposit,
+            from,
             &[ShieldedPool::Ironwood, ShieldedPool::Orchard],
             &StandardFeeRule::Zip317,
             to,
@@ -456,13 +484,13 @@ impl Treasury {
             &mut rng,
             self.prover.as_ref(),
             self.prover.as_ref(),
-            &SpendingKeys::from_unified_spending_key(self.usk_deposit.clone()),
+            &SpendingKeys::from_unified_spending_key(usk),
             OvkPolicy::Discard,
             &proposal,
             None,
         )
         .map_err(err)?;
-        self.broadcast_all(client, txids).await.map(Some)
+        self.broadcast_all(client, txids).await
     }
 
     /// Build and store a payout without broadcasting it: up to 7 recipients, padded to exactly

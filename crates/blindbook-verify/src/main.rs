@@ -49,8 +49,9 @@ async fn fetch(source: &str, path: &str) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Deltas per segment (`segment/{k}.jsonl.gz`: deltas `k·128 + 1 ..= (k + 1)·128`, one per line).
-const SEGMENT: u64 = 128;
+/// Deltas per segment (`segment/{k}.jsonl.gz`: deltas `k·384 + 1 ..= (k + 1)·384`, one per line;
+/// the API's `files::SEGMENT`).
+const SEGMENT: u64 = 384;
 
 /// Deltas 1..=`head_seq`: whole segments where they exist, single deltas for the rest.
 async fn read_log(source: &str, head_seq: u64) -> Result<Vec<Delta>, String> {

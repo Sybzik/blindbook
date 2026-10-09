@@ -6,6 +6,9 @@
 //!                                                    judge voucher codes (give out) and hashes (signer)
 //! blindbook-signer init <dir> <birthday|tip>         seal key + treasury seed in <dir> (kept if
 //!                                                    present); prints what the API and the app pin
+//! blindbook-signer drain <dir> <address>             with the signer stopped, once the playground
+//!                                                    is closed: everything the treasury holds to
+//!                                                    one address (testnet TAZ back to a faucet)
 //! blindbook-signer run                               dial the API and serve
 //!     BB_SIGNER_KEY      file with the master secret key (hex)
 //!     BB_API_URL         wss://<api>/v1/signer (ws:// only for local tests)
@@ -179,6 +182,33 @@ async fn init(dir: &Path, birthday: &str) -> Result<(), String> {
         "reserve address (buffer funding):    {}",
         t.reserve_address().map_err(|e| e.to_string())?
     );
+    Ok(())
+}
+
+/// Send everything the treasury holds to one address. Deposits not swept yet go into the reserve
+/// first; run it again once that sweep has confirmed.
+async fn drain(dir: &Path, address: &str) -> Result<(), String> {
+    let to = zcash_address::ZcashAddress::try_from_encoded(address).map_err(|e| e.to_string())?;
+    let net = Net::parse(&std::env::var("BB_ZCASH_NET").unwrap_or_else(|_| "test".into()))?;
+    let server = std::env::var("BB_LWD").unwrap_or_else(|_| "zecrocks".into());
+    let mut t = open_treasury(dir, net, &server, None).await?;
+    let mut c = blindbook_indexer::follow::connect(&server)
+        .await
+        .map_err(|e| e.to_string())?;
+    t.sync(&mut c).await.map_err(|e| e.to_string())?;
+    let b = t.balances().map_err(|e| e.to_string())?;
+    println!(
+        "spendable: deposits {} zat, reserve {} zat",
+        b.deposit_spendable, b.reserve_spendable
+    );
+    if let Some(txid) = t.sweep(&mut c).await.map_err(|e| e.to_string())? {
+        println!("deposits swept into the reserve ({txid}); run drain again once it has confirmed");
+        return Ok(());
+    }
+    match t.drain(&mut c, to).await.map_err(|e| e.to_string())? {
+        Some(txid) => println!("sent: {txid}"),
+        None => println!("nothing to send"),
+    }
     Ok(())
 }
 
@@ -377,9 +407,10 @@ async fn main() {
             Err(_) => Err("n must be a number".into()),
         },
         ["init", dir, birthday] => init(Path::new(dir), birthday).await,
+        ["drain", dir, address] => drain(Path::new(dir), address).await,
         ["run"] => serve().await,
         _ => Err(
-            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> | init <dir> <birthday|tip> | run".into(),
+            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> | init <dir> <birthday|tip> | drain <dir> <address> | run".into(),
         ),
     };
     if let Err(e) = r {

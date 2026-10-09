@@ -6,6 +6,7 @@
 //!   sweep                     deposits → reserve
 //!   payout <addr> <zat> ...   up to 7 recipients, 8 Ironwood actions, OVK discarded
 //!   anchor <memo>             zero-value self-payment with a memo
+//!   drain <addr>              everything the reserve can spend → one address (sweep first)
 //! ```
 
 use blindbook_indexer::follow::{connect, tip};
@@ -63,6 +64,11 @@ async fn main() {
             println!("payout: {:?}", tr.payout(&mut c, &rec).await);
         }
         "anchor" => println!("anchor: {:?}", tr.anchor(&mut c, &a[4]).await),
+        "drain" => println!(
+            "drain: {:?}",
+            tr.drain(&mut c, ZcashAddress::try_from_encoded(&a[4]).unwrap())
+                .await
+        ),
         other => println!("unknown command {other}"),
     }
 }

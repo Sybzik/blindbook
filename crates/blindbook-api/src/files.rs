@@ -12,8 +12,9 @@ use flate2::write::GzEncoder;
 
 /// Deltas per segment. `segment/{k}.jsonl.gz` holds deltas `k·SEGMENT + 1 ..= (k + 1)·SEGMENT`,
 /// one per line, each byte for byte as in `delta/`, and is written once the last of them exists:
-/// a client reads a long log in a few hundred requests instead of one per block.
-pub const SEGMENT: u64 = 128;
+/// a client reads a long log in a few hundred requests instead of one per block. 384 blocks are
+/// about 2 h 40 min at NU7's 25-second blocks (8 h at the 75 s before it).
+pub const SEGMENT: u64 = 384;
 
 pub struct Files {
     root: PathBuf,

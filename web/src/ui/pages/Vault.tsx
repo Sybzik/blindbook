@@ -217,6 +217,7 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
   return shell(
     'VAULT · RESTORED',
     <div className="col" style={{ gap: 12 }}>
+      <p className="bb-label" style={{ margin: 0 }}>REBUILT FROM THE PUBLIC LOG · THE SERVER WAS ASKED NOTHING</p>
       <LeaderRow label="SLIPS FOUND" value={summary?.slips ?? 0} tone="hi" />
       <LeaderRow label="TRADES FOUND" value={summary?.trades ?? 0} />
       <LeaderRow label="FREE BALANCE" value={coinLabel(summary?.balance ?? 0)} />

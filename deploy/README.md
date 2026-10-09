@@ -23,19 +23,23 @@ What the configuration guarantees, and where:
 - Check that VPS-1 can read Polymarket: `curl -s 'https://gamma-api.polymarket.com/markets?limit=1'` must return JSON.
 - On testnet, about 2 TAZ for the reserve (market buffers and judge codes; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
 
-## 2. Build the image (on both servers)
+## 2. The image (on both servers)
+
+From the machine that holds the repository, ship the image and each server's Compose files over SSH:
 
 ```sh
-git clone <repository> blindbook && cd blindbook
-docker build -f deploy/Dockerfile -t blindbook:latest .
+sh deploy/ship.sh root@<vps-1> api        # builds blindbook:latest here first if needed
+sh deploy/ship.sh root@<vps-2> signer
 ```
+
+The servers then need no Rust build (slow on 2 vCPUs; 2 GB of memory can run out while linking) and no access to the repository (it can stay private). Everything below runs in `~/blindbook/deploy/<api|signer>` on the server; env files, keys and data are made there and never shipped. Run `ship.sh … api` again after section 6 to send the .onion build. With the repository at hand on a server, building there works too: `docker build -f deploy/Dockerfile -t blindbook:latest .` from its root.
 
 The image holds `blindbook-api`, `blindbook-signer` and `blindbook-verify`, built from the locked dependencies, and runs as an unprivileged user (uid 10001).
 
 ## 3. Keys (on VPS-2)
 
 ```sh
-cd deploy/signer
+cd ~/blindbook/deploy/signer
 cp signer.env.example signer.env        # fill in BB_API_URL and BB_SIGNER_TOKEN (below)
 mkdir -p secrets data && sudo chown -R 10001:10001 secrets data && sudo chmod 700 secrets
 
@@ -53,7 +57,7 @@ openssl rand -hex 32                     # the signer token: put it in signer.en
 ## 4. VPS-1: the API
 
 ```sh
-cd deploy/api
+cd ~/blindbook/deploy/api
 cp api.env.example api.env               # BB_SITES, BB_M, BB_SIGNER_TOKEN, BB_RESERVE_BIRTHDAY, BB_VOUCHER_UNITS
 mkdir -p config data && sudo chown -R 10001:10001 data
 # config/deposit-uivk.txt : the deposit UIVK printed by init
@@ -71,7 +75,7 @@ Until the signer connects, the API logs that it can't close blocks or list marke
 ## 5. VPS-2: the signer
 
 ```sh
-cd deploy/signer
+cd ~/blindbook/deploy/signer
 docker compose up -d
 docker compose logs -f signer            # "signer ready"; the API logs that it admitted the signer
 ```
@@ -92,7 +96,7 @@ BB_API_ORIGIN=https://api.example.org BB_APP_ORIGIN=https://example.org \
 - Upload `deploy/web/site/` to the static host (Cloudflare Pages, Netlify or any host that serves `_headers`; otherwise set the same headers there: `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors 'self'`, and `Cache-Control: public, max-age=31536000, immutable` on `/assets/*`). The static host sees that an address loaded the app, never what it does (THREAT_MODEL N7). The long cache matters: the mixnet worker's code (`assets/nym-worker-*.js`, 3.8 MB gzip) is loaded by a worker the service worker can't serve, so the browser's own cache must keep it, or every visit would fetch it again from the host.
 - Leave the host's page-rewriting features off: on Cloudflare, Web Analytics, Rocket Loader, Auto Minify, Email Obfuscation and bot challenges inject scripts or rewrite the HTML (the CSP blocks them and the subresource integrity fails); on Netlify, snippet injection and analytics scripts. The leak check against the deployed app catches any of them.
 - Publish `deploy/web/site/SHA256SUMS` with the release. Two builds of one commit give the same hashes, so anyone can compare what the host serves with the source.
-- Copy `deploy/api/onion-site/` to VPS-1 (`deploy/api/onion-site`) and restart Caddy; the .onion address is `docker compose exec tor cat /var/lib/tor/blindbook/hostname`. If the VPS's network blocks Tor (`docker compose logs tor` stays at "Stuck at 10%"), add bridges to `tor/torrc`.
+- Send the .onion build to VPS-1 with `sh deploy/ship.sh root@<vps-1> api` (it carries `deploy/api/onion-site/`) and restart Caddy there (`docker compose restart caddy`); the .onion address is `docker compose exec tor cat /var/lib/tor/blindbook/hostname`. If the VPS's network blocks Tor (`docker compose logs tor` stays at "Stuck at 10%"), add bridges to `tor/torrc`.
 - Optional: our own Nym exit (IP packet router) if public exits prove unreliable; pin it with `BB_IPR=<address>` at build time.
 
 ## 7. Check it

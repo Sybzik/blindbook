@@ -58,6 +58,8 @@ export interface AppState {
   linkTrouble: 'browser' | 'unreachable' | null;
   head?: Head;
   live?: Live;
+  /** When the poll that brought `live` was sent (this device's clock). */
+  liveSent: number;
   markets: MarketMeta[];
   series: Record<string, Point[]>;
   /** Price history of every market, from the one file every visitor downloads. */
@@ -88,6 +90,7 @@ export interface AppState {
 export const app = createStore<AppState>({
   link: 'linking',
   linkTrouble: null,
+  liveSent: 0,
   markets: [],
   series: {},
   prices: {},
@@ -175,6 +178,7 @@ let missed = 0;
 
 async function pollLive() {
   try {
+    const sent = Date.now();
     const live = await api.live();
     const series = { ...app.get().series };
     for (const m of live.markets) {
@@ -183,7 +187,7 @@ async function pollLive() {
       series[m.id] = s.slice(-240);
     }
     missed = 0;
-    app.set({ live, series, ...(app.get().reachable ? {} : { reachable: true }) });
+    app.set({ live, liveSent: sent, series, ...(app.get().reachable ? {} : { reachable: true }) });
     void claimDuels(live);
     void notePayouts(live);
     void pollTopups();

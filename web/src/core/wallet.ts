@@ -111,6 +111,8 @@ export interface MyDuel {
   counter: number;
   secret: string;
   at_ms: number;
+  /** When the server confirmed the offer (this device's clock). */
+  opened_ms?: number;
   status: 'open' | 'taken' | 'cancelled';
 }
 
@@ -548,6 +550,7 @@ export class Wallet {
         { duel: { id: duel, action: 'open' } },
       );
       const got = receive(r.signatures, { change: chg.pending }, this.keysets(this.credit));
+      d.opened_ms = Date.now();
       await this.commit(inputs, got, { at_ms: Date.now(), kind: 'duel_open', stored: r.stored_record });
       return d;
     } catch (e) {

@@ -128,6 +128,7 @@ function NewDuel({ initial, onOpened }: { initial?: { market?: string; side?: 'a
 
 export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; focus?: string; initial?: { market?: string; side?: 'a' | 'b' } }) {
   const live = useStore(app, (s) => s.live);
+  const liveSent = useStore(app, (s) => s.liveSent);
   const markets = useStore(app, (s) => s.markets);
   const vault = useStore(app, (s) => s.vault);
   const mine = useStore(app, (s) => s.duels);
@@ -192,7 +193,8 @@ export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; fo
           {[...mine].reverse().map((d) => {
             const m = markets.find((x) => x.id === d.market);
             const t = terms(d, m, d.outcome);
-            const stillOpen = live?.duels.some((x) => x.duel === d.duel);
+            // Just opened and the last feed was asked for before that: it is on the board, not yet in our copy.
+            const stillOpen = live?.duels.some((x) => x.duel === d.duel) || (d.status === 'open' && d.opened_ms !== undefined && liveSent < d.opened_ms + 1_500);
             return (
               <div key={d.duel} className="tk-duel">
                 <p className="bb-label" style={{ margin: 0 }}>{m ? `${m.page} · ${m.question}` : d.market.slice(0, 10)} · {utc(d.at_ms)}</p>

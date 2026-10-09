@@ -20,6 +20,8 @@ export type LinkState = 'linking' | 'linked' | 'relinking' | 'down';
 const DB_PREFIX = 'wasm-client-storage-';
 export const BOOT_DEADLINE_MS = 20_000;
 export const SETUP_DEADLINE_MS = 25_000;
+/** Failed rounds of racing tunnels after which the network is probably what blocks the link. */
+export const UNREACHABLE_AFTER = 3;
 
 /** Delete every mixnet identity an older build left in IndexedDB (this one keeps them in memory). */
 export async function cleanupIdentities(): Promise<void> {
@@ -125,18 +127,25 @@ export class DeadlineError extends Error {
   }
 }
 
+/** The mixnet client is WebAssembly in a worker: a browser without either (iPhone Lockdown Mode
+ *  turns WebAssembly off) can never link, so it doesn't try. */
+export const mixnetSupported = () => typeof WebAssembly === 'object' && typeof Worker === 'function';
+
 /** The main transport: one live tunnel, one warm spare, replaced on any missed deadline. */
 export class MixnetTransport implements Transport {
   private live?: Tunnel;
   private spare?: Tunnel;
   /** The link attempt in progress: requests made meanwhile all wait for this one. */
   private linking?: Promise<void>;
+  private failedRounds = 0;
   private listeners = new Set<(s: LinkState) => void>();
   state: LinkState = 'linking';
 
   constructor(
     private api: string,
     private ipr?: string,
+    /** Told when UNREACHABLE_AFTER rounds in a row have failed (true), and when a link comes up after that (false). */
+    private onUnreachable?: (yes: boolean) => void,
   ) {}
 
   onState(f: (s: LinkState) => void): () => void {
@@ -158,6 +167,10 @@ export class MixnetTransport implements Transport {
 
   /** Link (or wait for the attempt already under way). */
   boot(): Promise<void> {
+    if (!mixnetSupported()) {
+      this.set('down');
+      return Promise.reject(new Error('this browser cannot run the mixnet client (no WebAssembly)'));
+    }
     return this.link(() => this.race());
   }
 
@@ -181,13 +194,18 @@ export class MixnetTransport implements Transport {
         loser.destroy();
         this.spare?.destroy();
         this.spare = new Tunnel(this.ipr);
+        if (this.failedRounds >= UNREACHABLE_AFTER) this.onUnreachable?.(false);
+        this.failedRounds = 0;
         this.set('linked');
         return;
       } catch {
         a.destroy();
         b.destroy();
+        if (++this.failedRounds === UNREACHABLE_AFTER) this.onUnreachable?.(true);
         this.set('down');
-        await new Promise((r) => setTimeout(r, 2_000));
+        // 2 s, then twice as long after every failed round, up to a minute: a network that blocks
+        // the mixnet shouldn't make a phone start two WebAssembly clients every two seconds.
+        await new Promise((r) => setTimeout(r, Math.min(60_000, 2_000 * 2 ** Math.min(this.failedRounds - 1, 5))));
         this.set('relinking');
       }
     }
@@ -257,6 +275,7 @@ export class MixnetTransport implements Transport {
 
 /** A one-off tunnel with its own identity for a top-up or a withdrawal (the "cage"). */
 export async function openCage(api: string, ipr?: string): Promise<Transport & { close(): void }> {
+  if (!mixnetSupported()) throw new Error('this browser cannot run the mixnet client (no WebAssembly)');
   const t = new Tunnel(ipr);
   await t.ready;
   const tr: Transport & { close(): void } = {

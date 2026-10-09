@@ -59,6 +59,37 @@ const TELETEXT: Record<string, [string, string]> = {
   '0': ['CREDITS', 'Built on Zcash and librustzcash, the Nym mixnet, Cashu\'s blind signatures, Polymarket\'s public data and Polygon. Thank you to everyone who keeps shielded money honest, including the researchers who find the bugs.'],
 };
 
+/** The mixnet's state when it isn't linked, and what to do about it once the reason is clear. */
+function LinkBanner({ short = false }: { short?: boolean }) {
+  const link = useStore(app, (s) => s.link);
+  const trouble = useStore(app, (s) => s.linkTrouble);
+  if (!config.mixnet || (link !== 'down' && !trouble)) return null;
+  const tor = config.onionUrl ? (
+    <>
+      {' '}Or open the .onion mirror in Tor Browser: <span className="bb-hi" style={{ wordBreak: 'break-all' }}>{config.onionUrl}</span>
+    </>
+  ) : (
+    ' Or open the .onion mirror in Tor Browser.'
+  );
+  if (trouble === 'browser')
+    return (
+      <AlarmBanner title="THIS BROWSER CAN'T RUN THE MIXNET" action="" onAction={undefined}>
+        Its client needs WebAssembly, which is turned off here (iPhone Lockdown Mode does that: in Safari, aA › Website Settings turns it off for this site). Nothing is sent without the mixnet.{tor}
+      </AlarmBanner>
+    );
+  if (trouble === 'unreachable')
+    return (
+      <AlarmBanner title="THE MIXNET CAN'T BE REACHED FROM HERE" action="" onAction={undefined}>
+        Still trying, and your balance is safe. Some networks (offices, hotels, some countries) block its connections: another network or mobile data usually works.{tor}
+      </AlarmBanner>
+    );
+  return (
+    <AlarmBanner title="MIXNET LINK LOST" action="" onAction={undefined}>
+      {short ? 'Reconnecting… trading is locked; your balance is safe.' : 'Reconnecting… your balance is safe. Trading is locked until the link is back; nothing is ever sent around the mixnet.'}
+    </AlarmBanner>
+  );
+}
+
 export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proof?: string; duel?: string; onIntro: () => void }) {
   const vault = useStore(app, (s) => s.vault);
   const link = useStore(app, (s) => s.link);
@@ -459,11 +490,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
           <SplitFlap value={(head?.height ?? 0).toLocaleString('en-US')} size="sm" label="block height" />
         </div>
         <div className="pg-body" onPointerDown={onDown} onPointerUp={onUp}>
-          {config.mixnet && link === 'down' && (
-            <AlarmBanner title="MIXNET LINK LOST" action="" onAction={undefined}>
-              Reconnecting… trading is locked; your balance is safe.
-            </AlarmBanner>
-          )}
+          <LinkBanner short />
           {head?.halted && (
             <AlarmBanner title="SERVICE HALTED" action="" onAction={undefined}>
               Your slips keep their value; trading resumes once it is resolved.
@@ -559,11 +586,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
         <DesktopIcons className="tk-icons" layout={narrow ? 'row' : 'column'} items={rail} selected={showVault ? undefined : page === 'market' ? 'markets' : page} onSelect={(id: string) => { setVaultWin(false); go(id); }} bindFKeys />
         <AppIcons className="tk-apps" layout={narrow ? 'row' : 'column'} selected={showVault ? undefined : page} onSelect={(id: string) => { setVaultWin(false); go(id); }} />
         <div className="tk-stage">
-          {config.mixnet && link === 'down' && (
-            <AlarmBanner title="MIXNET LINK LOST" action="" onAction={undefined}>
-              Reconnecting… your balance is safe. Trading is locked until the link is back; nothing is ever sent around the mixnet.
-            </AlarmBanner>
-          )}
+          <LinkBanner />
           {head?.halted && (
             <AlarmBanner title="SERVICE HALTED" action="" onAction={undefined}>
               The server stopped itself after a consistency check. Your slips keep their value; trading resumes once it is resolved.

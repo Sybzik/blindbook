@@ -17,6 +17,8 @@ export const config = {
   /** The .onion mirror: plain requests to its own origin, carried by Tor. */
   onion: (env.VITE_BB_ONION as string | undefined) === '1',
   ipr: env.VITE_BB_IPR as string | undefined,
+  /** The .onion mirror's address, offered when the mixnet can't link (optional). */
+  onionUrl: (env.VITE_BB_ONION_URL as string | undefined) || undefined,
   network: ((env.VITE_BB_NETWORK as string | undefined) ?? 'testnet') as 'testnet' | 'mainnet',
   dev: !!env.DEV,
 };

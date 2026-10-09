@@ -9,7 +9,7 @@ import { SEGMENT, deltaTexts } from '../core/log';
 import { yOf } from '../core/blind';
 import { IdbStore, Vault, newMnemonic, seedFromMnemonic, type Wrap } from '../vault/vault';
 import { createPasskey, prfSupported, unlockPasskey } from '../vault/passkey';
-import { MixnetTransport, cleanupIdentities, openCage, type LinkState } from '../net/mixnet';
+import { MixnetTransport, cleanupIdentities, mixnetSupported, openCage, type LinkState } from '../net/mixnet';
 import { powInWorkers } from '../net/powpool';
 import { config } from './config';
 import { createStore } from './store';
@@ -51,6 +51,10 @@ export type VaultState = 'checking' | 'none' | 'locked' | 'unlocked';
 
 export interface AppState {
   link: LinkState;
+  /** Why the mixnet can't link, once that's clear: this browser can't run its client (no
+   *  WebAssembly: iPhone Lockdown Mode), or several rounds of tunnels in a row never answered
+   *  (a network that blocks it, or Nym down). */
+  linkTrouble: 'browser' | 'unreachable' | null;
   head?: Head;
   live?: Live;
   markets: MarketMeta[];
@@ -82,6 +86,7 @@ export interface AppState {
 
 export const app = createStore<AppState>({
   link: 'linking',
+  linkTrouble: null,
   markets: [],
   series: {},
   prices: {},
@@ -273,11 +278,12 @@ export async function start() {
   started = true;
   if (config.mixnet) {
     await cleanupIdentities();
-    const mt = new MixnetTransport(config.api, config.ipr);
+    const mt = new MixnetTransport(config.api, config.ipr, (yes) => app.set({ linkTrouble: yes ? 'unreachable' : null }));
     mt.onState((s) => app.set({ link: s }));
     transport = mt;
     api = new Api(transport, powInWorkers);
-    void mt.boot();
+    if (mixnetSupported()) void mt.boot();
+    else app.set({ link: 'down', linkTrouble: 'browser' });
   } else {
     transport = new DirectTransport(config.api);
     api = new Api(transport, powInWorkers);

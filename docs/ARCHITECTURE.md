@@ -1,7 +1,7 @@
 # Architecture
 
-> **Privacy is trustless. Custody is verifiable.**
-> Nobody can link a bet to a person, or a payout to a bet: not chain observers, not network observers, not exchanges, and **not us**. That holds by construction, not by promise. What you do trust us with (holding funds) anyone can check at any time.
+> **Privacy by construction. Custody is verifiable.**
+> Nobody can link a bet to a person, or a payout to a bet: not chain observers, not network observers, not exchanges, and **not us**. That rests on construction (shielded payments, blind signatures, a mixnet), not on a promise; what remains is in the residual risks of [THREAT_MODEL.md](THREAT_MODEL.md). What you do trust us with (holding funds) anyone can check at any time.
 
 Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.md](MARKETS.md) (Polymarket data and settlement), [THREAT_MODEL.md](THREAT_MODEL.md).
 

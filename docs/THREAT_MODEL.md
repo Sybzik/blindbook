@@ -133,7 +133,7 @@
 
 1. **Small anonymity sets at low volume.** "Someone bet 0.01 ZEC on YES" stands out more when few people bet. It is still never tied to an identity, and later actions stay unlinkable.
 2. **Mistakes outside our system:** malware, a shared phrase, a wallet without network privacy. We warn and can't undo.
-3. **Custody is verifiable, not trustless.** Zcash has no smart contracts. Theft would be visible immediately; deanonymization isn't possible at all.
+3. **Custody is verifiable, not trustless.** Zcash has no smart contracts. Theft would be visible immediately; deanonymization isn't possible from anything the servers hold (the code the app is served as is covered by D3).
 4. **Nym dependency** for network privacy. If it's unavailable we stop rather than leak. Nym's directory API and the entry gateway see that your IP runs a Nym client in a browser (N5), as with any mixnet or Tor use; they never see that it's Blindbook (`Origin: null`) or what you do.
 5. **First load of the app.** A static host (not us) sees an IP opening a web app. Use the .onion mirror for zero exposure.
 6. **Single signer.** The signer runs on its own VPS with no inbound ports, separate from the public API. A compromise of that one machine would put funds at risk (never privacy). Production removes the single point with FROST 2-of-3.

@@ -62,14 +62,14 @@ flowchart LR
 | **Funding** | Who paid? | a shielded Ironwood top-up to a one-time address nobody can recognize as ours |
 | **Positions** | Who holds what? | Chaumian e-cash: blind-signed bearer slips, so even we can't link a top-up, a bet and a payout |
 | **Payout** | Where did the money go? | fixed-shape shielded payouts with a discarded outgoing viewing key; the address is sealed to an isolated signer and forgotten |
-| **Network** | Who is online? | every request goes through the Nym mixnet, so no IP reaches us; money in and out uses a separate mixnet identity; everyone downloads the same public files; no CDN, analytics or Polymarket request from the browser |
+| **Network** | Who is online? | every API call goes through the Nym mixnet, so no IP reaches our servers; money in and out uses a separate mixnet identity; everyone downloads the same public files; no CDN, analytics or Polymarket request from the browser. The app itself loads from a static host, which sees only that an IP opened a web app (or use the .onion mirror) |
 | **Device** | What's on your phone? | an encrypted vault (Face ID on phones, a passphrase on computers), 12 words as the backup, and a restore that asks the server nothing |
 
 | Public | Never public |
 |---|---|
 | prices, volumes, every batch's orders and fills (participants redacted), every slip issued and spent, the reserve, payout totals | who you are, which bets are yours, your balance, your top-up and payout addresses, your IP |
 
-**Privacy is trustless. Custody is verifiable.** The internet-facing server holds no secrets. Every known leak, who could see it and what closes it is in the [threat model](docs/THREAT_MODEL.md).
+**The server can't see who you are, and custody is verifiable.** The internet-facing server holds no secrets. Every known leak, who could see it and what closes it is in the [threat model](docs/THREAT_MODEL.md).
 
 ## What you can do
 
@@ -135,7 +135,7 @@ Open http://127.0.0.1:5173, make a vault, redeem `DEV-0001` in F3 CAGE → JUDGE
 cargo test --workspace && cargo test -p blindbook-api --features embedded-signer
 ```
 
-The development build talks to the server directly. The production build (`VITE_BB_MIXNET=1`) sends every request through the Nym mixnet.
+The development build talks to the server directly. The production build (`VITE_BB_MIXNET=1`) sends every API request through the Nym mixnet.
 
 ## Docs
 

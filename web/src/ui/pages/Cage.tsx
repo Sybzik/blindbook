@@ -58,7 +58,7 @@ function Preflight({ amount, onReady }: { amount: string; onReady: (ok: boolean)
   return (
     <div>
       <PreflightChecklist items={items} statuses={statuses} />
-      {done && real[0] === 'fail' && config.dev && <p className="bb-conditions">Development build: requests go straight to the server. Production sends every request through the mixnet and stops here if it is down.</p>}
+      {done && real[0] === 'fail' && config.dev && <p className="bb-conditions">Development build: requests go straight to the server. Production sends every API request through the mixnet and stops here if it is down.</p>}
       {done && !backedUp && (
         <p className="bb-conditions">
           Your 12 words are not confirmed yet{testnet ? ' (fine for testnet play)' : ''}.{' '}

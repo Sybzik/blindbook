@@ -244,6 +244,16 @@ export class Wallet {
   }
 
   /** Settle requests in doubt from the public log; returns how many were settled. */
+  /** Requests settled since the last call whose slips were spent while not one of the outputs
+   *  they asked for was signed (THREAT_MODEL I12). */
+  private redirected = 0;
+
+  takeRedirected(): number {
+    const n = this.redirected;
+    this.redirected = 0;
+    return n;
+  }
+
   async settleDoubts(): Promise<number> {
     const doubts = (this.data.inflight ?? []).filter((f) => f.doubt);
     if (doubts.length === 0) return 0;
@@ -272,6 +282,14 @@ export class Wallet {
       const wentThrough = got.length > 0 || d.inputs.some((p) => spent.has(yOf(p.secret)));
       if (!wentThrough && head.seq < d.seq + SETTLE_BLOCKS) continue;
       this.data.inflight = (this.data.inflight ?? []).filter((x) => x.id !== d.id);
+      // Spent, yet not one of the outputs it asked for signed: the signer signs them in the same
+      // batch (a duel's shares come at the take), so the request was changed on its way.
+      const redirected = wentThrough && got.length === 0 && d.outs.some((o) => o.n > 0) && d.duel?.action !== 'open';
+      if (redirected) {
+        this.redirected++;
+        d.entry = { ...d.entry, stored: { ...d.entry.stored, outputs_never_signed: true } };
+        trace(() => `doubt  ALARM: the slips were spent but none of the requested outputs was signed`);
+      }
       if (wentThrough) {
         if (d.duel?.action === 'cancel') this.data.duels = (this.data.duels ?? []).map((x) => (x.duel === d.duel!.id ? { ...x, status: 'cancelled' as const } : x));
         if (d.code) this.data.outbox = (this.data.outbox ?? []).filter((o) => o.code !== d.code);

@@ -11,7 +11,7 @@ Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.
 2. **Five independent privacy layers.** Each closes one question on its own.
 3. **Never degrade silently.** If a privacy layer is down, the UI says so and stops.
 4. **Publish everything except people.** Prices, volumes, issuance, reserves and payout totals are public. Addresses, transactions and identities are not.
-5. **Internet-facing code holds no secrets.** A fully compromised API leaks no identities and can't move money.
+5. **Internet-facing code holds no secrets.** A fully compromised API leaks no identities and can't move the reserve's money; the most it can do is redirect requests that pass through it while it is compromised, which the public log shows ([THREAT_MODEL](THREAT_MODEL.md) I12).
 6. **No targeted queries, anywhere.** Download everything, filter locally.
 7. **Anonymous by default, provable by choice.** The user, and only the user, decides what to reveal.
 8. **Clarity over cleverness.** The retro look never hides what a button does or what a price means.
@@ -278,7 +278,7 @@ Polymarket data and Polygon settlement are always the real mainnet ones; only th
 
 The configuration for all of it is in [`deploy/`](../deploy/README.md): one image for the three binaries, a Compose file per server, the Caddy and Tor configuration, and the two app builds (mixnet and .onion), each pinning the deployment's own keys.
 
-Compromising the public server, or even its hosting provider, gives an attacker neither keys nor funds. **The API can't log requests:** whatever the log configuration says, its filter switches the HTTP stack's logging off, the handlers never see a client address, and a test fails if the code ever reads one, reads a proxy header or adds request tracing. The reverse proxy runs without an access log. Next production step: FROST 2-of-3 across independent signers.
+Compromising the public server, or even its hosting provider, gives an attacker no key, no way to identify anyone and no way into the reserve; what it could do to requests passing through it meanwhile is THREAT_MODEL I12. **The API can't log requests:** whatever the log configuration says, its filter switches the HTTP stack's logging off, the handlers never see a client address, and a test fails if the code ever reads one, reads a proxy header or adds request tracing. The reverse proxy runs without an access log. Next production step: FROST 2-of-3 across independent signers.
 
 ## Tech stack
 

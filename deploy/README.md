@@ -98,7 +98,7 @@ BB_API_ORIGIN=https://api.example.org BB_APP_ORIGIN=https://example.org \
 
 ## 7. Check it
 
-Tested end to end on Oct 8 with both stacks in Docker on one machine (testnet, live Polymarket data): keys, treasury and judge codes made with the commands above; the signer admitted; two markets listed by the rules (one kept out for having no start time); a judge code typed in lower case with spaces redeemed in 0.5 s; a bet filled in 1 s at the quoted share count and published in the next block; both verifiers green on the log, and the command-line one correctly failing the on-chain reserve check of the unfunded test reserve; Caddy answering writes with `Connection: close`, without a `Server` header, 404 outside `/v1/`, and never resuming a TLS session; the leak check clean against the deployed app.
+Tested end to end on Oct 8 with both stacks in Docker on one machine (testnet, live Polymarket data): keys, treasury and judge codes made with the commands above; the signer admitted; two markets listed by the rules (one kept out for having no start time); a judge code typed in lower case with spaces redeemed in 0.5 s; a bet filled in 1 s at the quoted share count and published in the next block; both verifiers green on the log, and the command-line one correctly failing the on-chain reserve check of the unfunded test reserve; Caddy answering writes with `Connection: close`, without a `Server` header, 404 outside `/v1/`, and never resuming a TLS session; the leak check clean against the deployed app. On Oct 9 the API ran natively against the same signer and data: an entry edited in the markets file and a new slug were listed within a minute without a restart, and `BB_AUTO_LIST=6` listed two matches on its own, each with a live reference.
 
 ```sh
 curl -s https://api.example.org/v1/head                      # height, seq, root, pow_bits
@@ -107,6 +107,17 @@ docker run --rm blindbook:latest blindbook-verify <M> https://api.example.org --
 ```
 
 Then open the app from a clean browser: the lamp turns LINKED, a judge code adds balance, a bet prints a slip, F4 VERIFY shows all checks green, and a CALLED IT link opened elsewhere says VERIFIED. The leak check runs against the deployed app too: `APP=https://example.org CHROME_PATH=<chrome> node web/scripts/leakcheck.mjs`.
+
+**On an iPhone** (ROADMAP Gate 2), in Safari, then again from the home screen. Note the seconds and screenshot anything that looks wrong:
+
+1. Open the app's address. Time from opening the page to the lamp showing **LINKED** (target: under 20 s).
+2. **STEP INSIDE**, make a vault with **Face ID**, and stamp the 12 words.
+3. `CAGE` → **JUDGE CODE**: paste a code from `voucher-codes.txt`. The balance appears.
+4. Open a market, **BUY**. Time from pressing BUY to the printed slip (target: 3 s typical, 6 s at most).
+5. On the slip, **CALLED IT** → copy the link → open it on another device: `VERIFIED ✓`.
+6. Share → **Add to Home Screen** and open it from there. The installed app has its own storage, separate from Safari's: choose **RESTORE FROM 12 WORDS**, type them, and the balance and the slip come back from the public log (the server is asked nothing). Set Face ID there, close the app, reopen it, unlock with Face ID.
+7. Lock the phone for a minute and come back: the lamp relinks by itself and trading unlocks.
+8. Mainnet instance only: `CAGE` → **TOP UP** with ~0.001 ZEC; the address opens Zodl through its deep link; the top-up is credited within seconds.
 
 ## The mainnet proof
 
@@ -124,3 +135,4 @@ The same build with micro stakes, next to the playground on the same two servers
 - **Markets during judging (Oct 29 – Nov 22):** a market must end before judging ends, so new ones have to follow as others close. The API reads `config/markets.json` again every minute: find new ones with `docker compose run --rm api blindbook-api candidates`, add their slugs, and they are checked against the rules and listed, with no restart (keep the slugs of markets still open or unresolved in the file). `BB_AUTO_LIST=6` in `api.env` makes the API keep at least six markets open by itself, from the same candidates (matches and games with Polymarket's own start time); each open market ties up 0.05 TAZ of the reserve's buffer, at most twice that many at a time. A plan that keeps the playground useful for the whole period: a few markets that stay open for weeks (questions that resolve in the second half of November, with `event_start_ms` at the moment the answer can become known, or at the end for a "by <date>" question), the headline events inside the window (the US midterm elections on Nov 3), and same-day matches refreshed every few days. `docker compose logs api` names every market a rule kept out.
 - **Judge codes:** give out the codes from `voucher-codes.txt`; to revoke unused ones after judging, remove their hashes from `voucher-hashes.txt` and restart the signer.
 - **Logs** hold the service's own events (markets listed, blocks, payouts, errors), never a request.
+- **Watching it from outside:** `/v1/head` is public and the same for everyone, so any uptime monitor can poll it: the height should grow about every 75 s (it stops when the signer is away) and `halted` should stay `false`. A monitor learns nothing about users from it: it reads what every visitor reads.

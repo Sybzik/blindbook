@@ -156,6 +156,12 @@ async function settleDoubts(seq: number) {
       refreshWallet();
       app.set({ notice: `Settled from the public log: ${n === 1 ? 'a request that got no answer' : n + ' requests that got no answer'}. Your balance is up to date.` });
     }
+    if (wallet.takeRedirected() > 0) {
+      app.set({
+        error:
+          'A request was changed on its way: the public log shows the slips it spent, and not one of the slips it asked for was signed. An honest server cannot do that. Nothing about you was revealed; the record is in your history (P600).',
+      });
+    }
   } catch {
     /* retried with the next block */
   } finally {

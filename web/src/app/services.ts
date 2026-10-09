@@ -402,6 +402,7 @@ const PLAIN: Record<string, string> = {
   supply_guard: 'Withdrawals are paused while the operator checks the books. Your slips keep their value.',
   unavailable: 'The service is busy for a moment. Nothing was spent; try again.',
   busy: 'Too many requests right now. Nothing was spent; try again in a moment.',
+  malformed_answer: "The server answered in a form this app doesn't understand. Nothing was spent.",
   'malformed code': 'That is not a judge code. Codes look like BB-XXXX-XXXX-XXXX-XXXX.',
   'claim hash already used': 'That top-up request clashed with another. Nothing was paid; start the top-up again.',
   'proof-of-work': 'The request was malformed. Nothing was spent.',

@@ -169,8 +169,12 @@ export class Api {
   ) {}
 
   async head(): Promise<Head> {
-    this.headCache = check<Head>(await this.transport.request('GET', '/v1/head'));
-    return this.headCache;
+    const h = check<Head>(await this.transport.request('GET', '/v1/head'));
+    // Everything else counts on these numbers: an answer of another shape stops here.
+    if (!h || !Number.isSafeInteger(h.height) || !Number.isSafeInteger(h.seq) || typeof h.root !== 'string' || !Number.isInteger(h.pow_bits?.light) || !Number.isInteger(h.pow_bits?.heavy))
+      throw new ApiError(502, 'malformed_answer');
+    this.headCache = h;
+    return h;
   }
 
   /** The log's head seq as last seen (0 before the first head). */

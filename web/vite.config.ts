@@ -1,39 +1,116 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { defineConfig, type Plugin } from 'vite';
+import { fileURLToPath } from 'node:url';
+import { build, defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 /**
- * Production Content-Security-Policy (THREAT_MODEL N5, D3).
- * - connect-src: our own origin (the API is reached only through the mixnet, whose traffic leaves
- *   the browser as WebSocket frames to the entry gateway), plus the Nym directory the mixnet client
- *   bootstraps from. Nothing else: no CDN, font, analytics or Polymarket request is possible.
- * - worker-src blob: and 'wasm-unsafe-eval': mix-fetch runs its WASM in a worker built from a blob.
- * - frame-src 'self': the disposable tunnel frames are same-origin pages.
+ * Production Content-Security-Policy (THREAT_MODEL N5, D3), one per page.
+ * - The app (index.html) connects only to its own origin: the API is reached through the tunnel
+ *   frames, and nothing else (no CDN, font, analytics or Polymarket request) is possible.
+ *   'wasm-unsafe-eval' runs the engine's WebAssembly in the verifier; frame-src 'self' allows the
+ *   tunnel frames.
+ * - A tunnel frame (tunnel.html) runs the mixnet client: its worker starts from a data: URL and
+ *   loads its code from our own host (opaqueMixnetWorkerPlugin below), and it connects only to
+ *   Nym's directory API and, over WebSocket, to the entry gateway. That worker has an opaque
+ *   origin, and Safari reads 'self' in its policy as that opaque origin, so the app's own origins
+ *   (VITE_BB_APP_ORIGIN) are named explicitly.
  * Injected only into the production build; the dev server needs looser rules for hot reload.
  */
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'wasm-unsafe-eval'",
-  "worker-src 'self' blob:",
-  "connect-src 'self' wss: https://validator.nymtech.net",
-  "img-src 'self' data: blob:",
-  "style-src 'self'",
-  "font-src 'self'",
-  "frame-src 'self'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-  // frame-ancestors only works as an HTTP header: the server sends it (deploy/Caddyfile).
-].join('; ');
-
 function cspPlugin(): Plugin {
+  const common = ["default-src 'self'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"];
+  let appOrigins = '';
   return {
     name: 'blindbook-csp',
     apply: 'build',
-    transformIndexHtml(html) {
-      return html.replace('<!--CSP-->', `<meta http-equiv="Content-Security-Policy" content="${CSP}">`);
+    configResolved(c) {
+      appOrigins = appOriginsOf(c.env);
+    },
+    transformIndexHtml(html, ctx) {
+      const policy = ctx.path.endsWith('tunnel.html')
+        ? [...common, `script-src 'self'${appOrigins ? ' ' + appOrigins : ''} 'wasm-unsafe-eval'`, 'worker-src data:', 'connect-src wss: https://validator.nymtech.net', "img-src 'none'", "style-src 'none'", "font-src 'none'", "frame-src 'none'"]
+        : [...common, "script-src 'self' 'wasm-unsafe-eval'", "worker-src 'self'", "connect-src 'self'", "img-src 'self' data: blob:", "style-src 'self'", "font-src 'self'", "frame-src 'self'"];
+      // frame-ancestors only works as an HTTP header: the static host and Caddy send it.
+      return html.replace('<!--CSP-->', `<meta http-equiv="Content-Security-Policy" content="${policy.join('; ')}">`);
+    },
+  };
+}
+
+/** The origins the app is served from (VITE_BB_APP_ORIGIN: one or more, separated by spaces or commas). */
+function appOriginsOf(env: Record<string, string | undefined>): string {
+  const list = (env.VITE_BB_APP_ORIGIN ?? '').split(/[\s,]+/).filter(Boolean);
+  for (const o of list) if (!/^https?:\/\/[a-z0-9.-]+(:\d+)?$/i.test(o)) throw new Error(`VITE_BB_APP_ORIGIN: "${o}" is not an origin like https://example.org`);
+  return list.join(' ');
+}
+
+/**
+ * The mixnet worker runs with an opaque origin (THREAT_MODEL N5, N12). mix-tunnel starts its worker
+ * from a blob of our own origin, so the browser would label the worker's request to Nym's directory
+ * API and its WebSocket to the entry gateway with `Origin: <the app's site>`: both would learn which
+ * site the user is on. Here the worker starts from a data: URL instead (an opaque origin, so the
+ * browser sends `Origin: null`) whose only line imports the worker's code from our own host:
+ * assets/nym-worker-<hash>.js, mix-tunnel's worker as its own file. (Safari won't let an
+ * opaque-origin worker run code from a blob, so the code can't be handed over in memory.) An opaque
+ * origin has no IndexedDB, so that file starts with an in-memory one (src/net/memidb.ts) and the
+ * mixnet identity never reaches the disk. The build fails if mix-tunnel's worker loader changes
+ * shape.
+ */
+function opaqueMixnetWorkerPlugin(): Plugin {
+  let memIdb: Promise<string> | undefined;
+  const bundleMemIdb = async () => {
+    const out = await build({
+      configFile: false,
+      logLevel: 'silent',
+      build: {
+        write: false,
+        emptyOutDir: false,
+        minify: true,
+        target: 'es2022',
+        lib: { entry: fileURLToPath(new URL('./src/net/memidb.ts', import.meta.url)), formats: ['iife'], name: 'bbMemIdb' },
+      },
+    });
+    const chunk = (Array.isArray(out) ? out[0] : out) as { output: { type: string; code?: string }[] };
+    return chunk.output.find((o) => o.type === 'chunk')!.code!;
+  };
+  // Runs where mix-tunnel's factory ran: a classic worker from a data: URL that imports the code.
+  const factory = `
+function bbOpaqueWorkerFactory(path) {
+  return function WorkerFactory(options) {
+    var boot = 'importScripts(' + JSON.stringify(new URL(path, location.href).href) + ');';
+    return new Worker('data:text/javascript,' + encodeURIComponent(boot), options);
+  };
+}
+`;
+  let building = false;
+  let devSource: Buffer = Buffer.alloc(0);
+  return {
+    name: 'bb-opaque-mixnet-worker',
+    enforce: 'pre',
+    configResolved(c) {
+      building = c.command === 'build';
+    },
+    async transform(code, id) {
+      if (!/@nymproject[\\/+]mix-tunnel/.test(id) || !code.includes('createBase64WorkerFactory')) return;
+      const m = code.match(/createBase64WorkerFactory\('([A-Za-z0-9+/=]+)', null, false\)/);
+      if (!m) throw new Error('@nymproject/mix-tunnel changed its worker loader: the opaque-origin worker can no longer be set up');
+      // The text its own loader would run (base64 to a binary string, first line dropped), as the
+      // UTF-8 bytes its blob would have held.
+      const raw = Buffer.from(m[1]!, 'base64').toString('latin1');
+      const source = Buffer.from((await (memIdb ??= bundleMemIdb())) + ';\n' + raw.substring(raw.indexOf('\n', 10) + 1), 'utf8');
+      // Build: an asset named by its hash. Dev: served by the middleware below.
+      let path = '/@bb/nym-worker.js';
+      if (building) {
+        path = '/assets/nym-worker-' + createHash('sha256').update(source).digest('hex').slice(0, 10) + '.js';
+        this.emitFile({ type: 'asset', fileName: path.slice(1), source });
+      } else devSource = source;
+      return { code: code.replace(m[0], `bbOpaqueWorkerFactory(${JSON.stringify(path)})`) + factory, map: null };
+    },
+    configureServer(server) {
+      server.middlewares.use('/@bb/nym-worker.js', (_req, res) => {
+        res.setHeader('content-type', 'text/javascript');
+        res.end(devSource);
+      });
     },
   };
 }
@@ -48,7 +125,9 @@ function serviceWorkerPlugin(): Plugin {
     name: 'blindbook-sw',
     apply: 'build',
     generateBundle(_, bundle) {
-      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map'));
+      // The mixnet worker's code is loaded by a worker with an opaque origin, which the service
+      // worker never sees: the browser's HTTP cache keeps it (`_headers`: immutable).
+      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !f.startsWith('assets/nym-worker-'));
       const shell = ['/', '/index.html', '/tunnel.html', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
       const list = [...new Set([...shell, ...files.map((f) => '/' + f)])];
       const version = createHash('sha256').update(list.join(' ')).update(JSON.stringify(Object.values(bundle).map((b) => ('code' in b ? b.code.length : 0)))).digest('hex').slice(0, 16);
@@ -120,15 +199,16 @@ function pinnedKeysPlugin(): Plugin {
       const onion = c.env.VITE_BB_ONION === '1';
       if (mixnet && onion) throw new Error('a build is either for the mixnet or for the .onion mirror');
       if (!mixnet && !onion) return;
-      // The .onion build talks to its own origin; the mixnet build to the API's address.
-      const missing = ['VITE_BB_M', 'VITE_BB_SEAL_PK', ...(mixnet ? ['VITE_BB_API'] : [])].filter((k) => !c.env[k]);
+      // The .onion build talks to its own origin; the mixnet build to the API's address, from tunnel
+      // frames whose policy names the app's origins (cspPlugin).
+      const missing = ['VITE_BB_M', 'VITE_BB_SEAL_PK', ...(mixnet ? ['VITE_BB_API', 'VITE_BB_APP_ORIGIN'] : [])].filter((k) => !c.env[k]);
       if (missing.length) throw new Error(`a ${mixnet ? 'mixnet' : '.onion'} build needs ${missing.join(', ')} (never the devserver's test keys)`);
     },
   };
 }
 
 export default defineConfig({
-  plugins: [react(), pinnedKeysPlugin(), cspPlugin(), serviceWorkerPlugin(), integrityPlugin()],
+  plugins: [react(), opaqueMixnetWorkerPlugin(), pinnedKeysPlugin(), cspPlugin(), serviceWorkerPlugin(), integrityPlugin()],
   build: {
     target: 'es2022',
     sourcemap: false,
@@ -148,4 +228,6 @@ export default defineConfig({
     proxy: { '/v1': 'http://127.0.0.1:8090', '/dev': 'http://127.0.0.1:8090' },
   },
   worker: { format: 'es' },
+  // Not pre-bundled, so the dev server applies opaqueMixnetWorkerPlugin too.
+  optimizeDeps: { exclude: ['@nymproject/mix-fetch', '@nymproject/mix-tunnel'] },
 });

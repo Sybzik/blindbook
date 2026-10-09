@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { APP_ICONS, AlarmBanner, AppIcons, DesktopIcons, KeyButton, MixnetLamp, PixelIcon, SplitFlap, StartMenu, Taskbar, TeletextHeader, ToggleSwitch, Wallpaper } from '../ds';
-import { WinCtx, HINTS, Win } from './win';
+import { WinCtx, HINTS, Win, WindowGuard } from './win';
 import { app, lockVault } from '../app/services';
 import { useStore } from '../app/store';
 import { COIN, config } from '../app/config';
@@ -509,7 +509,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             )}
             {open.map((id) => (
               <div key={id === 'market' ? 'market:' + mid : id} className="tk-win" hidden={menu || showVault || id !== page}>
-                {render(id)}
+                <WindowGuard title={titleOf(id)} onClose={() => close(id)}>{render(id)}</WindowGuard>
               </div>
             ))}
           </WinCtx.Provider>
@@ -573,7 +573,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             {showVault && <VaultWindow key={vault} onOpen={() => setVaultWin(false)} onDismiss={() => setVaultWin(false)} />}
             {open.map((id) => (
               <div key={id === 'market' ? 'market:' + mid : id} className="tk-win" hidden={showVault || id !== page}>
-                {render(id)}
+                <WindowGuard title={titleOf(id)} onClose={() => close(id)}>{render(id)}</WindowGuard>
               </div>
             ))}
           </WinCtx.Provider>

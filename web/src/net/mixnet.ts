@@ -1,10 +1,13 @@
 // The mixnet transport (PROTOCOL section 4, THREAT_MODEL N1–N13).
 //
 // - Every tunnel runs in its own hidden same-origin frame (tunnel.html), with a fresh random
-//   mixnet identity; its IndexedDB database is deleted when the frame goes, and leftovers are
-//   deleted at boot.
-// - Boot races two tunnels and keeps the first that answers GET /v1/head within 8 s: about a
-//   third of random routes come up "ready" and never answer (spikes/a-mixnet).
+//   mixnet identity held only in its worker's memory (the worker has an opaque origin, so Nym's
+//   directory and gateway never see the app's site). Identities an older build stored in
+//   IndexedDB are deleted at boot.
+// - Boot races two tunnels and keeps the first that answers GET /v1/head within 20 s: about a
+//   third of random routes come up "ready" and never answer, and a healthy one can take 3 to 20 s
+//   for its first request (TCP and TLS inside the tunnel; spikes/a-mixnet).
+// - The app talks to each frame over its own MessageChannel (see tunnel.ts).
 // - Every request has an app-level deadline (mix-fetch has none). A tunnel that misses one is
 //   replaced while the lamp shows RELINKING, and a warm spare is kept so the swap is instant.
 // - Top-ups and withdrawals use a separate "cage" tunnel, opened for one operation and destroyed.
@@ -15,17 +18,17 @@ import { randomBytes, toHex } from '../core/bytes';
 export type LinkState = 'linking' | 'linked' | 'relinking' | 'down';
 
 const DB_PREFIX = 'wasm-client-storage-';
-export const BOOT_DEADLINE_MS = 8_000;
+export const BOOT_DEADLINE_MS = 20_000;
 export const SETUP_DEADLINE_MS = 25_000;
 
-/** Delete every mixnet identity left behind by an earlier session. */
+/** Delete every mixnet identity an older build left in IndexedDB (this one keeps them in memory). */
 export async function cleanupIdentities(): Promise<void> {
   try {
     for (const db of await indexedDB.databases()) {
       if (db.name?.startsWith(DB_PREFIX)) indexedDB.deleteDatabase(db.name);
     }
   } catch {
-    // indexedDB.databases() is missing on some browsers; per-frame deletion still runs.
+    // indexedDB.databases() is missing on some browsers: nothing to clean there.
   }
 }
 
@@ -41,7 +44,7 @@ class Tunnel {
   private next = 1;
   private waiting = new Map<number, Waiting>();
   readonly ready: Promise<void>;
-  private onMsg: (e: MessageEvent) => void;
+  private port: MessagePort;
 
   constructor(ipr?: string) {
     this.frame = document.createElement('iframe');
@@ -57,8 +60,9 @@ class Tunnel {
       readyRej = rej;
     });
     const t = setTimeout(() => readyRej(new Error('tunnel setup timed out')), SETUP_DEADLINE_MS);
-    this.onMsg = (e: MessageEvent) => {
-      if (e.source !== this.frame.contentWindow || e.origin !== location.origin) return;
+    const channel = new MessageChannel();
+    this.port = channel.port1;
+    this.port.onmessage = (e: MessageEvent) => {
       const d = e.data as { type: string; id?: number; status?: number; text?: string; bytes?: Uint8Array; error?: string };
       if (d.type === 'ready') {
         clearTimeout(t);
@@ -74,7 +78,14 @@ class Tunnel {
         else w.resolve({ status: d.status ?? 0, text: d.text, bytes: d.bytes });
       }
     };
-    addEventListener('message', this.onMsg);
+    // The frame's end of the channel goes over once tunnel.html has loaded (its module script, which
+    // waits for it, has run by then).
+    const handOver = () => {
+      if (!this.frame.contentWindow?.location.href.includes('/tunnel.html')) return;
+      this.frame.removeEventListener('load', handOver);
+      this.frame.contentWindow.postMessage({ type: 'port' }, location.origin, [channel.port2]);
+    };
+    this.frame.addEventListener('load', handOver);
     document.body.appendChild(this.frame);
   }
 
@@ -95,21 +106,16 @@ class Tunnel {
           reject(e);
         },
       });
-      this.frame.contentWindow?.postMessage({ type: 'req', id, method, url, body, bytes }, location.origin);
+      this.port.postMessage({ type: 'req', id, method, url, body, bytes });
     });
   }
 
   destroy() {
-    removeEventListener('message', this.onMsg);
-    try {
-      this.frame.contentWindow?.postMessage({ type: 'close' }, location.origin);
-    } catch {
-      /* the frame may already be gone */
-    }
+    this.port.postMessage({ type: 'close' });
+    this.port.close();
     for (const w of this.waiting.values()) w.reject(new Error('tunnel closed'));
     this.waiting.clear();
     this.frame.remove();
-    setTimeout(() => indexedDB.deleteDatabase(DB_PREFIX + this.cid), 1_000);
   }
 }
 
@@ -123,6 +129,8 @@ export class DeadlineError extends Error {
 export class MixnetTransport implements Transport {
   private live?: Tunnel;
   private spare?: Tunnel;
+  /** The link attempt in progress: requests made meanwhile all wait for this one. */
+  private linking?: Promise<void>;
   private listeners = new Set<(s: LinkState) => void>();
   state: LinkState = 'linking';
 
@@ -142,8 +150,19 @@ export class MixnetTransport implements Transport {
     this.listeners.forEach((f) => f(s));
   }
 
+  /** One link attempt at a time, whoever asks. */
+  private link(run: () => Promise<void>): Promise<void> {
+    this.linking ??= run().finally(() => (this.linking = undefined));
+    return this.linking;
+  }
+
+  /** Link (or wait for the attempt already under way). */
+  boot(): Promise<void> {
+    return this.link(() => this.race());
+  }
+
   /** Race two tunnels; keep the first that answers /v1/head in time. */
-  async boot(): Promise<void> {
+  private async race(): Promise<void> {
     this.set(this.live ? 'relinking' : 'linking');
     for (;;) {
       const a = new Tunnel(this.ipr);
@@ -159,8 +178,8 @@ export class MixnetTransport implements Transport {
         const loser = winner === a ? b : a;
         this.live?.destroy();
         this.live = winner;
-        // Keep the loser as the spare only if it came up too; otherwise start a fresh one.
         loser.destroy();
+        this.spare?.destroy();
         this.spare = new Tunnel(this.ipr);
         this.set('linked');
         return;
@@ -174,38 +193,45 @@ export class MixnetTransport implements Transport {
     }
   }
 
-  private async relink(): Promise<void> {
-    this.set('relinking');
-    const spare = this.spare;
-    this.spare = undefined;
-    this.live?.destroy();
-    this.live = undefined;
-    if (spare) {
-      try {
-        await Promise.race([spare.ready, new Promise((_, rej) => setTimeout(() => rej(new Error('spare not ready')), 3_000))]);
-        const r = await spare.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
-        if (r.status === 200) {
-          this.live = spare;
-          this.spare = new Tunnel(this.ipr);
-          this.set('linked');
-          return;
+  /** Replace a tunnel that missed a deadline with the spare, or link anew. A failure on a tunnel
+   *  that has already been replaced changes nothing. */
+  private relink(failed: Tunnel): Promise<void> {
+    if (this.live !== failed) return this.linking ?? Promise.resolve();
+    return this.link(async () => {
+      this.set('relinking');
+      const spare = this.spare;
+      this.spare = undefined;
+      this.live?.destroy();
+      this.live = undefined;
+      if (spare) {
+        try {
+          await Promise.race([spare.ready, new Promise((_, rej) => setTimeout(() => rej(new Error('spare not ready')), 3_000))]);
+          const r = await spare.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
+          if (r.status === 200) {
+            this.live = spare;
+            this.spare = new Tunnel(this.ipr);
+            this.set('linked');
+            return;
+          }
+        } catch {
+          /* replaced below */
         }
-      } catch {
         spare.destroy();
       }
-    }
-    await this.boot();
+      await this.race();
+    });
   }
 
   private async call(method: 'GET' | 'POST', path: string, body: string | undefined, bytes: boolean, deadline: number) {
     for (let attempt = 0; ; attempt++) {
       if (!this.live) await this.boot();
+      const tunnel = this.live!;
       try {
-        return await this.live!.fetch(method, this.api + path, body, bytes, deadline);
+        return await tunnel.fetch(method, this.api + path, body, bytes, deadline);
       } catch (e) {
         // A write that missed its deadline may still have been processed: never resend it here;
         // the caller decides (the wallet recovers by restore). Reads are retried on a new tunnel.
-        await this.relink();
+        await this.relink(tunnel);
         if (method === 'POST' || attempt >= 1) throw e;
       }
     }

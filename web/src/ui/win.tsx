@@ -1,6 +1,6 @@
 // Every page window floats on the desktop: draggable, resizable, the hint strip at the bottom.
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { Component, createContext, useContext, type ReactNode } from 'react';
 import { KeyButton, TerminalWindow } from '../ds';
 import { openWindow } from './uistate';
 import { app } from '../app/services';
@@ -83,4 +83,30 @@ export function DoubtLine() {
       {n === 1 ? 'A request' : `${n} requests`} got no answer, so the public log is checked with each new block. The slips involved are held back until it shows what happened; nothing is lost.
     </p>
   );
+}
+
+/** A window whose page throws while rendering shows what happened in its own frame; the desk,
+ *  the other windows and the vault carry on (a malformed answer from the server, or a bug). */
+export class WindowGuard extends Component<{ title: ReactNode; onClose: () => void; children?: ReactNode }, { error: string | null }> {
+  override state = { error: null as string | null };
+
+  static getDerivedStateFromError(e: unknown) {
+    return { error: String((e as Error)?.message ?? e).slice(0, 200) };
+  }
+
+  override render() {
+    if (this.state.error === null) return this.props.children;
+    return (
+      <Win title={this.props.title} onClose={this.props.onClose} maxWidth={560}>
+        <p className="bb-display-md bb-alarm">THIS WINDOW STOPPED</p>
+        <p className="bb-text" style={{ marginTop: 12 }}>
+          Something it was showing didn't make sense ({this.state.error}). Your vault and your slips are untouched, and the other windows keep working.
+        </p>
+        <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+          <KeyButton onClick={() => this.setState({ error: null })}>TRY AGAIN</KeyButton>
+          <KeyButton variant="secondary" onClick={this.props.onClose}>CLOSE</KeyButton>
+        </div>
+      </Win>
+    );
+  }
 }

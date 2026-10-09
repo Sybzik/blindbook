@@ -3,8 +3,14 @@
 // JavaScript realm, so every tunnel lives in a frame like this one, the main tunnel included, and
 // a stuck tunnel is replaced by a new frame without reloading the app.
 //
-// The identity is random per frame (clientId + storage passphrase, passed in the URL fragment,
-// which never leaves the browser) and its IndexedDB database is deleted when the frame goes.
+// The mixnet worker runs with an opaque origin (vite.config.ts, opaqueMixnetWorkerPlugin): Nym's
+// directory API and the entry gateway see `Origin: null`, never the app's site. Its identity is
+// random per frame and lives only in the worker's memory, gone with the frame.
+//
+// The app talks to the frame over a MessageChannel whose port it hands over once the frame has
+// loaded: a port can't be forged or overheard, and it doesn't depend on how a browser labels a
+// message's source (Safari names the parent page as the source of a message this frame sends
+// from a promise callback).
 
 import { disconnectMixTunnel, mixFetch, setupMixTunnel } from '@nymproject/mix-fetch';
 
@@ -21,6 +27,15 @@ const clientId = params.get('cid') ?? '';
 const storagePassphrase = params.get('pw') ?? '';
 const preferredIpr = params.get('ipr') || undefined;
 
+const port = new Promise<MessagePort>((resolve) => {
+  addEventListener('message', function onPort(e: MessageEvent) {
+    if (e.origin !== location.origin || (e.data as { type?: string } | null)?.type !== 'port' || !e.ports[0]) return;
+    removeEventListener('message', onPort);
+    resolve(e.ports[0]);
+  });
+});
+const send = (m: unknown, transfer: Transferable[] = []) => void port.then((p) => p.postMessage(m, transfer));
+
 async function serve(r: Req) {
   try {
     const res = await mixFetch(r.url, {
@@ -32,22 +47,23 @@ async function serve(r: Req) {
     } as RequestInit);
     if (r.bytes) {
       const buf = new Uint8Array(await res.arrayBuffer());
-      parent.postMessage({ type: 'res', id: r.id, status: res.status, bytes: buf }, location.origin, [buf.buffer]);
+      send({ type: 'res', id: r.id, status: res.status, bytes: buf }, [buf.buffer]);
     } else {
-      parent.postMessage({ type: 'res', id: r.id, status: res.status, text: await res.text() }, location.origin);
+      send({ type: 'res', id: r.id, status: res.status, text: await res.text() });
     }
   } catch (e) {
-    parent.postMessage({ type: 'res', id: r.id, error: String((e as Error)?.message ?? e) }, location.origin);
+    send({ type: 'res', id: r.id, error: String((e as Error)?.message ?? e) });
   }
 }
 
-addEventListener('message', (e: MessageEvent) => {
-  if (e.origin !== location.origin || e.source !== parent) return;
-  const d = e.data as { type: string } & Req;
-  if (d.type === 'req') void serve(d);
-  if (d.type === 'close') void disconnectMixTunnel().catch(() => undefined);
+void port.then((p) => {
+  p.onmessage = (e: MessageEvent) => {
+    const d = e.data as { type: string } & Req;
+    if (d.type === 'req') void serve(d);
+    if (d.type === 'close') void disconnectMixTunnel().catch(() => undefined);
+  };
 });
 
 setupMixTunnel({ clientId, storagePassphrase, preferredIpr })
-  .then(() => parent.postMessage({ type: 'ready' }, location.origin))
-  .catch((e: unknown) => parent.postMessage({ type: 'failed', error: String((e as Error)?.message ?? e) }, location.origin));
+  .then(() => send({ type: 'ready' }))
+  .catch((e: unknown) => send({ type: 'failed', error: String((e as Error)?.message ?? e) }));

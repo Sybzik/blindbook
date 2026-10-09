@@ -93,7 +93,7 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
    - **desktop:** a QR code generated locally.
 4. Our indexer and the signer's independent indexer both see the payment **in the mempool** within seconds (about 1 s after the wallet broadcasts, measured on testnet).
    - Small top-ups are credited at once (0-conf), within house-insured caps.
-   - Bigger ones are credited after 1 confirmation (~1–2.5 min).
+   - Bigger ones are credited after 1 confirmation (about 25–75 s on testnet, where a block comes every 25 s since NU7; ~1–2.5 min on mainnet until NU7 activates there).
 5. The signer blind-signs the CREDIT outputs, and the browser unblinds them. You now hold a **private balance**: bearer CREDIT slips that only your device knows about.
 
 ## Where your balance lives (and why it isn't an account)
@@ -153,7 +153,7 @@ Sell, swap, transfer and redeem work the same way and take seconds.
   - discarded outgoing viewing key;
   - the signer forgets the destination after broadcast.
 
-  Total time: ~2–4 minutes.
+  Total time: about 1–2 minutes on testnet (the next payout block, then its confirmation in your wallet).
 - **Unsafe addresses are rejected:** transparent and Sapling-only addresses (pool crossing would publish the amount).
 
 ## "Called it": anonymous by default, provable by choice
@@ -231,13 +231,13 @@ From Polymarket we take three things:
 
 | Action | Typical |
 |---|---|
-| App start: mixnet link | 10–14 s typical, hidden in the boot animation; up to ~35 s when the first routes are dead and get replaced (two tunnels race at boot) |
+| App start: mixnet link | 6–14 s typical (6–9 s measured on Oct 9 in Chromium, Firefox and WebKit), hidden in the boot animation; up to ~35 s when the first routes are dead and get replaced (two tunnels race at boot) |
 | **Top up within the 0-conf cap** (wallet send → balance) | **~15–40 s**, almost all of it the wallet building and proving its transaction; SEEN arrives ~1 s after its broadcast |
-| Top up above the cap | ~1–2.5 min (1 confirmation) |
+| Top up above the cap | ~25–75 s on testnet (1 confirmation, 25-second blocks) |
 | **Bet / sell / buy more** | **~2–3 s** with the connection the last poll opened (≈ 0.9 s request + ≤ 2 s batch window + signing in ms); **4–6 s** when a write has to open a fresh TCP+TLS connection inside the tunnel (≈ +2 s) |
 | Swap / transfer a slip | ~1–3 s |
 | Redeem after resolution | ~2–5 s |
-| Withdraw → in your wallet | ~2–4 min, plus a separate mixnet tunnel (10–14 s) and a 0–60 s privacy delay |
+| Withdraw → in your wallet | ~1–2 min on testnet (the next payout block and its confirmation), plus a separate mixnet tunnel (6–14 s) and a 0–60 s privacy delay |
 
 For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. The numbers above come from the Gate 1 spikes (`spikes/`); the bet path is re-measured against our own API before the UI promises it.
 

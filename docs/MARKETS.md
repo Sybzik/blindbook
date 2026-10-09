@@ -42,6 +42,8 @@ The operator names the markets in a JSON file (`BB_MARKETS`):
 | Polymarket's book fills 1,000 shares of outcome A within 2¢ of the top, on both sides | a reference that is reliable and hard to move with one fake order |
 | A rules text | nobody has to guess how a bet ends |
 
+`blindbook-api candidates [count]` finds the markets that pass the rules right now (it reads Gamma and each order book, nothing else) and prints them as entries for the file, with the ones that only lack an event start listed apart.
+
 Two more rules are the operator's to follow, since no code can judge them: **public events only, nothing about private individuals**, and **a clear resolution source**. On the curated set, at least one market should end within a day (a match), so a full cycle can be watched.
 
 Every market of a network gets the **same parameters**: liquidity `b`, exposure buffer `L` (the most the house can lose on one market), fee 1%, maximum trade, the 98¢ halt and the 10 s feed limit. Testnet: `b` = 0.2 TAZ, `L` = 0.05 TAZ; mainnet: `b` = 0.01 ZEC, `L` = 0.002 ZEC. **The signer refuses a listing with any other parameters**, so the API can't widen a buffer. The listing (parameters, event start, end date, keyset ids) goes into the public log.
@@ -54,6 +56,7 @@ Every market of a network gets the **same parameters**: liquidity `b`, exposure 
 |---|---|
 | Fed decision, October 2026 (single-outcome markets inside the event; event start entered at the announcement time) | resolves Oct 28–29, right at the deadline |
 | Brazil presidential runoff, Oct 25 (side markets ending Oct 26) | resolves during recording week |
+| US midterm elections, Nov 3 (Senate and House control; event start at the first poll closings, Nov 3 23:00 UTC) | the headline event inside the judging window |
 | 2–3 same-day esports or sports matches (named outcomes; CS2 matches carry `gameStartTime`) | resolve within hours; a reliable full-cycle demo |
 | 3–5 longer markets resolving during judging | judges can trade live |
 

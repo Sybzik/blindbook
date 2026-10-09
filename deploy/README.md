@@ -59,6 +59,8 @@ mkdir -p config data && sudo chown -R 10001:10001 data
 # config/deposit-uivk.txt : the deposit UIVK printed by init
 # config/reserve-ufvk.txt : secrets/treasury/reserve-ufvk.txt from VPS-2
 # config/markets.json     : the markets to list (markets.json.example; rules in docs/MARKETS.md)
+docker compose build api
+docker compose run --rm api blindbook-api candidates 20   # markets that pass the rules now, as markets.json entries
 docker compose up -d --build
 docker compose logs -f api               # "catalog loaded", then "market listed" or the rule that kept a market out
 ```
@@ -82,11 +84,12 @@ Then fund the reserve: send TAZ from your wallet to the reserve address `init` p
 On any machine with Node 22 and pnpm 10 (and Rust with the `wasm32-unknown-unknown` target, for the verifier's engine):
 
 ```sh
-BB_API_ORIGIN=https://api.example.org BB_M=<M> BB_SEAL_PK=<seal public key> BB_NETWORK=testnet \
-  sh deploy/web/build.sh
+BB_API_ORIGIN=https://api.example.org BB_APP_ORIGIN=https://example.org \
+  BB_M=<M> BB_SEAL_PK=<seal public key> BB_NETWORK=testnet sh deploy/web/build.sh
 ```
 
-- Upload `deploy/web/site/` to the static host (Cloudflare Pages, Netlify or any host that serves `_headers`; otherwise set the same headers there: `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors 'self'`). The static host sees that an address loaded the app, never what it does (THREAT_MODEL N7).
+- `BB_APP_ORIGIN` lists every origin the static host serves the app from, space-separated (for example `"https://example.org https://www.example.org"`). The tunnel frames' CSP names them: the mixnet worker runs with an opaque origin so that Nym's directory and gateway see `Origin: null` instead of the site, and Safari only lets that worker load its code from an origin the policy names. Opened from any other host name, the app links in Chromium and Firefox but not in Safari.
+- Upload `deploy/web/site/` to the static host (Cloudflare Pages, Netlify or any host that serves `_headers`; otherwise set the same headers there: `X-Frame-Options: SAMEORIGIN`, `Content-Security-Policy: frame-ancestors 'self'`, and `Cache-Control: public, max-age=31536000, immutable` on `/assets/*`). The static host sees that an address loaded the app, never what it does (THREAT_MODEL N7). The long cache matters: the mixnet worker's code (`assets/nym-worker-*.js`, 3.8 MB gzip) is loaded by a worker the service worker can't serve, so the browser's own cache must keep it, or every visit would fetch it again from the host.
 - Publish `deploy/web/site/SHA256SUMS` with the release. Two builds of one commit give the same hashes, so anyone can compare what the host serves with the source.
 - Copy `deploy/api/onion-site/` to VPS-1 (`deploy/api/onion-site`) and restart Caddy; the .onion address is `docker compose exec tor cat /var/lib/tor/blindbook/hostname`. If the VPS's network blocks Tor (`docker compose logs tor` stays at "Stuck at 10%"), add bridges to `tor/torrc`.
 - Optional: our own Nym exit (IP packet router) if public exits prove unreliable; pin it with `BB_IPR=<address>` at build time.
@@ -109,12 +112,13 @@ The same build with micro stakes, next to the playground on the same two servers
 
 - VPS-2: `signer-main.env` (from `signer.env.example`, with `BB_NETWORK=mainnet`, `BB_ZCASH_NET=main`, `BB_LWD=zecrocks-main`, the mainnet API's URL and its own token), then a second key set: `docker compose -f compose.yml -f compose.mainnet.yml run --rm signer-main blindbook-signer keygen /secrets/master.key`, `… init /secrets/treasury tip`, and an empty `secrets-main/voucher-hashes.txt` (no judge codes on mainnet). Start with `docker compose -f compose.yml -f compose.mainnet.yml up -d`.
 - VPS-1: `api-main.env` and `config-main/`, the mainnet host added to `BB_SITES` (`… main.example.org=api-main:8080`); start with `docker compose -f compose.yml -f compose.mainnet.yml up -d`.
-- A second app build with `BB_API_ORIGIN=https://main.example.org BB_NETWORK=mainnet` and the mainnet keys, on its own host name.
+- A second app build with `BB_API_ORIGIN=https://main.example.org BB_NETWORK=mainnet`, the mainnet keys and its own host name in `BB_APP_ORIGIN`.
 
 ## Running it
 
 - **Backups:** VPS-2 `secrets/` (offline, encrypted) and `data/`; VPS-1 `data/` and the `tor-data` volume (the onion's key). Both servers rebuild their state from their journals on start.
 - **Updates:** `git pull`, rebuild the image, `docker compose up -d` on each server. The API keeps an operation in doubt until the signer is back and both agree on the count.
 - **Stop everything safely:** stop the signer. Nothing can be signed, spent or paid until it returns; slips keep their value.
+- **Markets during judging (Oct 29 – Nov 22):** the API lists markets at start, and a market must end before judging ends, so add new ones as others close: find new ones with `docker compose run --rm api blindbook-api candidates`, add their slugs to `config/markets.json` and `docker compose restart api`: the new ones are checked against the rules and listed. Keep the slugs of markets still open or unresolved in the file, since their live reference comes from it. A plan that keeps the playground useful for the whole period: a few markets that stay open for weeks (questions that resolve in the second half of November, with `event_start_ms` at the moment the answer can become known, or at the end for a "by <date>" question), the headline events inside the window (the US midterm elections on Nov 3), and same-day matches refreshed every few days. `docker compose logs api` names every market a rule kept out.
 - **Judge codes:** give out the codes from `voucher-codes.txt`; to revoke unused ones after judging, remove their hashes from `voucher-hashes.txt` and restart the signer.
 - **Logs** hold the service's own events (markets listed, blocks, payouts, errors), never a request.

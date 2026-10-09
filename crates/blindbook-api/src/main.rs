@@ -20,6 +20,9 @@
 //! HTTPS_PROXY        http:// proxy for Polymarket and Polygon (development machines only)
 //! ```
 //! It logs nothing about requests: no addresses, no paths, no user agents.
+//!
+//! `blindbook-api candidates [count]` instead prints open Polymarket markets that pass the listing
+//! rules now, as entries for the markets file (`src/candidates.rs`).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -44,6 +47,8 @@ use blindbook_polymarket::reference::{DEFAULT_GUARD_SHARES, MarketFeed};
 use blindbook_polymarket::{MarketInfo, gamma};
 use serde::Deserialize;
 use tokio::sync::{mpsc, oneshot};
+
+mod candidates;
 
 #[derive(Clone, Debug, Deserialize)]
 struct Listing {
@@ -294,6 +299,18 @@ const NO_REQUEST_LOGS: &str = "tower_http=off,hyper=off,hyper_util=off,axum=off,
 
 #[tokio::main]
 async fn main() -> Result<(), String> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("candidates") {
+        let want = args.get(2).and_then(|n| n.parse().ok()).unwrap_or(20);
+        let http = http_client().map_err(|e| e.to_string())?;
+        return candidates::run(
+            &http,
+            now_ms(),
+            env_num("BB_JUDGING_END_MS", JUDGING_END_MS),
+            want,
+        )
+        .await;
+    }
     // Whatever RUST_LOG says, the HTTP stack never logs a request: no line, path, header or
     // address (THREAT_MODEL N2). The handlers themselves never see an address.
     let filter = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into());

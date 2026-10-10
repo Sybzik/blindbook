@@ -2,7 +2,7 @@
 
 **The Blind Booth.** The voting booth is the oldest privacy technology that works: the tally is public and the booth is private. Blindbook is that booth, for markets. You don't log in; you step into a booth, the curtain closes, and a green-phosphor terminal from an alternate 1986 boots up: it knows prices, not people.
 
-The design system lives in `web/src/ds/` (tokens, fonts, the 7×7 pixel icons and every component); the exports it came from are in [`design/`](../design/README.md).
+The design system lives in `web/src/ds/` and `web/src/design/` (tokens, fonts, the 7×7 pixel icons and every component).
 
 ## The one rule
 

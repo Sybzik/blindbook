@@ -8,8 +8,6 @@
 *.mnemonic
 secrets/
 keys/
-# ...except the design system's KeyButton component folder
-!design/*/components/keys/
 # the design system copy in the app (KeyButton), not key material
 !web/src/ds/components/keys/
 *.sqlite
@@ -47,9 +45,6 @@ desktop.ini
 !.vscode/extensions.json
 
 # --- local tooling ---
-
-# the design tool exports: attached inputs (third-party screenshots, brief copies) stay local
-design/*/uploads/
 
 # Built from crates/blindbook-engine-wasm by web/scripts/wasm.mjs
 web/src/wasm/

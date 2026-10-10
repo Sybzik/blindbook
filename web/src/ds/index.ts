@@ -1,4 +1,4 @@
-// The Blindbook design system (design/01-system), used as-is: components and their styles.
+// The Blindbook design system: components and their styles.
 
 import './components/chart/chart.css';
 import './components/console/console.css';

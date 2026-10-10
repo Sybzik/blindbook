@@ -173,7 +173,6 @@ crates/
   blindbook-verify/       the independent auditor (the same replay runs in the browser)
 web/                      the app: vault, slip wallet, mixnet client, terminal UI, pager, 3D booth
 spikes/                   the Gate 1 experiments and their measurements
-design/                   the design system and screen exports
 docs/                     everything above
 deploy/                   Docker image, Compose files, Caddy and Tor configuration, app build script
 ```

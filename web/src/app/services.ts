@@ -33,6 +33,8 @@ export interface MarketMeta {
   /** The market's LMSR liquidity and fee (the same for every market of a network). */
   b: number;
   feeBp: number;
+  /** The smallest trade and duel stake (max_trade / 200): smaller requests are refused. */
+  minTrade: number;
 }
 
 export interface Point {
@@ -204,7 +206,7 @@ interface CatalogEntry {
   end_ms: number;
   event_start_ms: number | null;
   status: { state: 'open' } | { state: 'resolved'; den: number; num: [number, number] };
-  params: { b: number; fee_bp: number };
+  params: { b: number; fee_bp: number; max_trade: number };
   info: { slug: string; question: string; outcomes: [string, string]; description: string; resolution_source: string; volume_24h_usd: number | null; group_item_title: string | null } | null;
 }
 
@@ -228,6 +230,7 @@ async function pollCatalog() {
       group: m.info!.group_item_title,
       b: m.params.b,
       feeBp: m.params.fee_bp,
+      minTrade: Math.max(1, Math.floor(m.params.max_trade / 200)),
     }));
     const before = new Map(app.get().markets.map((m) => [m.id, m.resolved]));
     app.set({ markets });
@@ -445,6 +448,8 @@ const PLAIN: Record<string, string> = {
   duel_exists: 'That challenge already exists. Try again.',
   duel_terms: 'The challenge changed since you looked. Check it and take it again.',
   bad_duel: 'That duel is not allowed: price 1–99¢, and a positive size.',
+  too_small: 'That is below the smallest trade this market takes. Nothing was spent.',
+  duels_full: 'The duel board is full right now. Nothing was spent; try again once one is taken or cancelled.',
   bad_cancel: 'Only the challenger can cancel this duel.',
   supply_guard: 'Withdrawals are paused while the operator checks the books. Your slips keep their value.',
   unavailable: 'The service is busy for a moment. Nothing was spent; try again.',

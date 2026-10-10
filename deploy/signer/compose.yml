@@ -15,5 +15,8 @@ services:
     volumes:
       - ./secrets:/secrets
       - ./data:/data
+    # No root, no extra privileges: every Linux capability dropped.
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
     restart: unless-stopped
     # No ports: the signer only makes outbound connections (the API, lightwalletd, Polygon).

@@ -48,7 +48,7 @@ The operator names the markets in a JSON file (`BB_MARKETS`):
 
 Two more rules are the operator's to follow, since no code can judge them: **public events only, nothing about private individuals**, and **a clear resolution source**. On the curated set, at least one market should end within a day (a match), so a full cycle can be watched.
 
-Every market of a network gets the **same parameters**: liquidity `b`, exposure buffer `L` (the most the house can lose on one market), fee 1%, maximum trade, the 98¢ halt and the 10 s feed limit. Testnet: `b` = 4 TAZ, `L` = 0.5 TAZ; mainnet: `b` = 0.01 ZEC, `L` = 0.002 ZEC. **The signer refuses a listing with any other parameters**, so the API can't widen a buffer. The listing (parameters, event start, end date, keyset ids) goes into the public log.
+Every market of a network gets the **same parameters**: liquidity `b`, exposure buffer `L` (the most the house can lose on one market), fee 1%, maximum trade (and the smallest, 1/200 of it), the 98¢ halt and the 10 s feed limit. Testnet: `b` = 4 TAZ, `L` = 0.5 TAZ; mainnet: `b` = 0.01 ZEC, `L` = 0.002 ZEC. **The signer refuses a listing with any other parameters**, so the API can't widen a buffer. The listing (parameters, event start, end date, keyset ids) goes into the public log.
 
 **The house's buffers are the reserve's job:** the operator keeps the reserve above the liabilities plus the buffers of the open markets, with an ordinary shielded payment to the reserve address `blindbook-signer init` prints. The reserve reports in the log show the margin to anyone.
 

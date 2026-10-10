@@ -327,6 +327,28 @@ async fn http_end_to_end_and_restart() {
     w.receive(&resp, &outs, &[]);
     assert_eq!(w.balance(a), shares);
 
+    // Swaps cost no fee, so at most MAX_FREE_OPS land in one block (this one included); the next
+    // gets `busy`, spends nothing, and goes through once the block has closed.
+    for n in 2..=blindbook_api::sequencer::MAX_FREE_OPS + 1 {
+        let slips = w.take(a);
+        let mut outs = Vec::new();
+        for bit in (0..31).map(|k| 1u64 << k).filter(|bit| shares & bit != 0) {
+            let mut blank = w.blank(a).remove(0);
+            blank["amount"] = json!(bit);
+            outs.push(blank);
+        }
+        let body = json!({ "inputs": slips, "outputs": outs });
+        let (status, resp, _) = post(&c, &base, "/v1/swap", with_pow(body, BITS.light)).await;
+        if n <= blindbook_api::sequencer::MAX_FREE_OPS {
+            assert_eq!(status, 200, "{resp}");
+            w.receive(&resp, &outs, &[]);
+        } else {
+            assert_eq!((status, resp["error"].as_str()), (429, Some("busy")));
+            w.slips.extend(slips);
+        }
+    }
+    assert_eq!(w.balance(a), shares);
+
     // Live prices moved off Polymarket's 0.40 by our users' A position.
     tokio::time::sleep(std::time::Duration::from_millis(1_200)).await;
     let live: Value = c
@@ -361,6 +383,18 @@ async fn http_end_to_end_and_restart() {
         .await
         .unwrap();
     assert_eq!(head["seq"], 1);
+    // A new block: swaps go through again.
+    let slips = w.take(a);
+    let mut outs = Vec::new();
+    for bit in (0..31).map(|k| 1u64 << k).filter(|bit| shares & bit != 0) {
+        let mut blank = w.blank(a).remove(0);
+        blank["amount"] = json!(bit);
+        outs.push(blank);
+    }
+    let body = json!({ "inputs": slips, "outputs": outs });
+    let (status, resp, _) = post(&c, &base, "/v1/swap", with_pow(body, BITS.light)).await;
+    assert_eq!(status, 200, "{resp}");
+    w.receive(&resp, &outs, &[]);
     let delta: Delta =
         serde_json::from_slice(&gunzip_get(&c, &format!("{base}/v1/delta/1.json.gz")).await)
             .unwrap();

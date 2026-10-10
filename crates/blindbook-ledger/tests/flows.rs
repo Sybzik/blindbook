@@ -624,3 +624,54 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn dust_and_a_full_duel_board_are_refused() {
+    use blindbook_ledger::ledger::MAX_OPEN_DUELS;
+    let mut w = World::new();
+    w.topup(100_000);
+    let min = MarketParams::testnet().min_trade();
+    assert_eq!(min, 1_000);
+    let r = reference(500_000, 5_000);
+    // A trade below the market's smallest one is refused before anything is spent.
+    assert_eq!(
+        w.trade(Side::Buy, 0, min - 1, 9_000, &r, 10_000).unwrap(),
+        Err(Reject::TooSmall)
+    );
+    assert_eq!(w.balance(CREDIT), 100_000);
+    assert!(
+        w.trade(Side::Buy, 0, min, 9_000, &r, 10_000)
+            .unwrap()
+            .is_ok()
+    );
+
+    let open = |w: &mut World, n: u8, shares: u64| {
+        let inputs = w.take(CREDIT, 1_000).unwrap();
+        let change = w.blank(CREDIT);
+        let outs = w.blank(POS[0]);
+        let res = w.l.duel_open(
+            H32([n; 32]),
+            M,
+            0,
+            shares,
+            4_000,
+            500,
+            &inputs,
+            &change,
+            &outs,
+            H32([0; 32]),
+        );
+        match &res {
+            Ok(e) => w.receive(e),
+            Err(_) => w.put_back(inputs),
+        }
+        res.map(|_| ())
+    };
+    // A stake of 800 (2,000 shares at 40¢) is dust; 2,500 shares stake exactly the minimum.
+    assert_eq!(open(&mut w, 200, 2_000), Err(Reject::TooSmall));
+    for n in 0..MAX_OPEN_DUELS as u8 {
+        open(&mut w, n, 2_500).unwrap();
+    }
+    assert_eq!(open(&mut w, 201, 2_500), Err(Reject::DuelsFull));
+    w.check_solvency();
+}

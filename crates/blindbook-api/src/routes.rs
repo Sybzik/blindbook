@@ -253,7 +253,10 @@ pub async fn redeem(State(state): State<AppState>, Json(body): Json<Value>) -> R
         Ok(i) => i,
         Err(r) => return r,
     };
-    let shares: u64 = inputs.iter().map(|i| i.proof.amount).sum();
+    // Not checked yet (the ledger does that): never overflow on what a request claims.
+    let shares = inputs
+        .iter()
+        .fold(0u64, |n, i| n.saturating_add(i.proof.amount));
     match submit(
         &state,
         Op::Redeem {

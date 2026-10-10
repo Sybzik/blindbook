@@ -39,6 +39,18 @@ pub const MAX_BATCH: usize = 500;
 /// Payouts stay in the live JSON for 30 minutes, so a browser that was away still sees its own.
 pub const PAYOUTS_MS: u64 = 1_800_000;
 
+/// Every visitor polls the live JSON every few seconds through the mixnet, so each of its lists
+/// is bounded whatever arrives: the newest recent fills, payouts and taken duels' signatures (a
+/// challenger who misses theirs finds them in the public log: FIND MY SHARES IN THE LOG).
+pub const MAX_RECENT: usize = 100;
+pub const MAX_PAYOUTS: usize = 64;
+pub const MAX_DUEL_FILLS: usize = 16;
+
+/// Swaps and duel offers or cancels cost no fee, so at most this many land in one block (more
+/// get `busy` and try the next block): the public log every visitor downloads can't be flooded
+/// for free. Trades pay a fee on at least the market's smallest trade.
+pub const MAX_FREE_OPS: usize = 12;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("refused: {0}")]
@@ -214,6 +226,8 @@ pub struct Sequencer {
     /// Sent, unanswered: re-sent before anything else (the signer answers a repeat from its
     /// cache, so it is applied exactly once on both sides).
     in_doubt: Option<Op>,
+    /// Free operations (MAX_FREE_OPS) applied in the open block.
+    free_ops: usize,
 }
 
 impl Sequencer {
@@ -248,6 +262,7 @@ impl Sequencer {
             batch_id: 0,
             applied_ops: 0,
             in_doubt: None,
+            free_ops: 0,
         };
         for e in entries {
             match e {
@@ -322,6 +337,9 @@ impl Sequencer {
             {
                 recent.pop_front();
             }
+            while recent.len() > MAX_RECENT {
+                recent.pop_front();
+            }
         }
         if let Op::Record {
             event: LogEvent::PayoutSent { txid, commitments },
@@ -340,7 +358,7 @@ impl Sequencer {
                     commitments: commitments.clone(),
                 });
             }
-            while p.front().is_some_and(|f| f.at_ms + PAYOUTS_MS < at_ms) {
+            while p.front().is_some_and(|f| f.at_ms + PAYOUTS_MS < at_ms) || p.len() > MAX_PAYOUTS {
                 p.pop_front();
             }
         }
@@ -367,7 +385,9 @@ impl Sequencer {
                 duel: *duel,
                 signatures,
             });
-            while f.front().is_some_and(|x| x.at_ms + PAYOUTS_MS < at_ms) {
+            while f.front().is_some_and(|x| x.at_ms + PAYOUTS_MS < at_ms)
+                || f.len() > MAX_DUEL_FILLS
+            {
                 f.pop_front();
             }
         }
@@ -634,7 +654,15 @@ impl Sequencer {
                     None => break,
                     Some(Cmd::Trade(req, reply)) => self.accept_trade(req, reply),
                     Some(Cmd::Op(op, reply)) => {
+                        let free = matches!(op, Op::Swap { .. } | Op::DuelOpen { .. } | Op::DuelCancel { .. });
+                        if free && self.free_ops >= MAX_FREE_OPS {
+                            let _ = reply.send(Err(ApiError::Busy));
+                            continue;
+                        }
                         let r = self.execute(op).await;
+                        if free && r.as_ref().is_ok_and(|d| !matches!(d.applied, Applied::Refused(_))) {
+                            self.free_ops += 1;
+                        }
                         let _ = reply.send(r);
                     }
                     Some(Cmd::Close { height, chain }) => match self.execute(Op::Close { height, chain }).await {
@@ -647,6 +675,7 @@ impl Sequencer {
                             }
                         },
                         Ok(_) => {
+                            self.free_ops = 0;
                             if close_failed.take().is_some() {
                                 tracing::info!(height, "blocks close again");
                             }

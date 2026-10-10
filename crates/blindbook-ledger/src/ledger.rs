@@ -84,6 +84,10 @@ pub enum Reject {
     InvalidClaim,
     #[error("the signer did not confirm it: other listing parameters, or not Polygon's result")]
     NotConfirmed,
+    #[error("below the market's smallest trade or duel stake (max_trade / 200)")]
+    TooSmall,
+    #[error("the most open duels are on the board; one must be taken or cancelled first")]
+    DuelsFull,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -111,6 +115,13 @@ impl MarketParams {
 
     pub fn mainnet() -> Self {
         Self::from_engine(&engine::Params::mainnet())
+    }
+
+    /// The smallest trade (CREDIT units for a buy, share-units for a sell) and duel stake: every
+    /// write lands in the public log that every visitor downloads, so a write must cost
+    /// something (the fee on this much is 1%) and dust can't flood the log.
+    pub fn min_trade(&self) -> u64 {
+        (self.max_trade / MIN_TRADE_DIVISOR).max(1)
     }
 
     fn from_engine(p: &engine::Params) -> Self {
@@ -324,6 +335,12 @@ pub struct BatchResult {
 
 /// The most share-units on each side of one duel (100 coins).
 pub const MAX_DUEL_SHARES: u64 = 10_000_000;
+
+/// The most duels open at once: every visitor's live feed lists them all.
+pub const MAX_OPEN_DUELS: usize = 50;
+
+/// `max_trade / MIN_TRADE_DIVISOR` is a market's smallest trade and duel stake (testnet 0.01).
+pub const MIN_TRADE_DIVISOR: u64 = 200;
 
 /// A blind duel waiting for a taker (PROTOCOL section 7.1). The challenger's stake is in escrow
 /// and the blank outputs for their shares are already here, so a taker completes the set while
@@ -560,6 +577,9 @@ impl Ledger {
         let total = self.check_inputs(&r.inputs, pay_with, batch_spent)?;
         if r.amount == 0 || r.amount > total {
             return Err(Reject::BadAmount);
+        }
+        if r.amount < m.params.min_trade() {
+            return Err(Reject::TooSmall);
         }
         Ok(total)
     }
@@ -832,7 +852,10 @@ impl Ledger {
         if self.duels.contains_key(&duel) {
             return Err(Reject::DuelExists);
         }
-        self.trading_open(market, now_ms)?;
+        if self.duels.len() >= MAX_OPEN_DUELS {
+            return Err(Reject::DuelsFull);
+        }
+        let min_stake = self.trading_open(market, now_ms)?.params.min_trade();
         if outcome > 1 {
             return Err(Reject::BadOutcome);
         }
@@ -845,6 +868,9 @@ impl Ledger {
         Self::check_blank(outputs, &position)?;
         let sum = self.check_inputs(inputs, &credit, &HashSet::new())?;
         let stake = duel_stake(shares, price_bp);
+        if stake < min_stake {
+            return Err(Reject::TooSmall);
+        }
         if stake == 0 || stake >= shares || sum < stake {
             return Err(Reject::Unbalanced);
         }

@@ -101,6 +101,9 @@ pub async fn run(data_dir: PathBuf, live: Arc<RwLock<Vec<u8>>>) {
         tick.tick().await;
         let p = prices(&live.read().unwrap_or_else(|e| e.into_inner()));
         if p.is_empty() {
+            // Right after a start the live JSON has no prices yet: look again in a few seconds,
+            // so the file every visitor fetches exists from the first minute on.
+            tick.reset_after(Duration::from_secs(3));
             continue;
         }
         h.sample(now_ms() / 60_000, &p);

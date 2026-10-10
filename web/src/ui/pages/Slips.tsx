@@ -207,7 +207,11 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
                 {status === 'won' ? (
                   <KeyButton size="sm" disabled={!!busy} onClick={() => actions.redeem(p.market, p.outcome).then((n) => setMsg(`Cashed in: ${coinLabel(n)} added to your balance.`)).catch(() => undefined)} data-hint="Moves the winnings into your free balance.">CASH IN</KeyButton>
                 ) : (
-                  <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint={`Sells the whole slip at the price of the next batch: about ${coin(sellNow)} ${COIN} now, never below ${bid / 100}¢ a share.`}>SELL · ≈{coin(sellNow, 3)}</KeyButton>
+                  p.units < m.minTrade ? (
+                    <KeyButton variant="secondary" size="sm" disabled data-hint={`Below the smallest sale (${coin(m.minTrade)} shares): it pays out at the result, or hand it over.`}>TOO SMALL TO SELL</KeyButton>
+                  ) : (
+                    <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint={`Sells the whole slip at the price of the next batch: about ${coin(sellNow)} ${COIN} now, never below ${bid / 100}¢ a share.`}>SELL · ≈{coin(sellNow, 3)}</KeyButton>
+                  )
                 )}
                 <KeyButton variant="secondary" size="sm" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`)} data-hint="Hands the slip to someone as a code. No chain transaction, no record of who held it.">HAND OVER</KeyButton>
                 <KeyButton variant="secondary" size="sm" icon="qr" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`, { market: m.question, outcome, shares: coin(p.units), serial })} data-hint="Prints bearer paper. Whoever scans it owns it.">PRINT</KeyButton>

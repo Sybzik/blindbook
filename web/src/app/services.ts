@@ -434,7 +434,7 @@ const PLAIN: Record<string, string> = {
   spent: 'Those slips were already spent. Nothing was taken.',
   duplicate: 'The same slip was sent twice. Nothing was taken.',
   invalid_slip: "A slip's signature didn't check out. Nothing was taken.",
-  invalid_claim: 'That code was already used, or the payment is not confirmed yet.',
+  invalid_claim: 'That code is used up or unknown, or the payment is not confirmed yet.',
   bad_limit: 'That price is not allowed (1–99¢).',
   bad_amount: 'That amount is not allowed.',
   bad_withdrawal_amount: 'Withdrawals use the standard amounts only.',

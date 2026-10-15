@@ -66,6 +66,47 @@ fn a_repeat_is_answered_from_the_journal_not_applied_twice() {
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
+/// One judge code shared by the judges: redeemable as many times as it was given, then refused,
+/// and a restart (the journal replayed) doesn't give the used redemptions back.
+#[test]
+fn a_shared_voucher_is_redeemed_as_many_times_as_it_was_given() {
+    let dir = std::env::temp_dir().join(format!("bb-station-uses-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let journal = dir.join("signer-journal.jsonl");
+    let shared = || {
+        let mut s = signer();
+        s.add_voucher_uses([(H32(sha256(b"SHARED")), 2)], 1_000);
+        s
+    };
+    let credit = shared().credit_id();
+    let op = |seed: u8| Op::Credit {
+        amount: 1_000,
+        outputs: (0..31u8)
+            .map(|i| BlindedMessage {
+                amount: 0,
+                id: credit.clone(),
+                b: blind_message(&[seed, i, 0, 0, 0, 0, 0, 0], None)
+                    .unwrap()
+                    .0
+                    .to_hex(),
+            })
+            .collect(),
+        claim: CreditClaim::Voucher {
+            code_hash: H32(sha256(b"SHARED")),
+        },
+    };
+    let mut st = Station::open(shared(), &journal).unwrap();
+    assert_eq!(st.serve(&op(1), 0).unwrap().signatures.len(), 6);
+    drop(st);
+    let mut st = Station::open(shared(), &journal).unwrap();
+    assert_eq!(st.serve(&op(2), 1).unwrap().signatures.len(), 6);
+    let used_up = st.serve(&op(3), 2).unwrap();
+    assert!(used_up.signatures.is_empty() && !used_up.invalid.is_empty());
+    assert_eq!(st.signer.ledger.outstanding(Keyset::Credit), 2_000);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
 /// An operation identical to the last one, sent at the next place, is a new operation, not a repeat
 /// (a treasury event re-announced and sent twice): here the second record is refused, because the
 /// event is no longer pending, and nothing is applied twice. A place that is neither the next one

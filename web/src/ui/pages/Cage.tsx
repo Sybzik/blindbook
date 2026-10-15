@@ -198,7 +198,7 @@ function Code() {
     <div className="tk-cage">
       <div className="tk-steps" style={{ gap: 16 }}>
         <form className="col" style={{ gap: 12 }} onSubmit={(e) => { e.preventDefault(); if (code.trim().length >= 6 && !busy) actions.voucher(code.trim()).then(setDone).catch(() => undefined); }}>
-          <TextInput label="JUDGE CODE" placeholder="BB-XXXX-XXXX-…" value={code} onChange={(v: string) => { setCode(v); setDone(null); }} message="A single-use code from the organisers. Letter case and spaces don't matter. It never identifies you." />
+          <TextInput label="JUDGE CODE" placeholder="BB-XXXX-XXXX-…" value={code} onChange={(v: string) => { setCode(v); setDone(null); }} message="The judge code from the submission (the judges share one). Letter case and spaces don't matter. It never identifies you." />
           <div>
             <KeyButton type="submit" disabled={code.trim().length < 6 || !!busy} loading={busy === 'REDEEMING CODE'}>REDEEM</KeyButton>
           </div>

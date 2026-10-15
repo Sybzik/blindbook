@@ -109,7 +109,7 @@ spend                      check C == k·hash_to_curve(x); add Y to the spent se
 | `POST /v1/redeem` | `inputs[]` (a resolved outcome's keyset), `outputs[]` (31 blank CREDIT outputs) | immediately after resolution | `{paid, signatures[], stored_record}` |
 | `POST /v1/withdraw` | `inputs[]` (CREDIT), `amount` (units, a standard denomination, THREAT_MODEL X6), `change_outputs[]`, `address_sealed` (`bbseal1:`, sealed to the signer's pinned X25519 key; format in `crates/blindbook-seal`), `address_commitment = SHA256(address ‖ salt)` | next payout block | `{signatures[] (change), stored_record}`; payout shown in the log as `PayoutSent {txid, commitments}` |
 | `POST /v1/topup/claim` | `topup_id, topup_secret, credit_outputs[]` | immediately | extra or late payments to an already-credited top-up address |
-| `POST /v1/voucher` | `code, outputs[]` | immediately | judge vouchers: a single-use code exchanged for CREDIT slips. The signer knows `SHA256` of its canonical form: letters and digits only, uppercase, O→0, I/L→1 (`ops::voucher_hash`), so a code typed by hand still matches |
+| `POST /v1/voucher` | `code, outputs[]` | immediately | judge vouchers: a code exchanged for CREDIT slips, as many times as the signer was given for it (one, or a shared judge code's count). The signer knows `SHA256` of its canonical form: letters and digits only, uppercase, O→0, I/L→1 (`ops::voucher_hash`), so a code typed by hand still matches |
 | `POST /v1/duel/open`, `/take`, `/cancel` | see §7.1 | immediately | `{signatures[], stored_record}` |
 
 - Output counts are capped at 32 per keyset per request; a request spends at most 64 slips.

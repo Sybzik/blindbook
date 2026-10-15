@@ -112,7 +112,7 @@ pub enum CreditClaim {
         diversifier_index: u64,
         txid: String,
     },
-    /// `SHA256(code)` of a single-use judge voucher.
+    /// `SHA256(code)` of a judge voucher (redeemable as many times as the signer was given).
     Voucher { code_hash: H32 },
 }
 

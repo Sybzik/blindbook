@@ -21,7 +21,7 @@ What the configuration guarantees, and where:
 - A domain: one host name for the API on VPS-1 (`api.example.org`) and one for the app on the static host (`example.org`). Point the API name's A record at VPS-1.
 - Two VPS with Docker (Compose v2), ideally from different providers. VPS-1 needs ports 80 and 443 open; VPS-2 needs nothing open (SSH by key only).
 - Check that VPS-1 can read Polymarket: `curl -s 'https://gamma-api.polymarket.com/markets?limit=1'` must return JSON.
-- On testnet, about 48 TAZ for the reserve (0.5 TAZ buffers for up to 12 markets, 80 codes of 0.25 TAZ for judges and testers, and a margin for the house's losses over the month; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
+- On testnet, about 48 TAZ for the reserve (0.5 TAZ buffers for up to 12 markets, a judge code for 20 redemptions of 1 TAZ plus 5 single-use codes for our checks, and a margin for the house's losses over the month; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
 
 ## 2. The image (on both servers)
 
@@ -45,13 +45,15 @@ mkdir -p secrets data && sudo chown -R 10001:10001 secrets data && sudo chmod 70
 
 docker compose run --rm signer blindbook-signer keygen /secrets/master.key
 docker compose run --rm signer blindbook-signer init /secrets/treasury tip
-docker compose run --rm signer blindbook-signer vouchers 80 /secrets/voucher-codes.txt /secrets/voucher-hashes.txt
+docker compose run --rm signer blindbook-signer vouchers 1 /secrets/judge-code.txt /secrets/judge-hashes.txt 20
+docker compose run --rm signer blindbook-signer vouchers 5 /secrets/check-codes.txt /secrets/check-hashes.txt
+cat secrets/judge-hashes.txt secrets/check-hashes.txt > secrets/voucher-hashes.txt
 openssl rand -hex 32                     # the signer token: put it in signer.env and api.env
 ```
 
 - `keygen` prints **M**, the mint master public key: it goes into `api.env` and into the app build.
 - `init` creates the seal key and the treasury seed, and prints the **seal public key** (app build), the **deposit UIVK** (VPS-1), the **reserve UFVK** and its **birthday** (VPS-1, published for the solvency check) and the **reserve address** (to fund). It also writes `secrets/treasury/reserve-ufvk.txt`.
-- `vouchers` writes the judge codes (`voucher-codes.txt`: give these out, they are bearer credit) and their hashes (`voucher-hashes.txt`: the only thing the signer keeps).
+- `vouchers` writes codes (bearer credit: `judge-code.txt` goes into the sealed submission, `check-codes.txt` stays with us) and their hashes, each followed by how many times it can be redeemed (`voucher-hashes.txt`: the only thing the signer keeps).
 - **Back up `secrets/` offline and encrypted** (the master key, the treasury seed and wallet, the seal key). Losing it loses the reserve; leaking it loses everything.
 
 ## 4. VPS-1: the API
@@ -70,7 +72,7 @@ docker compose logs -f api               # "catalog loaded", then "market listed
 
 Until the signer connects, the API logs that it can't close blocks or list markets yet: that is expected, and both happen as soon as the signer is in.
 
-`BB_VOUCHER_UNITS` must be the same on both servers (25000 = 0.25 TAZ per judge code).
+`BB_VOUCHER_UNITS` must be the same on both servers (100000 = 1 TAZ per redemption).
 
 ## 5. VPS-2: the signer
 
@@ -115,7 +117,7 @@ Then open the app from a clean browser: the lamp turns LINKED, a judge code adds
 
 1. Open the app's address. Time from opening the page to the lamp showing **LINKED** (target: under 20 s).
 2. **STEP INSIDE**, make a vault with **Face ID**, and stamp the 12 words.
-3. `CAGE` → **JUDGE CODE**: paste a code from `voucher-codes.txt`. The balance appears.
+3. `CAGE` → **JUDGE CODE**: paste a code from `check-codes.txt`. The balance appears.
 4. Open a market, **BUY**. Time from pressing BUY to the printed slip (target: 3 s typical, 6 s at most).
 5. On the slip, **CALLED IT** → copy the link → open it on another device: `VERIFIED ✓`.
 6. Share → **Add to Home Screen** and open it from there. The installed app has its own storage, separate from Safari's: choose **RESTORE FROM 12 WORDS**, type them, and the balance and the slip come back from the public log (the server is asked nothing). Set Face ID there, close the app, reopen it, unlock with Face ID.
@@ -137,7 +139,7 @@ The same build with micro stakes, next to the playground on the same two servers
 - **Stop everything safely:** stop the signer. Nothing can be signed, spent or paid until it returns; slips keep their value.
 - **A halt** (`halted: true` in `/v1/head`, "sequencer halted" in `docker compose logs api`): the API found the signer disagreeing with it and stopped writing, so nothing is signed or paid on a doubtful state; reads keep working and slips keep their value. The line names the reason. For "log root differs from the signer's" (two copies of the sequence parted), stop both, back up both `data/` directories, compare the API's `journal.jsonl` with the signer's `signer-journal.jsonl` operation by operation (the `op` fields), make the API's match the signer's (the signer's is what was signed), and start the signer, then the API, which replays its journal. A block whose root the signer disputes is never published, so the public log needs no change.
 - **Markets during judging (Oct 29 – Nov 22):** a market must end before judging ends, so new ones have to follow as others close. The API reads `config/markets.json` again every minute: find new ones with `docker compose run --rm api blindbook-api candidates`, add their slugs, and they are checked against the rules and listed, with no restart (keep the slugs of markets still open or unresolved in the file). `BB_AUTO_LIST=6` in `api.env` makes the API keep at least six markets open by itself, from the same candidates (matches and games with Polymarket's own start time); each open market ties up 0.5 TAZ of the reserve's buffer, at most twice that many at a time. A plan that keeps the playground useful for the whole period: a few markets that stay open for weeks (questions that resolve in the second half of November, with `event_start_ms` at the moment the answer can become known, or at the end for a "by <date>" question), the headline events inside the window (the US midterm elections on Nov 3), and same-day matches refreshed every few days. `docker compose logs api` names every market a rule kept out.
-- **Judge codes:** give out the codes from `voucher-codes.txt`; to revoke unused ones after judging, remove their hashes from `voucher-hashes.txt` and restart the signer.
+- **Judge code:** the code from `judge-code.txt` goes into the sealed submission. To add redemptions during judging, raise the number after its hash in `voucher-hashes.txt` by the redemptions to add and restart the signer (the number counts from the start: its journal replays the ones already used); to revoke it after judging, remove the line and restart.
 - **After judging:** once the playground is closed, give the testnet reserve's TAZ back to a faucet (Valar's "give back" address): on VPS-2, `docker compose stop signer`, then `docker compose run --rm signer blindbook-signer drain /secrets/treasury <address>` (if it reports a sweep of deposits first, run it again a few blocks later).
 - **Logs** hold the service's own events (markets listed, blocks, payouts, errors), never a request.
 - **Watching it from outside:** `/v1/head` is public and the same for everyone, so any uptime monitor can poll it: the height should grow about every 25 s (75 s on mainnet until NU7 activates there; it stops when the signer is away) and `halted` should stay `false`. A monitor learns nothing about users from it: it reads what every visitor reads.

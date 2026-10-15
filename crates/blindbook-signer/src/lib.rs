@@ -97,12 +97,19 @@ impl ZeroConf {
     };
 }
 
+/// A judge voucher: what one redemption is worth and how many are left.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Voucher {
+    amount: u64,
+    uses: u32,
+}
+
 pub struct Signer {
     master: MasterKey,
     keysets: HashMap<String, SecretKeyset>,
     pub ledger: Ledger,
-    /// `SHA256(code)` → amount, for vouchers not used yet.
-    vouchers: HashMap<H32, u64>,
+    /// `SHA256(code)` → its worth and the redemptions left, for vouchers not used up yet.
+    vouchers: HashMap<H32, Voucher>,
     /// Payments the signer's indexer saw and nobody claimed yet, by txid.
     deposits: HashMap<String, Deposit>,
     /// Txids already credited: never again, whatever the indexer replays.
@@ -178,10 +185,20 @@ impl Signer {
             .to_owned()
     }
 
-    /// Add judge vouchers (by `SHA256(code)`), each worth `amount` units.
+    /// Add single-use judge vouchers (by `SHA256(code)`), each worth `amount` units.
     pub fn add_vouchers(&mut self, hashes: impl IntoIterator<Item = H32>, amount: u64) {
-        self.vouchers
-            .extend(hashes.into_iter().map(|h| (h, amount)));
+        self.add_voucher_uses(hashes.into_iter().map(|h| (h, 1)), amount);
+    }
+
+    /// Add judge vouchers (by `SHA256(code)`), each redeemable the given number of times for
+    /// `amount` units a time (one code shared by the judges, instead of one code each).
+    pub fn add_voucher_uses(&mut self, entries: impl IntoIterator<Item = (H32, u32)>, amount: u64) {
+        self.vouchers.extend(
+            entries
+                .into_iter()
+                .filter(|(_, uses)| *uses > 0)
+                .map(|(h, uses)| (h, Voucher { amount, uses })),
+        );
     }
 
     pub fn set_zero_conf(&mut self, z: ZeroConf) {
@@ -335,7 +352,7 @@ impl Signer {
             } => {
                 let claim_ok = match claim {
                     CreditClaim::Voucher { code_hash } => {
-                        self.vouchers.get(code_hash) == Some(amount)
+                        self.vouchers.get(code_hash).map(|v| &v.amount) == Some(amount)
                     }
                     CreditClaim::Topup {
                         diversifier_index,
@@ -468,7 +485,12 @@ impl Signer {
         if let (Op::Credit { claim, .. }, Applied::Effects(_)) = (op, applied) {
             match claim {
                 CreditClaim::Voucher { code_hash } => {
-                    self.vouchers.remove(code_hash);
+                    if let Some(v) = self.vouchers.get_mut(code_hash) {
+                        v.uses -= 1;
+                        if v.uses == 0 {
+                            self.vouchers.remove(code_hash);
+                        }
+                    }
                 }
                 CreditClaim::Topup { txid, .. } => {
                     let d = self.deposits.remove(txid);

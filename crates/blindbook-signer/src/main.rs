@@ -2,8 +2,9 @@
 //!
 //! ```text
 //! blindbook-signer keygen <key-file>                 new master key; prints M
-//! blindbook-signer vouchers <n> <codes-file> <hashes-file>
-//!                                                    judge voucher codes (give out) and hashes (signer)
+//! blindbook-signer vouchers <n> <codes-file> <hashes-file> [uses]
+//!                                                    judge voucher codes (give out) and hashes
+//!                                                    (signer); each code redeemable `uses` times (1)
 //! blindbook-signer init <dir> <birthday|tip>         seal key + treasury seed in <dir> (kept if
 //!                                                    present); prints what the API and the app pin
 //! blindbook-signer drain <dir> <address>             with the signer stopped, once the playground
@@ -14,8 +15,9 @@
 //!     BB_API_URL         wss://<api>/v1/signer (ws:// only for local tests)
 //!     BB_SIGNER_TOKEN    bearer token the API expects
 //!     BB_SIGNER_DATA     directory for the journal
-//!     BB_VOUCHERS        optional file of voucher hashes (one hex per line)
-//!     BB_VOUCHER_UNITS   CREDIT units per voucher (default 50,000 = 0.5 TAZ)
+//!     BB_VOUCHERS        optional file of voucher hashes (one hex per line, then optionally
+//!                        how many times it can be redeemed)
+//!     BB_VOUCHER_UNITS   CREDIT units per redemption (default 50,000 = 0.5 TAZ)
 //!     BB_TREASURY_DIR    the directory made by `init`: seal key, treasury seed and wallet.
 //!                        Turns on the signer's own indexer (every top-up credit is checked
 //!                        against it), sealed withdrawals, payouts, sweeps and anchors
@@ -70,7 +72,28 @@ fn keygen(path: &Path) -> Result<(), String> {
 }
 
 /// Codes like `BB-7K2M-Q9XD-3HTR-W6PN` (Crockford base32: no I, L, O, U).
-fn vouchers(n: usize, codes: &Path, hashes: &Path) -> Result<(), String> {
+/// Lines of the voucher file: a hash, then optionally how many times it can be redeemed (1 when
+/// absent). Blank lines are skipped; anything else stops the start.
+fn voucher_entries(text: &str) -> Result<Vec<(H32, u32)>, String> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let mut parts = line.split_whitespace();
+        let Some(hex) = parts.next() else { continue };
+        let bad = || format!("voucher file, line {}: expected `<hash> [uses]`", i + 1);
+        let hash = H32::parse(hex).ok_or_else(bad)?;
+        let uses = match parts.next() {
+            None => 1,
+            Some(u) => u.parse::<u32>().ok().filter(|u| *u > 0).ok_or_else(bad)?,
+        };
+        if parts.next().is_some() {
+            return Err(bad());
+        }
+        out.push((hash, uses));
+    }
+    Ok(out)
+}
+
+fn vouchers(n: usize, uses: u32, codes: &Path, hashes: &Path) -> Result<(), String> {
     const ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
     let mut code_lines = String::new();
     let mut hash_lines = String::new();
@@ -87,14 +110,20 @@ fn vouchers(n: usize, codes: &Path, hashes: &Path) -> Result<(), String> {
             &chars[8..12],
             &chars[12..16]
         );
-        hash_lines.push_str(&format!("{}\n", blindbook_ledger::ops::voucher_hash(&code)));
+        let hash = blindbook_ledger::ops::voucher_hash(&code);
+        if uses > 1 {
+            hash_lines.push_str(&format!("{hash} {uses}\n"));
+        } else {
+            hash_lines.push_str(&format!("{hash}\n"));
+        }
         code_lines.push_str(&code);
         code_lines.push('\n');
     }
     write_private(codes, &code_lines)?;
     write_private(hashes, &hash_lines)?;
     println!(
-        "{n} vouchers: codes in {}, hashes in {}",
+        "{n} vouchers ({uses} redemption{} each): codes in {}, hashes in {}",
+        if uses == 1 { "" } else { "s" },
         codes.display(),
         hashes.display()
     );
@@ -223,9 +252,10 @@ async fn serve() -> Result<(), String> {
             .and_then(|v| v.parse().ok())
             .unwrap_or(50_000);
         let text = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        let hashes: Vec<H32> = text.lines().filter_map(|l| H32::parse(l.trim())).collect();
-        tracing::info!(count = hashes.len(), units, "vouchers loaded");
-        signer.add_vouchers(hashes, units);
+        let entries = voucher_entries(&text)?;
+        let uses: u32 = entries.iter().map(|(_, u)| u).sum();
+        tracing::info!(count = entries.len(), uses, units, "vouchers loaded");
+        signer.add_voucher_uses(entries, units);
     }
     let mainnet = std::env::var("BB_NETWORK").as_deref() == Ok("mainnet");
     signer.set_zero_conf(if mainnet {
@@ -407,18 +437,42 @@ async fn main() {
     {
         ["keygen", path] => keygen(Path::new(path)),
         ["vouchers", n, codes, hashes] => match n.parse() {
-            Ok(n) => vouchers(n, Path::new(codes), Path::new(hashes)),
+            Ok(n) => vouchers(n, 1, Path::new(codes), Path::new(hashes)),
             Err(_) => Err("n must be a number".into()),
+        },
+        ["vouchers", n, codes, hashes, uses] => match (n.parse(), uses.parse()) {
+            (Ok(n), Ok(uses)) if uses > 0 => vouchers(n, uses, Path::new(codes), Path::new(hashes)),
+            _ => Err("n and uses must be positive numbers".into()),
         },
         ["init", dir, birthday] => init(Path::new(dir), birthday).await,
         ["drain", dir, address] => drain(Path::new(dir), address).await,
         ["run"] => serve().await,
         _ => Err(
-            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> | init <dir> <birthday|tip> | drain <dir> <address> | run".into(),
+            "usage: blindbook-signer keygen <file> | vouchers <n> <codes> <hashes> [uses] | init <dir> <birthday|tip> | drain <dir> <address> | run".into(),
         ),
     };
     if let Err(e) = r {
         eprintln!("error: {e}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::voucher_entries;
+
+    #[test]
+    fn voucher_file_lines() {
+        let h = "ab".repeat(32);
+        let e = voucher_entries(&format!("{h}\n\n{h} 20\n")).unwrap();
+        assert_eq!(e.iter().map(|(_, u)| *u).collect::<Vec<_>>(), [1, 20]);
+        for bad in [
+            format!("{h} 0"),
+            format!("{h} x"),
+            format!("{h} 2 3"),
+            "zz".into(),
+        ] {
+            assert!(voucher_entries(&bad).is_err(), "{bad}");
+        }
     }
 }

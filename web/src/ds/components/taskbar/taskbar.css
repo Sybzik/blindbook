@@ -9,6 +9,7 @@
 .bb-taskbar__measure{position:absolute;left:0;top:0;display:flex;gap:6px;width:max-content;visibility:hidden;pointer-events:none}
 .bb-task{flex:none;display:inline-flex;align-items:center;gap:8px;height:30px;box-sizing:border-box;padding:0 12px;white-space:nowrap;background:var(--panel);color:var(--phosphor);border:1px solid var(--phosphor-mid);border-radius:0;font-family:var(--font-ui);font-size:var(--text-ui-sm);line-height:1.2;letter-spacing:var(--tracking-label);text-transform:uppercase;text-align:left;cursor:pointer;box-shadow:0 2px 0 0 var(--line)}
 .bb-task:hover{color:var(--phosphor-hi);border-color:var(--phosphor-hi)}
+.bb-task--all{color:var(--text-dim);border-style:dashed;box-shadow:none}
 .bb-task.is-on{transform:translateY(1px);box-shadow:inset 0 0 0 1px var(--phosphor-mid);background:color-mix(in srgb,var(--phosphor) 12%,var(--panel));color:var(--phosphor-hi)}
 .bb-taskbar__tray{flex:none;display:flex;flex-wrap:nowrap;align-items:center;justify-content:flex-end;margin-left:auto}
 .bb-tray__seg{display:inline-flex;align-items:center;gap:8px;min-height:30px;padding:0 12px;border-left:1px solid var(--line);white-space:nowrap}

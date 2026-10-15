@@ -10,6 +10,8 @@ export interface TaskbarProps {
   /** id of the focused window (tab shown pressed) */
   focused?: string;
   onWindow?: (id: string) => void;
+  /** When set, a ✕ ALL button after the tabs closes every window. */
+  onCloseAll?: () => void;
   startOpen?: boolean;
   /** called with the next open state; also fires false on outside click / Escape */
   onStartToggle?: (next: boolean) => void;
@@ -45,6 +47,8 @@ export interface StartMenuProps {
   bookie?: boolean;
   onToggleBookie?: (next: boolean) => void;
   /** shows LOCK VAULT (Esc Esc) when set */
+  /** Close every open window (the desk stays, its icons reopen them). */
+  onCloseAll?: () => void;
   onLock?: () => void;
   className?: string;
   style?: React.CSSProperties;

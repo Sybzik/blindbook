@@ -245,13 +245,21 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     setMid(id);
     go('market');
   };
+  // On a desk every window can be closed (its icons open them again); the pager keeps a channel.
   const close = (id: string) => {
     play('close');
     setCalled(null);
     const rest = open.filter((p) => p !== id);
-    const next = rest.length ? rest : ['markets'];
+    const next = rest.length || !phone ? rest : ['markets'];
     setOpen(next);
-    if (page === id || !rest.length) setPage(next[next.length - 1]!);
+    if (page === id || !rest.length) setPage(next[next.length - 1] ?? '');
+  };
+  const closeAll = () => {
+    play('close');
+    setCalled(null);
+    setStartOpen(false);
+    setOpen(phone ? ['markets'] : []);
+    setPage(phone ? 'markets' : '');
   };
   const lock = () => {
     setLeaving(true);
@@ -639,6 +647,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
         block={head?.height ?? 0}
         windows={tabs}
         focused={focused}
+        onCloseAll={open.length > 1 ? closeAll : undefined}
         onWindow={(id: string) => {
           if (id === 'vault') return setVaultWin(true);
           setVaultWin(false);
@@ -664,6 +673,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
             onToggleSound={(v: boolean) => ui.set({ sound: v })}
             bookie={bookie}
             onToggleBookie={(v: boolean) => ui.set({ bookie: v })}
+            onCloseAll={open.length ? closeAll : undefined}
             onLock={vault === 'unlocked' ? () => { setStartOpen(false); lock(); } : undefined}
           />
         }

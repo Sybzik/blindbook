@@ -63,7 +63,7 @@ function Item({ icon, label, kbd, onClick }) {
 }
 
 /* START menu: every page, APPS, CONSOLE, REPLAY INTRO, CLEAN SIGNAL, SOUND, LOCK VAULT. */
-export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onApp, onConsole, onReplayIntro, clean = false, onToggleClean, sound = false, onToggleSound, bookie, onToggleBookie, onLock, className = '', style }) {
+export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onApp, onConsole, onReplayIntro, clean = false, onToggleClean, sound = false, onToggleSound, bookie, onToggleBookie, onCloseAll, onLock, className = '', style }) {
   return (
     <div className={'bb-start__menu ' + className} role="menu" aria-label="Start" style={style}>
       <div className="bb-start__head"><span className="bb-start__title"><span className="bb-diamond" aria-hidden="true" />BLINDBOOK</span></div>
@@ -81,14 +81,17 @@ export function StartMenu({ pages = START_PAGES, apps = APP_ICONS, onSelect, onA
         <div className="bb-start__switch"><ToggleSwitch label="SOUND" checked={sound} onChange={onToggleSound} /></div>
         {onToggleBookie && <div className="bb-start__switch"><ToggleSwitch label="THE BOOKIE" checked={!!bookie} onChange={onToggleBookie} /></div>}
       </div>
-      {onLock && <div className="bb-start__group"><Item icon="lock" label="LOCK VAULT" kbd="ESC ESC" onClick={onLock} /></div>}
+      {(onCloseAll || onLock) && <div className="bb-start__group">
+        {onCloseAll && <Item icon="drawer" label="CLOSE ALL WINDOWS" onClick={onCloseAll} />}
+        {onLock && <Item icon="lock" label="LOCK VAULT" kbd="ESC ESC" onClick={onLock} />}
+      </div>}
     </div>
   );
 }
 
 /* Taskbar: always one row, fixed height. ◆ START · one tab per open window · BAL · MIXNET lamp · BLK · clock.
    Tabs that don't fit shrink to "▤ P300" (full title stays as the accessible name); they never wrap or truncate. */
-export function Taskbar({ windows = [], focused, onWindow, startOpen = false, onStartToggle, startMenu, balance = '0.1432', unit = 'ZEC', mixnet = 'linked', block = 3514229, clock, tray, className = '', style }) {
+export function Taskbar({ windows = [], focused, onWindow, onCloseAll, startOpen = false, onStartToggle, startMenu, balance = '0.1432', unit = 'ZEC', mixnet = 'linked', block = 3514229, clock, tray, className = '', style }) {
   const startRef = useRef(null);
   const tabsRef = useRef(null);
   const measureRef = useRef(null);
@@ -124,12 +127,18 @@ export function Taskbar({ windows = [], focused, onWindow, startOpen = false, on
       <div className="bb-taskbar__tabs" role="tablist" aria-label="Open windows" ref={tabsRef}>
         <div className="bb-taskbar__measure" ref={measureRef} aria-hidden="true">
           {windows.map((w) => <span key={w.id} className="bb-task"><span>▤</span>{w.title}</span>)}
+          {onCloseAll && <span className="bb-task"><span>✕</span>ALL</span>}
         </div>
         {windows.map((w) => (
           <button key={w.id} type="button" role="tab" aria-selected={w.id === focused} aria-label={w.title} title={tight ? w.title : undefined} className={'bb-task' + (w.id === focused ? ' is-on' : '')} onClick={() => onWindow && onWindow(w.id)}>
             <span aria-hidden="true">▤</span>{tight ? shortOf(w) : w.title}
           </button>
         ))}
+        {onCloseAll && (
+          <button type="button" className="bb-task bb-task--all" aria-label="Close all windows" title="Close all windows" onClick={onCloseAll}>
+            <span aria-hidden="true">✕</span>ALL
+          </button>
+        )}
       </div>
       <div className="bb-taskbar__tray">
         <span className="bb-tray__seg bb-tray__seg--bal">BAL <span className="bb-tray__val">{balance} {unit}</span></span>

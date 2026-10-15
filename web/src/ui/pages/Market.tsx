@@ -252,9 +252,16 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
       </div>
       <PayoutPreview outcome={label} side={side} payout={payout.toFixed(4)} profit={'+' + profit.toFixed(4)} unit={COIN} size="lg" />
       <div data-hint={lockReason ?? (tooMuch ? 'Not enough balance. Top up in F3 CAGE.' : `Buys ${label} at up to ${limit}¢. You can't lose more than ${amt} ${COIN}.`)}>
-        <KeyButton size="lg" fullWidth loading={busy === 'PRINTING'} disabled={disabled || !!busy} onClick={buy}>
-          {busy === 'PRINTING' ? (delayUntil ? `MIXING · ${waitS} S` : 'PRINTING') : 'BUY ' + label}
-        </KeyButton>
+        {vault === 'unlocked' ? (
+          <KeyButton size="lg" fullWidth loading={busy === 'PRINTING'} disabled={disabled || !!busy} onClick={buy}>
+            {busy === 'PRINTING' ? (delayUntil ? `MIXING · ${waitS} S` : 'PRINTING') : 'BUY ' + label}
+          </KeyButton>
+        ) : (
+          // Markets are public: anyone can look. A bet needs the vault, so the key opens it.
+          <KeyButton size="lg" fullWidth icon="lock" onClick={() => openWindow('vault')}>
+            OPEN THE VAULT TO BET
+          </KeyButton>
+        )}
         <div className="tk-mix" data-hint="Waits a random 5–30 s before sending, so the moment of your bet says less about you. Off by default: bets are instant.">
           <ToggleSwitch label="MIX DELAY" checked={mixDelay} onChange={(v: boolean) => setMixDelay(v)} />
         </div>
@@ -265,12 +272,7 @@ function BetPanel({ meta, live, locked, lockReason, onCalledIt }: { meta: Market
             <button type="button" className="bb-link" onClick={() => setMaxCents(null)}>use the default</button>
           </p>
         )}
-        {vault !== 'unlocked' && (
-          <p className="bb-conditions">
-            Open your vault first (it lives only on this device).{' '}
-            <button type="button" className="bb-link" onClick={() => openWindow('vault')}>open it</button>
-          </p>
-        )}
+        {vault !== 'unlocked' && <p className="bb-conditions">Looking costs nothing and needs nothing. Your vault lives only on this device: no account, no email.</p>}
         {(locked || tooMuch) && vault === 'unlocked' && (
           <p className="bb-conditions" style={{ color: locked ? 'var(--alarm)' : 'var(--text-dim)' }}>
             {lockReason ?? (

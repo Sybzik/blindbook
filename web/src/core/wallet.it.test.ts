@@ -150,12 +150,13 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     expect(w.creditBalance()).toBeGreaterThanOrEqual(48_000);
     expect(w.data.history.at(-1)?.kind).toBe('buy');
 
-    // A bet that never reached the server: its slips come back once three published blocks show nothing.
+    // A bet that never reached the server: its slips come back once three published blocks after
+    // the first head the wallet reads show nothing (so up to five blocks after the one it left at).
     const credit = w.creditBalance();
     lose = 'before';
     await expect(w.buy(market, 0, 1_000, 9_500)).rejects.toBeInstanceOf(InDoubtError);
     expect(w.creditBalance()).toBeLessThan(credit);
-    expect(await settleWithin(api.seq, 4)).toBe(1);
+    expect(await settleWithin(api.seq, 6)).toBe(1);
     expect(w.creditBalance()).toBe(credit);
   }, 900_000);
 });

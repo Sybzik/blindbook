@@ -122,8 +122,20 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     await api.head();
     expect(await w.voucher('DEV-0099')).toBe(50_000);
     const nextBlock = async (after: number) => {
-      // Empty blocks are published only every 4th block (KEEPALIVE_BLOCKS), so allow a few minutes.
-      for (let i = 0; i < 480 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
+      // Empty blocks are published only every 4th block (KEEPALIVE_BLOCKS): three of them can take
+      // 16 blocks, 4 minutes at the devserver's default 15 s (CI runs it with 3 s blocks).
+      for (let i = 0; i < 1_200 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
+    };
+    // Settles block by block, as the app does on its polls (a block can close between the last
+    // head the wallet saw and the request, so the first new block may not hold it yet). Returns
+    // what the settling call settled, 0 if nothing did within `blocks` published blocks.
+    const settleWithin = async (from: number, blocks: number) => {
+      for (let seq = from; seq < from + blocks; seq++) {
+        await nextBlock(seq);
+        const n = await w.settleDoubts();
+        if (n) return n;
+      }
+      return 0;
     };
 
     // The bet went through, its answer was lost: the slips it spent are held back, then its
@@ -132,8 +144,7 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     await expect(w.buy(market, 0, 2_000, 9_500)).rejects.toBeInstanceOf(InDoubtError);
     expect(w.inDoubt()).toBe(1);
     expect(w.creditBalance()).toBeLessThan(50_000);
-    await nextBlock(api.seq);
-    expect(await w.settleDoubts()).toBe(1);
+    expect(await settleWithin(api.seq, 3)).toBe(1);
     expect(w.inDoubt()).toBe(0);
     expect(w.balance(pos.id)).toBeGreaterThan(0);
     expect(w.creditBalance()).toBeGreaterThanOrEqual(48_000);
@@ -144,9 +155,7 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     lose = 'before';
     await expect(w.buy(market, 0, 1_000, 9_500)).rejects.toBeInstanceOf(InDoubtError);
     expect(w.creditBalance()).toBeLessThan(credit);
-    const sent = api.seq;
-    await nextBlock(sent + 2);
-    expect(await w.settleDoubts()).toBe(1);
+    expect(await settleWithin(api.seq, 4)).toBe(1);
     expect(w.creditBalance()).toBe(credit);
-  }, 300_000);
+  }, 900_000);
 });

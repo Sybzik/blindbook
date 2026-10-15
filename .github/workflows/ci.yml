@@ -67,7 +67,7 @@ jobs:
       - name: the wallet against the real server (voucher, buy, sell, top-up, withdraw, hand-over, restore)
         run: |
           cargo build --release -p blindbook-api --features embedded-signer --example devserver
-          ../target/release/examples/devserver > devserver.log 2>&1 &
+          ../target/release/examples/devserver --block-ms 3000 > devserver.log 2>&1 &
           for i in $(seq 60); do curl -sf http://127.0.0.1:8090/v1/head > /dev/null && break; sleep 1; done
           BB_DEV_API=http://127.0.0.1:8090 pnpm vitest run wallet.it
       - name: app shell budget (300 KB gzip, ARCHITECTURE "Speed under load")

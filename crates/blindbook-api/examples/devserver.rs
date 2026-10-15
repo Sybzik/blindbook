@@ -314,9 +314,13 @@ async fn main() {
             .unwrap_or(15_000u64);
         let mut tick = tokio::time::interval(Duration::from_millis(block_ms.max(50)));
         tick.tick().await;
+        // The simulated chain's tip moves on every tick, published or not: an empty block is
+        // published only every KEEPALIVE_BLOCKS, so the log's head can't be the clock.
+        let mut tip = shared.head.read().unwrap().height.max(4_480_000);
         loop {
             tick.tick().await;
-            let h = shared.head.read().unwrap().height.max(4_480_000);
+            let h = tip;
+            tip += 1;
             // Wait for each block to close, as the real indexer does, so requests are never
             // queued behind a backlog of blocks.
             let (done, closed) = tokio::sync::oneshot::channel();

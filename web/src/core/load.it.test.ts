@@ -90,7 +90,7 @@ describe.skipIf(!BASE)('load', () => {
         if (w.creditBalance() >= 6_000) return;
         if (DEV) {
           const t = await timed(i, 'topup', async () => {
-            const rec = await w.topupStart(1_000_000);
+            const rec = await w.topupStart(10_000_000); // 0.1 TAZ = 10,000 units
             await fetch(`${BASE}/dev/pay/${rec.id}`, { method: 'POST' });
             let r = rec;
             for (let k = 0; k < 60 && r.status !== 'credited' && r.status !== 'confirmed'; k++) {

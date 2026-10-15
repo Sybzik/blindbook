@@ -7,7 +7,7 @@
 //! disagree, the sequencer halts: nothing more is accepted until the operator looks.
 
 use std::collections::{BTreeMap, HashSet, VecDeque};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -231,6 +231,15 @@ pub struct Sequencer {
     in_doubt: Option<Op>,
     /// Free operations (MAX_FREE_OPS) applied in the open block.
     free_ops: usize,
+    /// Replaying the journal at start: the public files are already on disk, so only missing
+    /// deltas are written, and the segments and the head once at the end (a month of blocks
+    /// would otherwise be compressed and written again on every restart).
+    replaying: bool,
+    /// The operation sent to the signer and not yet answered, written before it leaves (redacted,
+    /// like the journal). After a crash between the signer applying it and our journal, the
+    /// signer is one operation ahead; this is what we ask it again, so it answers from its cache
+    /// instead of the two refusing each other at every hello.
+    inflight: PathBuf,
 }
 
 impl Sequencer {
@@ -266,7 +275,10 @@ impl Sequencer {
             applied_ops: 0,
             in_doubt: None,
             free_ops: 0,
+            replaying: true,
+            inflight: data_dir.join("inflight.json"),
         };
+        let mut last_op: Option<Op> = None;
         for e in entries {
             match e {
                 Entry::Op {
@@ -281,14 +293,34 @@ impl Sequencer {
                     if let Op::Close { height, chain } = op {
                         s.close_block(height, chain, false)?;
                     }
+                    last_op = Some(op);
                 }
                 Entry::Close { height, chain } => {
                     s.close_block(height, chain, false)?;
                 }
             }
         }
+        s.replaying = false;
+        // An operation was in flight when we stopped: unless it is the last one journaled, it is
+        // in doubt until the signer answers it again.
+        if let Ok(bytes) = std::fs::read(&s.inflight) {
+            match serde_json::from_slice::<Op>(&bytes) {
+                Ok(op) if last_op.as_ref() != Some(&op) => {
+                    tracing::warn!(
+                        "an operation was in flight at the last stop: asking the signer again"
+                    );
+                    s.in_doubt = Some(op);
+                    s.shared.in_doubt.store(true, Ordering::SeqCst);
+                }
+                _ => {
+                    let _ = std::fs::remove_file(&s.inflight);
+                }
+            }
+        }
         s.shared.applied_ops.store(s.applied_ops, Ordering::SeqCst);
         if s.log.head.seq > 0 {
+            s.files.write_segments(s.log.head.seq).map_err(io)?;
+            s.files.write_head(&s.log.head).map_err(io)?;
             *s.shared.head.write().unwrap_or_else(|e| e.into_inner()) = s.log.head;
         }
         s.publish_views();
@@ -482,16 +514,38 @@ impl Sequencer {
     }
 
     async fn apply_reply(&mut self, op: Op) -> Result<OpDone, ApiError> {
+        let marker =
+            serde_json::to_vec(&redact(&op)).map_err(|e| ApiError::Internal(e.to_string()))?;
+        if let Err(e) = crate::files::write_atomic(&self.inflight, &marker) {
+            return Err(ApiError::Internal(format!(
+                "in-flight marker not written: {e}"
+            )));
+        }
         let reply = match self.link.call(&op).await {
             Ok(r) => r,
             Err(e @ (LinkError::Down | LinkError::Timeout)) => {
-                // The signer may have applied it; ask again before anything else.
+                // The signer may have applied it; ask again before anything else (the marker
+                // stays, so this survives a restart too).
                 self.in_doubt = Some(op);
                 self.shared.in_doubt.store(true, Ordering::SeqCst);
                 return Err(e.into());
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => {
+                let _ = std::fs::remove_file(&self.inflight);
+                return Err(e.into());
+            }
         };
+        let result = self.apply_answered(op, reply);
+        let _ = std::fs::remove_file(&self.inflight);
+        result
+    }
+
+    /// Apply an answered operation, journal and record it.
+    fn apply_answered(
+        &mut self,
+        op: Op,
+        reply: blindbook_ledger::ops::Reply,
+    ) -> Result<OpDone, ApiError> {
         let applied = ops::apply(&mut self.ledger, &op, &reply.invalid);
         let jobs = applied.jobs();
         let aligned = jobs.len() == reply.signatures.len()
@@ -622,9 +676,15 @@ impl Sequencer {
             .map_err(|e| ApiError::Internal(e.to_string()))?;
         let io = |e: std::io::Error| ApiError::Internal(e.to_string());
         // Everything the head names exists before the head does.
-        self.files.write_delta(&delta).map_err(io)?;
-        self.files.write_segments(head.seq).map_err(io)?;
-        self.files.write_head(&head).map_err(io)?;
+        if self.replaying {
+            if !self.files.has_delta(delta.seq) {
+                self.files.write_delta(&delta).map_err(io)?;
+            }
+        } else {
+            self.files.write_delta(&delta).map_err(io)?;
+            self.files.write_segments(head.seq).map_err(io)?;
+            self.files.write_head(&head).map_err(io)?;
+        }
         // The fills of the open block are published at this height.
         for f in self
             .shared

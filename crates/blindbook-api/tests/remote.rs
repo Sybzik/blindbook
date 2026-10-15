@@ -262,3 +262,134 @@ async fn lost_answer_is_recovered_exactly_once() {
     good.abort();
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// As above, but the API itself stops while the answer is lost (a crash or a redeploy): the
+/// operation in flight was written to disk before it left, so the restarted API knows it is in
+/// doubt, admits the signer one operation ahead and settles it, instead of the two refusing each
+/// other at every hello.
+#[tokio::test(flavor = "multi_thread")]
+async fn api_restart_with_an_answer_lost_is_recovered() {
+    use blindbook_ledger::ops::{FromSigner, ToSigner};
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    blindbook_polymarket::net::install_crypto_provider();
+    let dir = std::env::temp_dir().join(format!("bb-restart-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let m = master().public_key();
+    let refs: RefFn = Arc::new(|_: &H32| MarketInputs {
+        reference: RefSnapshot::empty(0),
+        closed: false,
+        accepting_orders: false,
+    });
+    let config = || StartConfig {
+        data_dir: dir.join("api"),
+        m,
+        pow: PowBits { light: 4, heavy: 4 },
+        voucher_units: 4_096,
+        signer_token: Some(TOKEN.into()),
+        topup: None,
+    };
+    let c = reqwest::Client::builder().no_proxy().build().unwrap();
+    let st = Arc::new(Mutex::new(station(&dir.join("signer"))));
+    st.lock()
+        .unwrap()
+        .signer
+        .add_vouchers([blindbook_ledger::ops::voucher_hash("JUDGE-TWO")], 4_096);
+
+    // First API: the signer applies the voucher and the answer is lost.
+    let credit_id = {
+        let running = start(config(), None, refs.clone(), BTreeMap::new()).unwrap();
+        let credit_id = running.shared.credit_id.clone();
+        let remote = running.remote.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server =
+            tokio::spawn(async move { axum::serve(listener, running.router).await.unwrap() });
+        let flaky = {
+            let st = st.clone();
+            let url = format!("ws://{addr}/v1/signer");
+            tokio::spawn(async move {
+                let tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+                let mut req = url.into_client_request().unwrap();
+                req.headers_mut()
+                    .insert("authorization", format!("Bearer {TOKEN}").parse().unwrap());
+                let (mut ws, _) = tokio_tungstenite::client_async(req, tcp).await.unwrap();
+                let hello = st.lock().unwrap().hello();
+                ws.send(Message::Text(
+                    serde_json::to_string(&FromSigner::Hello { hello })
+                        .unwrap()
+                        .into(),
+                ))
+                .await
+                .unwrap();
+                while let Some(Ok(msg)) = ws.next().await {
+                    if let Message::Text(t) = msg {
+                        let ToSigner { op, .. } = serde_json::from_str(&t).unwrap();
+                        st.lock().unwrap().serve(&op).unwrap();
+                        return;
+                    }
+                }
+            })
+        };
+        for _ in 0..50 {
+            if remote.connected().await {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let (status, _) = voucher(&c, &format!("http://{addr}"), &credit_id, "JUDGE-REMOTE").await;
+        assert_eq!(status, 503, "the answer never came");
+        flaky.await.unwrap();
+        server.abort();
+        credit_id
+    };
+    assert_eq!(st.lock().unwrap().applied, 1);
+    assert!(
+        dir.join("api").join("inflight.json").exists(),
+        "the operation in flight is on disk"
+    );
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    // Restarted API: same data, nothing in memory. The signer comes back one ahead and is let in.
+    let running = start(config(), None, refs, BTreeMap::new()).unwrap();
+    let shared = running.shared.clone();
+    let remote = running.remote.clone();
+    assert!(shared.in_doubt.load(std::sync::atomic::Ordering::SeqCst));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, running.router).await.unwrap() });
+    let good = tokio::spawn(run(
+        format!("ws://{addr}/v1/signer"),
+        TOKEN.into(),
+        st.clone(),
+    ));
+    for _ in 0..50 {
+        if remote.connected().await {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(remote.connected().await, "admitted one operation ahead");
+    let (status, resp) = voucher(&c, &format!("http://{addr}"), &credit_id, "JUDGE-TWO").await;
+    assert_eq!(status, 200, "{resp}");
+    assert!(!shared.in_doubt.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(st.lock().unwrap().applied, 2);
+    assert_eq!(
+        shared.applied_ops.load(std::sync::atomic::Ordering::SeqCst),
+        2
+    );
+    assert!(!dir.join("api").join("inflight.json").exists());
+    assert_eq!(
+        st.lock()
+            .unwrap()
+            .signer
+            .ledger
+            .outstanding(blindbook_ledger::keysets::Keyset::Credit),
+        8_192
+    );
+    good.abort();
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -54,6 +54,14 @@ impl Files {
         )
     }
 
+    /// Whether a delta is already on disk (a replay after a restart leaves it as it is).
+    pub fn has_delta(&self, seq: u64) -> bool {
+        self.root
+            .join("delta")
+            .join(format!("{seq}.json.gz"))
+            .exists()
+    }
+
     pub fn write_head(&self, h: &Head) -> std::io::Result<()> {
         let json = serde_json::to_vec(h).map_err(std::io::Error::other)?;
         write_atomic(&self.root.join("head.json"), &json)

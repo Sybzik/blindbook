@@ -388,7 +388,10 @@ async fn read_results(station: Arc<Mutex<Station>>) {
     }
 }
 
-#[tokio::main]
+// At least four worker threads whatever the core count: on a one-vCPU server a single worker
+// would stall the API link (answers due within 10 s) while the treasury scans blocks or proves a
+// payout; with several, the OS shares the core and the link keeps answering.
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(

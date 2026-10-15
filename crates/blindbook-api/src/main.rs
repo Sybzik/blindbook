@@ -129,7 +129,9 @@ async fn resolver(http: reqwest::Client, tx: mpsc::Sender<Cmd>, shared: Arc<Shar
 /// Directives appended to every log filter so the HTTP stack can't log requests.
 const NO_REQUEST_LOGS: &str = "tower_http=off,hyper=off,hyper_util=off,axum=off,h2=off";
 
-#[tokio::main]
+// At least four worker threads whatever the core count: on a one-vCPU server a single worker
+// would let the indexer's block scans or a large batch hold up every request.
+#[tokio::main(flavor = "multi_thread", worker_threads = 4)]
 async fn main() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) == Some("candidates") {

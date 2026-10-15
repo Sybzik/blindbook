@@ -19,6 +19,7 @@
   <a href="#why">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#privacy-in-five-layers">Privacy</a> ·
+  <a href="#what-you-trust-and-what-you-can-check">Trust</a> ·
   <a href="#what-you-can-do">Features</a> ·
   <a href="#check-it-yourself">Verify</a> ·
   <a href="#run-it">Run it</a> ·
@@ -70,6 +71,20 @@ flowchart LR
 | prices, volumes, every batch's orders and fills (participants redacted), every slip issued and spent, the reserve, payout totals | who you are, which bets are yours, your balance, your top-up and payout addresses, your IP |
 
 **The server can't see who you are, and custody is verifiable.** The internet-facing server holds no secrets. Every known leak, who could see it and what closes it is in the [threat model](docs/THREAT_MODEL.md).
+
+## What you trust, and what you can check
+
+Blindbook is an e-cash mint in front of a shielded reserve: the operator holds the money, and nobody, the operator included, can tell whose it is. Privacy doesn't depend on trusting the operator; the money does, within limits anyone can check.
+
+| You trust | For | What limits it, and how you check |
+|---|---|---|
+| the signer, one isolated machine | keeping the reserve and signing slips | the reserve's viewing key is public, so anyone can see it covers every slip outstanding (P400 in the browser, `blindbook-verify --chain`); the house's loss per market is capped by a fixed buffer the signer enforces; stakes are small (at most 2 TAZ a trade on testnet); threshold custody (FROST 2-of-3) is the next step |
+| the signer to keep serving | trading, cash-in, withdrawals | it can refuse everyone, but it can't pick you out: it never learns who sends a request, and requests can't be linked to each other |
+| Polymarket's result | settlement | the signer reads each result from Polymarket's contract on Polygon itself and refuses any other; `blindbook-verify --polygon` reads them again |
+| the host serving the web app | loading the app | as with any web app, the host serves the code you run; it sees only that an IP opened the page (or use the .onion mirror); the code is open, and every slip the API returns is checked in your browser against keys derived from the master key the app pins |
+| the Nym mixnet | hiding your IP from our servers | a public network of independent nodes; every API request goes through it (the Nym client itself talks to the network's directory and gateways to join), and the app shows the link |
+
+You never trust us with your identity, the link between your top-up, bets and payout, or your balance: the system doesn't have them to give away. Your payout address reaches only the signer, sealed, and is forgotten once paid.
 
 ## What you can do
 

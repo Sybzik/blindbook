@@ -29,7 +29,7 @@ pub enum LinkError {
     Signer(String),
 }
 
-type Call = (Op, oneshot::Sender<Result<Reply, LinkError>>);
+type Call = (Op, u64, oneshot::Sender<Result<Reply, LinkError>>);
 
 /// A signer connected over WebSocket.
 #[derive(Default)]
@@ -47,7 +47,7 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 pub const KEEPALIVE: Duration = Duration::from_secs(15);
 
 impl Remote {
-    async fn call(&self, op: &Op) -> Result<Reply, LinkError> {
+    async fn call(&self, op: &Op, at: u64) -> Result<Reply, LinkError> {
         let tx = self
             .tx
             .lock()
@@ -56,7 +56,7 @@ impl Remote {
             .map(|(_, t)| t.clone())
             .ok_or(LinkError::NotConnected)?;
         let (rtx, rrx) = oneshot::channel();
-        tx.send((op.clone(), rtx))
+        tx.send((op.clone(), at, rtx))
             .await
             .map_err(|_| LinkError::NotConnected)?;
         tokio::time::timeout(CALL_TIMEOUT, rrx)
@@ -92,7 +92,7 @@ impl Remote {
         let mut keepalive = tokio::time::interval(KEEPALIVE);
         keepalive.tick().await;
         loop {
-            let (op, reply) = tokio::select! {
+            let (op, at, reply) = tokio::select! {
                 call = rx.recv() => match call {
                     Some(c) => c,
                     None => break,
@@ -113,7 +113,12 @@ impl Remote {
                 }
             };
             next_id += 1;
-            let msg = serde_json::to_string(&ToSigner { id: next_id, op }).expect("serializable");
+            let msg = serde_json::to_string(&ToSigner {
+                id: next_id,
+                at,
+                op,
+            })
+            .expect("serializable");
             if sink.send(Message::Text(msg.into())).await.is_err() {
                 let _ = reply.send(Err(LinkError::Down));
                 break;
@@ -178,10 +183,12 @@ pub enum SignerLink {
 }
 
 impl SignerLink {
-    pub async fn call(&self, op: &Op) -> Result<Reply, LinkError> {
+    /// Send `op` at its place in the sequence (`at`: operations applied before it).
+    pub async fn call(&self, op: &Op, at: u64) -> Result<Reply, LinkError> {
         match self {
-            SignerLink::Remote(r) => r.call(op).await,
+            SignerLink::Remote(r) => r.call(op, at).await,
             #[cfg(feature = "embedded-signer")]
+            // In process: no answer can be lost, so there is nothing to repeat.
             SignerLink::Embedded(s) => s
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())

@@ -522,8 +522,16 @@ pub struct Hello {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToSigner {
     pub id: u64,
+    /// The operation's place in the sequence: how many operations the API has applied before it.
+    /// A repeat after a lost answer carries the place the operation took, so the signer answers it
+    /// from its record; any other operation, even an identical one, is new.
+    pub at: u64,
     pub op: Op,
 }
+
+/// The start of the signer's error when an operation's place is neither the next one nor the last
+/// one it applied: the two sequences have parted, and the API halts.
+pub const OUT_OF_STEP: &str = "out of step";
 
 /// Signer → API.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -132,14 +132,27 @@ impl Station {
         })
     }
 
-    /// Handle one operation; journal it before the reply goes out.
-    pub fn serve(&mut self, op: &Op) -> Result<Reply, String> {
+    /// Handle one operation at its place in the sequence (`at`: operations applied before it);
+    /// journal it before the reply goes out.
+    pub fn serve(&mut self, op: &Op, at: u64) -> Result<Reply, String> {
         let d = digest(op);
-        if let Some((last, reply)) = &self.last
-            && *last == d
-        {
-            // The API lost our answer and asks again: same answer, applied once.
-            return Ok(reply.clone());
+        if at + 1 == self.applied {
+            // The API lost our answer and asks again: same answer, applied once. Only the operation
+            // that took that place can ask: an identical one sent afterwards comes at the next place.
+            return match &self.last {
+                Some((last, reply)) if *last == d => Ok(reply.clone()),
+                _ => Err(format!(
+                    "{}: operation {at} is not the one applied there",
+                    ops::OUT_OF_STEP
+                )),
+            };
+        }
+        if at != self.applied {
+            return Err(format!(
+                "{}: the API is at {at}, the signer at {}",
+                ops::OUT_OF_STEP,
+                self.applied
+            ));
         }
         let (mut reply, applied) = self.signer.handle(op).map_err(|e| e.to_string())?;
         if !matches!(applied, Applied::Refused(_)) {
@@ -261,10 +274,14 @@ async fn session(ws: Ws, station: &Mutex<Station>) -> String {
             Ok(_) => continue,
             Err(e) => return format!("read error: {e}"),
         };
-        let Ok(ToSigner { id, op }) = serde_json::from_str::<ToSigner>(&text) else {
+        let Ok(ToSigner { id, at, op }) = serde_json::from_str::<ToSigner>(&text) else {
             continue;
         };
-        let answer = match station.lock().unwrap_or_else(|e| e.into_inner()).serve(&op) {
+        let answer = match station
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .serve(&op, at)
+        {
             Ok(reply) => FromSigner::Reply { id, reply },
             Err(error) => {
                 tracing::error!(%error, "operation failed");

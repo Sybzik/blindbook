@@ -214,8 +214,8 @@ async fn lost_answer_is_recovered_exactly_once() {
             .unwrap();
             while let Some(Ok(msg)) = ws.next().await {
                 if let Message::Text(t) = msg {
-                    let ToSigner { op, .. } = serde_json::from_str(&t).unwrap();
-                    st.lock().unwrap().serve(&op).unwrap();
+                    let ToSigner { op, at, .. } = serde_json::from_str(&t).unwrap();
+                    st.lock().unwrap().serve(&op, at).unwrap();
                     return; // the answer is lost
                 }
             }
@@ -327,8 +327,8 @@ async fn api_restart_with_an_answer_lost_is_recovered() {
                 .unwrap();
                 while let Some(Ok(msg)) = ws.next().await {
                     if let Message::Text(t) = msg {
-                        let ToSigner { op, .. } = serde_json::from_str(&t).unwrap();
-                        st.lock().unwrap().serve(&op).unwrap();
+                        let ToSigner { op, at, .. } = serde_json::from_str(&t).unwrap();
+                        st.lock().unwrap().serve(&op, at).unwrap();
                         return;
                     }
                 }
@@ -391,5 +391,126 @@ async fn api_restart_with_an_answer_lost_is_recovered() {
         8_192
     );
     good.abort();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The signer re-announces a treasury event every few seconds until it is recorded, so copies can
+/// queue up behind a slow operation (seen on the rehearsal stack under load). Each copy is the
+/// same operation as the one just applied; it must not be taken for a repeat of it: the event is
+/// recorded once on both sides, and the next block's roots agree.
+#[tokio::test(flavor = "multi_thread")]
+async fn an_event_announced_many_times_is_recorded_once() {
+    use blindbook_api::sequencer::Cmd;
+    use blindbook_ledger::delta::{ChainStats, LogEvent};
+    use blindbook_ledger::ops::{FromSigner, ToSigner};
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    blindbook_polymarket::net::install_crypto_provider();
+    let dir = std::env::temp_dir().join(format!("bb-events-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let refs: RefFn = Arc::new(|_: &H32| MarketInputs {
+        reference: RefSnapshot::empty(0),
+        closed: false,
+        accepting_orders: false,
+    });
+    let running = start(
+        StartConfig {
+            data_dir: dir.join("api"),
+            m: master().public_key(),
+            pow: PowBits { light: 4, heavy: 4 },
+            voucher_units: 4_096,
+            signer_token: Some(TOKEN.into()),
+            topup: None,
+        },
+        None,
+        refs,
+        BTreeMap::new(),
+    )
+    .unwrap();
+    let shared = running.shared.clone();
+    let remote = running.remote.clone();
+    let tx = running.tx.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, running.router).await.unwrap() });
+    let url = format!("ws://{addr}/v1/signer");
+    let event = LogEvent::ReserveReported {
+        height: 4_504_572,
+        reserve_zat: 0,
+        unswept_zat: 0,
+    };
+    let st = Arc::new(Mutex::new(station(&dir.join("signer"))));
+    st.lock().unwrap().signer.report_event(event.clone());
+
+    // A signer that announces the event five times at once, then answers as the real one does.
+    let signer = {
+        let st = st.clone();
+        tokio::spawn(async move {
+            let tcp = tokio::net::TcpStream::connect(addr).await.unwrap();
+            let mut req = url.into_client_request().unwrap();
+            req.headers_mut()
+                .insert("authorization", format!("Bearer {TOKEN}").parse().unwrap());
+            let (mut ws, _) = tokio_tungstenite::client_async(req, tcp).await.unwrap();
+            let hello = st.lock().unwrap().hello();
+            ws.send(Message::Text(
+                serde_json::to_string(&FromSigner::Hello { hello })
+                    .unwrap()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+            for _ in 0..5 {
+                let msg = serde_json::to_string(&FromSigner::Event {
+                    event: event.clone(),
+                })
+                .unwrap();
+                ws.send(Message::Text(msg.into())).await.unwrap();
+            }
+            while let Some(Ok(msg)) = ws.next().await {
+                if let Message::Text(t) = msg {
+                    let ToSigner { id, at, op } = serde_json::from_str(&t).unwrap();
+                    let answer = match st.lock().unwrap().serve(&op, at) {
+                        Ok(reply) => FromSigner::Reply { id, reply },
+                        Err(error) => FromSigner::Error { id, error },
+                    };
+                    ws.send(Message::Text(
+                        serde_json::to_string(&answer).unwrap().into(),
+                    ))
+                    .await
+                    .unwrap();
+                }
+            }
+        })
+    };
+    for _ in 0..50 {
+        if remote.connected().await {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    let ord = std::sync::atomic::Ordering::SeqCst;
+    assert_eq!(shared.applied_ops.load(ord), 1, "recorded once by the API");
+    assert_eq!(st.lock().unwrap().applied, 1, "and once by the signer");
+    assert!(st.lock().unwrap().signer.pending_events().is_empty());
+
+    // The next block closes with the same root on both sides.
+    tx.send(Cmd::Close {
+        height: 4_504_573,
+        chain: ChainStats {
+            shielded_actions: 0,
+        },
+        done: None,
+    })
+    .await
+    .unwrap();
+    tokio::time::sleep(Duration::from_millis(800)).await;
+    assert!(!shared.halted.load(ord), "the roots agree");
+    assert_eq!(shared.applied_ops.load(ord), 2);
+    assert_eq!(st.lock().unwrap().applied, 2);
+    signer.abort();
     let _ = std::fs::remove_dir_all(&dir);
 }

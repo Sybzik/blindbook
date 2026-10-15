@@ -232,9 +232,12 @@ pub struct Sequencer {
     batch_id: u64,
     /// Operations applied so far (the signer reports the same count at hello).
     pub applied_ops: u64,
-    /// Sent, unanswered: re-sent before anything else (the signer answers a repeat from its
-    /// cache, so it is applied exactly once on both sides).
+    /// Sent, unanswered: re-sent before anything else, at the same place (the signer answers a
+    /// repeat from its record, so it is applied exactly once on both sides).
     in_doubt: Option<Op>,
+    /// Treasury events recorded or refused lately: the signer re-announces an event every few
+    /// seconds until it is recorded, so copies can queue up behind a slow operation.
+    events_seen: VecDeque<LogEvent>,
     /// Free operations (MAX_FREE_OPS) applied in the open block.
     free_ops: usize,
     /// Replaying the journal at start: the public files are already on disk, so only missing
@@ -280,6 +283,7 @@ impl Sequencer {
             batch_id: 0,
             applied_ops: 0,
             in_doubt: None,
+            events_seen: VecDeque::new(),
             free_ops: 0,
             replaying: true,
             inflight: data_dir.join("inflight.json"),
@@ -527,7 +531,7 @@ impl Sequencer {
                 "in-flight marker not written: {e}"
             )));
         }
-        let reply = match self.link.call(&op).await {
+        let reply = match self.link.call(&op, self.applied_ops).await {
             Ok(r) => r,
             Err(e @ (LinkError::Down | LinkError::Timeout)) => {
                 // The signer may have applied it; ask again before anything else (the marker
@@ -535,6 +539,10 @@ impl Sequencer {
                 self.in_doubt = Some(op);
                 self.shared.in_doubt.store(true, Ordering::SeqCst);
                 return Err(e.into());
+            }
+            Err(LinkError::Signer(why)) if why.starts_with(ops::OUT_OF_STEP) => {
+                let _ = std::fs::remove_file(&self.inflight);
+                return Err(self.halt(&format!("the signer is not at our place: {why}")));
             }
             Err(e) => {
                 let _ = std::fs::remove_file(&self.inflight);
@@ -562,6 +570,22 @@ impl Sequencer {
         if !aligned {
             return Err(self.halt("the signer's signatures don't match the replica's jobs"));
         }
+        // A block closes only where both sides reach the same root: compared before anything is
+        // journaled or published, so a block the signer disagrees with never reaches the public
+        // log (nor comes back from the journal on a restart).
+        if let (Op::Close { height, chain }, Some(theirs)) = (&op, reply.root) {
+            let (_, head) = self
+                .log
+                .clone()
+                .close(*height, *chain)
+                .map_err(|e| ApiError::Internal(e.to_string()))?;
+            if theirs != head.root {
+                return Err(self.halt(&format!(
+                    "log root differs from the signer's: ours {}, theirs {theirs}",
+                    head.root
+                )));
+            }
+        }
         if !matches!(applied, Applied::Refused(_)) {
             let entry = Entry::Op {
                 op: redact(&op),
@@ -579,14 +603,6 @@ impl Sequencer {
             self.publish_views();
             if let Op::Close { height, chain } = &op {
                 self.close_block(*height, *chain, false)?;
-                if let Some(theirs) = reply.root
-                    && theirs != self.log.head.root
-                {
-                    return Err(self.halt(&format!(
-                        "log root differs from the signer's: ours {}, theirs {theirs}",
-                        self.log.head.root
-                    )));
-                }
             }
         }
         Ok(OpDone {
@@ -769,11 +785,19 @@ impl Sequencer {
                         let _ = d.send(());
                     } },
                     Some(Cmd::Event(event)) => {
+                        if self.events_seen.contains(&event) {
+                            continue;
+                        }
                         match self.execute(Op::Record { event: event.clone() }).await {
-                            Ok(done) if !matches!(done.applied, Applied::Refused(_)) => {
-                                tracing::info!(?event, "treasury event recorded");
+                            Ok(done) => {
+                                if !matches!(done.applied, Applied::Refused(_)) {
+                                    tracing::info!(?event, "treasury event recorded");
+                                }
+                                self.events_seen.push_back(event);
+                                while self.events_seen.len() > 256 {
+                                    self.events_seen.pop_front();
+                                }
                             }
-                            Ok(_) => {}
                             Err(e) => tracing::warn!(error = %e, "recording a treasury event failed"),
                         }
                     }

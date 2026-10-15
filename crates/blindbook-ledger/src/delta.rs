@@ -181,6 +181,14 @@ impl LogBuilder {
         }
     }
 
+    /// Whether the open block holds nothing yet: no batch, signature, spent slip or event.
+    pub fn open_block_is_empty(&self) -> bool {
+        self.batches.is_empty()
+            && self.issued.is_empty()
+            && self.spent.is_empty()
+            && self.events.is_empty()
+    }
+
     pub fn batch(&mut self, r: BatchRecord) {
         self.batches.push(r);
     }

@@ -425,7 +425,7 @@ async fn http_end_to_end_and_restart() {
     // Restart from the journal: same head, same spent set.
     drop(tx);
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    let (base2, _tx2) = serve(&data, signer.clone(), m).await;
+    let (base2, tx2) = serve(&data, signer.clone(), m).await;
     let head2: Value = c
         .get(format!("{base2}/v1/head"))
         .send()
@@ -460,6 +460,45 @@ async fn http_end_to_end_and_restart() {
     let (status, resp, _) = post(&c, &base2, "/v1/trade", with_pow(sell, BITS.light)).await;
     assert_eq!(status, 200, "{resp}");
     w.receive(&resp, &outputs, &change);
+
+    // The block with the sale is published as it closes; the empty blocks after it wait until
+    // KEEPALIVE_BLOCKS have passed since the last one published.
+    let seq = |h: Value| h["seq"].as_u64().unwrap();
+    let head_now = || async {
+        c.get(format!("{base2}/v1/head"))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    };
+    let close = |height: u64| {
+        let tx2 = tx2.clone();
+        async move {
+            let (done, closed) = oneshot::channel();
+            tx2.send(Cmd::Close {
+                height,
+                chain: ChainStats::default(),
+                done: Some(done),
+            })
+            .await
+            .unwrap();
+            closed.await.unwrap();
+        }
+    };
+    close(102).await;
+    let after_sale = seq(head_now().await);
+    for h in 103..=105 {
+        close(h).await;
+    }
+    assert_eq!(seq(head_now().await), after_sale, "empty blocks wait");
+    close(102 + blindbook_api::sequencer::KEEPALIVE_BLOCKS).await;
+    assert_eq!(
+        seq(head_now().await),
+        after_sale + 1,
+        "one is published to show the log is alive"
+    );
     let _ = std::fs::remove_dir_all(&data);
 }
 

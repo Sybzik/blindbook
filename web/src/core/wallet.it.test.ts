@@ -122,7 +122,8 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     await api.head();
     expect(await w.voucher('DEV-0099')).toBe(50_000);
     const nextBlock = async (after: number) => {
-      for (let i = 0; i < 240 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
+      // Empty blocks are published only every 4th block (KEEPALIVE_BLOCKS), so allow a few minutes.
+      for (let i = 0; i < 480 && (await api.head()).seq <= after; i++) await new Promise((r) => setTimeout(r, 500));
     };
 
     // The bet went through, its answer was lost: the slips it spent are held back, then its
@@ -138,7 +139,7 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     expect(w.creditBalance()).toBeGreaterThanOrEqual(48_000);
     expect(w.data.history.at(-1)?.kind).toBe('buy');
 
-    // A bet that never reached the server: its slips come back once three blocks show nothing.
+    // A bet that never reached the server: its slips come back once three published blocks show nothing.
     const credit = w.creditBalance();
     lose = 'before';
     await expect(w.buy(market, 0, 1_000, 9_500)).rejects.toBeInstanceOf(InDoubtError);

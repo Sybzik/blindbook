@@ -51,6 +51,12 @@ pub const MAX_DUEL_FILLS: usize = 16;
 /// for free. Trades pay a fee on at least the market's smallest trade.
 pub const MAX_FREE_OPS: usize = 12;
 
+/// A block in which nothing happened is published only when this many blocks have passed since
+/// the last one published: every visitor's verifier and restore download the whole log, and a
+/// quiet month of 25-second blocks would otherwise be about 100,000 empty deltas. A block with
+/// anything in it (a batch, a signature, a spent slip, an event) is published as it closes.
+pub const KEEPALIVE_BLOCKS: u64 = 4;
+
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("refused: {0}")]
@@ -728,7 +734,22 @@ impl Sequencer {
                         }
                         let _ = reply.send(r);
                     }
-                    Some(Cmd::Close { height, chain, done }) => { match self.execute(Op::Close { height, chain }).await {
+                    Some(Cmd::Close { height, chain, done }) => {
+                    if self.log.head.seq > 0
+                        && self.log.open_block_is_empty()
+                        && height < self.log.head.height + KEEPALIVE_BLOCKS
+                    {
+                        // Nothing to publish: the chain moved on, the log waits (KEEPALIVE_BLOCKS).
+                        *self.shared.block.write().unwrap_or_else(|e| e.into_inner()) = Some(ChainBlock {
+                            height,
+                            shielded_actions: chain.shielded_actions,
+                        });
+                        if let Some(d) = done {
+                            let _ = d.send(());
+                        }
+                        continue;
+                    }
+                    match self.execute(Op::Close { height, chain }).await {
                         Err(e) => match &mut close_failed {
                             Some((since, n)) if since.elapsed() < Duration::from_secs(60) => *n += 1,
                             _ => {

@@ -97,7 +97,8 @@ export class InDoubtError extends Error {
   }
 }
 
-/** Blocks after which a request that left no trace in the log never went through. */
+/** Published blocks (log deltas) after which a request that left no trace never went through. An
+ *  empty block is published at least every 4th chain block, so this is at most about 12 blocks. */
 const SETTLE_BLOCKS = 3;
 
 export interface MyDuel {

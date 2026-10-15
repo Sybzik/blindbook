@@ -463,12 +463,17 @@ pub async fn run_chain(
             }
         };
         if let Some((height, shielded_actions)) = close {
+            // One block at a time: after an outage the backlog of blocks would otherwise fill the
+            // queue ahead of every request (each close waits for the signer).
+            let (done, closed) = tokio::sync::oneshot::channel();
             let _ = tx
                 .send(Cmd::Close {
                     height,
                     chain: ChainStats { shielded_actions },
+                    done: Some(done),
                 })
                 .await;
+            let _ = closed.await;
         }
         for job in jobs {
             tokio::spawn(credit(tx.clone(), book.clone(), job));

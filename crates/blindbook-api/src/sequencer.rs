@@ -196,6 +196,9 @@ pub enum Cmd {
     Close {
         height: u64,
         chain: ChainStats,
+        /// Told once the block is closed (or failed to), so a catching-up indexer queues one block
+        /// at a time and requests interleave with the backlog instead of waiting behind it.
+        done: Option<oneshot::Sender<()>>,
     },
     /// A chain transaction the signer's treasury reported.
     Event(LogEvent),
@@ -665,7 +668,7 @@ impl Sequencer {
                         }
                         let _ = reply.send(r);
                     }
-                    Some(Cmd::Close { height, chain }) => match self.execute(Op::Close { height, chain }).await {
+                    Some(Cmd::Close { height, chain, done }) => { match self.execute(Op::Close { height, chain }).await {
                         Err(e) => match &mut close_failed {
                             Some((since, n)) if since.elapsed() < Duration::from_secs(60) => *n += 1,
                             _ => {
@@ -680,7 +683,10 @@ impl Sequencer {
                                 tracing::info!(height, "blocks close again");
                             }
                         }
-                    },
+                    }
+                    if let Some(d) = done {
+                        let _ = d.send(());
+                    } },
                     Some(Cmd::Event(event)) => {
                         match self.execute(Op::Record { event: event.clone() }).await {
                             Ok(done) if !matches!(done.applied, Applied::Refused(_)) => {

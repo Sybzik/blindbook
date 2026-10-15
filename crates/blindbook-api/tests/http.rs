@@ -370,6 +370,7 @@ async fn http_end_to_end_and_restart() {
         chain: ChainStats {
             shielded_actions: 3,
         },
+        done: None,
     })
     .await
     .unwrap();
@@ -660,6 +661,7 @@ async fn http_blind_duel() {
     tx.send(Cmd::Close {
         height: 7,
         chain: ChainStats::default(),
+        done: None,
     })
     .await
     .unwrap();

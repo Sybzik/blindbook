@@ -357,6 +357,7 @@ async fn main() -> Result<(), String> {
                     .send(Cmd::Close {
                         height: h + 1,
                         chain: ChainStats::default(),
+                        done: None,
                     })
                     .await;
             }

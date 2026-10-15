@@ -317,14 +317,19 @@ async fn main() {
         loop {
             tick.tick().await;
             let h = shared.head.read().unwrap().height.max(4_480_000);
+            // Wait for each block to close, as the real indexer does, so requests are never
+            // queued behind a backlog of blocks.
+            let (done, closed) = tokio::sync::oneshot::channel();
             let _ = tx
                 .send(Cmd::Close {
                     height: h + 1,
                     chain: ChainStats {
                         shielded_actions: (h % 13) * 2,
                     },
+                    done: Some(done),
                 })
                 .await;
+            let _ = closed.await;
             // A fixed development reserve, so the solvency check has something to compare.
             if h.is_multiple_of(4) {
                 let event = LogEvent::ReserveReported {

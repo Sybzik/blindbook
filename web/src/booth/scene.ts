@@ -17,6 +17,8 @@ export type BoothAction = 'enter' | 'how' | 'verify' | 'zebra' | 'bonsai' | 'pho
 export interface BoothHandle {
   update(d: BoothData): void;
   enter(): Promise<void>;
+  /** Stop following the object a card was opened on. */
+  release(): void;
   dispose(): void;
 }
 
@@ -111,7 +113,17 @@ function box(w: number, h: number, d: number, color: number, opts: Partial<THREE
   return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: 0.75, metalness: 0.1, ...opts }));
 }
 
-export async function createBooth(canvas: HTMLCanvasElement, data: BoothData, on: { action: (a: BoothAction, x: number, y: number) => void; hover: (label: string | null, x: number, y: number) => void }): Promise<BoothHandle> {
+export async function createBooth(
+  canvas: HTMLCanvasElement,
+  data: BoothData,
+  on: {
+    action: (a: BoothAction, x: number, y: number) => void;
+    hover: (label: string | null, x: number, y: number) => void;
+    /** Every frame while a card is open: where the clicked point of its object is on screen now
+     *  (it moves with the camera), and whether it is in view at all. */
+    anchor?: (x: number, y: number, visible: boolean) => void;
+  },
+): Promise<BoothHandle> {
   await Promise.all(['48px "VT323"', '24px "Departure Mono"', '20px "IBM Plex Mono"'].map((f) => document.fonts.load(f)));
   const phone = matchMedia('(pointer: coarse)').matches;
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: !phone, powerPreference: 'high-performance' });
@@ -465,15 +477,20 @@ export async function createBooth(canvas: HTMLCanvasElement, data: BoothData, on
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   const hits = [curtainHit, plaqueMesh, how, ver, zebra, bonsai, phoneG, mug, note];
+  let lastHit: THREE.Vector3 | null = null;
   const pick = (e: PointerEvent): THREE.Object3D | null => {
     const r = canvas.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(hits, true)[0];
+    lastHit = hit?.point ?? null;
     let o: THREE.Object3D | null = hit?.object ?? null;
     while (o && !o.userData.action) o = o.parent;
     return o;
   };
+  // The object a card was opened on, and the clicked point in its own space.
+  let anchor: { o: THREE.Object3D; local: THREE.Vector3 } | null = null;
+  const seen = new THREE.Vector3();
   let drag: { x: number; y: number; yaw: number; pitch: number; moved: boolean } | null = null;
   let hoverCurtain = 0;
   let entering = false;
@@ -500,7 +517,9 @@ export async function createBooth(canvas: HTMLCanvasElement, data: BoothData, on
     drag = null;
     if (d?.moved || entering) return;
     const o = pick(e);
-    if (o) on.action(o.userData.action as BoothAction, e.clientX, e.clientY);
+    if (!o) return;
+    anchor = lastHit ? { o, local: o.worldToLocal(lastHit.clone()) } : null;
+    on.action(o.userData.action as BoothAction, e.clientX, e.clientY);
   };
   canvas.addEventListener('pointerdown', down);
   canvas.addEventListener('pointermove', move);
@@ -549,6 +568,13 @@ export async function createBooth(canvas: HTMLCanvasElement, data: BoothData, on
     camera.position.set(target.x + Math.sin(yaw) * r, ty + 0.05 + Math.sin(pitch) * r, target.z + Math.cos(yaw) * r);
     camera.lookAt(target.x, ty, target.z);
     renderer.render(scene, camera);
+    if (anchor && on.anchor) {
+      seen.copy(anchor.local);
+      anchor.o.localToWorld(seen).project(camera);
+      const r = canvas.getBoundingClientRect();
+      const inView = seen.z > -1 && seen.z < 1 && Math.abs(seen.x) <= 1 && Math.abs(seen.y) <= 1;
+      on.anchor(r.left + ((seen.x + 1) / 2) * r.width, r.top + ((1 - seen.y) / 2) * r.height, inView);
+    }
   };
   raf = requestAnimationFrame(tick);
 
@@ -556,6 +582,9 @@ export async function createBooth(canvas: HTMLCanvasElement, data: BoothData, on
     update(d) {
       drawTally(d);
       drawScreen(d);
+    },
+    release() {
+      anchor = null;
     },
     enter() {
       entering = true;

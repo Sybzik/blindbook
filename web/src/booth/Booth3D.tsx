@@ -35,6 +35,11 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
   const handle = useRef<BoothHandle | null>(null);
   const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null);
   const [egg, setEgg] = useState<{ title: string; body: string; x: number; y: number; mug: boolean } | null>(null);
+  const eggEl = useRef<HTMLDivElement>(null);
+  const close = () => {
+    handle.current?.release();
+    setEgg(null);
+  };
   const factsRef = useRef(facts);
   factsRef.current = facts;
   const enter = async (to?: string) => {
@@ -57,6 +62,15 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
         }
       },
       hover: (label, x, y) => setHover(label ? { label, x, y } : null),
+      // The open card stays on its object while the camera moves (set here, not through state:
+      // it changes every frame).
+      anchor: (x, y, visible) => {
+        const el = eggEl.current;
+        if (!el) return;
+        el.style.left = `${Math.max(8, Math.min(x, innerWidth - el.offsetWidth - 8))}px`;
+        el.style.top = `${Math.max(8, Math.min(y, innerHeight - el.offsetHeight - 8))}px`;
+        el.style.visibility = visible ? 'visible' : 'hidden';
+      },
     })
       .then((h) => {
         if (dead) h.dispose();
@@ -78,7 +92,7 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
     handle.current?.update(data);
   }, [data.block, data.markets, data.prices?.a, data.prices?.y, data.prices?.la]);
   return (
-    <div className="ld bd" onClick={(e) => e.target === e.currentTarget && setEgg(null)}>
+    <div className="ld bd" onClick={(e) => e.target === e.currentTarget && close()}>
       <canvas ref={canvas} className="bd-canvas" aria-hidden="true" />
       <header className="ld-tl">
         <div className="ld-brand">
@@ -105,7 +119,7 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
         </span>
       )}
       {egg && (
-        <div className="bd-egg" role="dialog" aria-label={egg.title} style={{ left: Math.min(egg.x, innerWidth - 300), top: Math.min(egg.y, innerHeight - 180) }} onClick={() => setEgg(null)}>
+        <div ref={eggEl} className="bd-egg" role="dialog" aria-label={egg.title} style={{ left: Math.min(egg.x, innerWidth - 300), top: Math.min(egg.y, innerHeight - 180) }} onClick={close}>
           <p className="bb-label bb-hi">{egg.title}</p>
           {egg.mug ? <p className="bd-steam bb-display-sm bb-glow bb-hi">{egg.body}</p> : <p className="bb-ui">{egg.body}</p>}
         </div>

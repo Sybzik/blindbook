@@ -76,7 +76,15 @@ struct TokenState {
     inconsistent_since: Option<u64>,
     /// Polymarket's timestamp (ms) of the last event applied to this book.
     server_ts_ms: u64,
+    /// Connections in a row redone for a missing snapshot while this book still sent none.
+    missed: u32,
 }
+
+/// A book that sent no snapshot over this many connections in a row is taken as gone from
+/// Polymarket (a market closed or resolved there): it stays subscribed and unhealthy, but no longer
+/// makes its connection start over every few seconds, which would cut the feed of every other
+/// market on it. A snapshot that does come puts it back.
+const GONE_AFTER: u32 = 3;
 
 #[derive(Debug)]
 struct ShardState {
@@ -124,6 +132,7 @@ impl Feed {
                         no_snapshot_since: Some(now_ms),
                         inconsistent_since: None,
                         server_ts_ms: 0,
+                        missed: 0,
                     },
                 );
             }
@@ -238,6 +247,7 @@ impl Feed {
         t.book = Book::from_levels(bids, asks);
         t.server_ts_ms = server_ts;
         t.no_snapshot_since = None;
+        t.missed = 0;
         if t.book.is_crossed() {
             t.inconsistent_since.get_or_insert(now_ms);
         } else {
@@ -350,16 +360,26 @@ impl Feed {
                         });
                     }
                 }
-                (t.no_snapshot_since.is_some() && connected_for >= cfg.snapshot_timeout_ms).then(
-                    || Resync::NoSnapshot {
+                (t.no_snapshot_since.is_some()
+                    && t.missed < GONE_AFTER
+                    && connected_for >= cfg.snapshot_timeout_ms)
+                    .then(|| Resync::NoSnapshot {
                         asset_id: a.clone(),
-                    },
-                )
+                    })
             })
         };
         if why.is_some() {
             self.shards[shard].last_resync_ms = Some(now_ms);
             self.stats.resyncs += 1;
+        }
+        if matches!(why, Some(Resync::NoSnapshot { .. })) {
+            for a in &self.shards[shard].assets {
+                if let Some(t) = self.tokens.get_mut(a)
+                    && t.no_snapshot_since.is_some()
+                {
+                    t.missed += 1;
+                }
+            }
         }
         why
     }
@@ -517,6 +537,47 @@ mod tests {
         f.on_frame(0, 1_200);
         assert_eq!(f.shard_needs_resync(0, 1_300), None, "rate limited");
         assert_eq!(f.stats.resyncs, 1);
+    }
+
+    #[test]
+    fn a_book_gone_from_polymarket_stops_forcing_reconnects() {
+        // "b" never sends a snapshot (its market closed on Polymarket): its connection is redone
+        // GONE_AFTER times, then left alone; "a" keeps its feed. A late snapshot puts "b" back.
+        let mut f = feed();
+        let mut t = 0;
+        for round in 0..GONE_AFTER {
+            f.on_connected(0, t);
+            f.apply(0, book_ev("a"), t + 100);
+            f.on_frame(0, t + 5_000);
+            assert_eq!(
+                f.shard_needs_resync(0, t + 5_000),
+                Some(Resync::NoSnapshot {
+                    asset_id: "b".into()
+                }),
+                "round {round}"
+            );
+            f.on_disconnected(0, t + 5_001);
+            t += 11_000;
+        }
+        f.on_connected(0, t);
+        f.apply(0, book_ev("a"), t + 100);
+        f.on_frame(0, t + 5_000);
+        assert_eq!(
+            f.shard_needs_resync(0, t + 5_000),
+            None,
+            "b is taken as gone"
+        );
+        f.on_frame(0, t + 30_000);
+        assert_eq!(f.shard_needs_resync(0, t + 30_000), None);
+        assert!(
+            f.unhealthy_since("b", t + 30_000).is_some(),
+            "still unhealthy"
+        );
+        assert_eq!(f.unhealthy_since("a", t + 30_000), None);
+        // A snapshot after all: b is healthy and counted again.
+        f.apply(0, book_ev("b"), t + 31_000);
+        assert_eq!(f.unhealthy_since("b", t + 31_000), None);
+        assert_eq!(f.tokens["b"].missed, 0);
     }
 
     #[test]

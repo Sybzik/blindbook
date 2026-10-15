@@ -171,12 +171,22 @@ export class IdbStore implements VaultStore {
       req.onerror = () => reject(req.error);
     });
   }
+  /** One transaction on its own connection: done once the transaction commits (a write is on
+   *  disk, not just accepted), and the connection closed (open ones pile up, and block the site
+   *  data from being cleared). */
   private async tx<T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
     const db = await this.db();
     return new Promise((resolve, reject) => {
-      const r = f(db.transaction('vault', mode).objectStore('vault'));
-      r.onsuccess = () => resolve(r.result);
-      r.onerror = () => reject(r.error);
+      const t = db.transaction('vault', mode);
+      const r = f(t.objectStore('vault'));
+      t.oncomplete = () => {
+        db.close();
+        resolve(r.result);
+      };
+      t.onerror = t.onabort = () => {
+        db.close();
+        reject(t.error ?? r.error);
+      };
     });
   }
   async load() {

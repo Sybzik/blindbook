@@ -189,7 +189,10 @@ async fn main() {
         50_000,
     );
     // Like the judges' code: one code, many redemptions (scripted runs use it).
-    signer.add_voucher_uses([(blindbook_ledger::ops::voucher_hash("DEV-JUDGE"), 5_000)], 50_000);
+    signer.add_voucher_uses(
+        [(blindbook_ledger::ops::voucher_hash("DEV-JUDGE"), 5_000)],
+        50_000,
+    );
     let seal_sk: [u8; 32] = sha256(SEAL_LABEL);
     signer.set_seal_key(seal_sk, true);
     let signer = Arc::new(Mutex::new(signer));

@@ -119,7 +119,7 @@ Nobody has to trust the internet-facing server with results either: the signer r
 
 ## Run it
 
-Everything runs locally without a Zcash node: a development server with the real API and the signer in one process, three synthetic markets, judge codes `DEV-0001`…`DEV-0099`, and a block every 15 seconds. You need Rust 1.95 with the `wasm32-unknown-unknown` target (the app's verifier runs the engine as WebAssembly), Node 22 and pnpm 10.
+Everything runs locally without a Zcash node: a development server with the real API and the signer in one process, three synthetic markets, judge codes `DEV-0001`…`DEV-0099` (one use each) and `DEV-JUDGE` (shared, like the judges’ code), and a block every 15 seconds. You need Rust 1.95 with the `wasm32-unknown-unknown` target (the app's verifier runs the engine as WebAssembly), Node 22 and pnpm 10.
 
 ```bash
 cargo run -p blindbook-api --features embedded-signer --example devserver

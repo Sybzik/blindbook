@@ -110,7 +110,8 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
   const shell = (title: string, body: React.ReactNode) => (
     <Win title={title} closable={!!onDismiss && !closing} onClose={onDismiss} resizable={false} maxWidth={520} style={{ alignSelf: 'center', width: '100%', marginTop: 24 }} closing={closing} onClosed={onOpen}>
       {body}
-      {err && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{err}</p>}
+      {/* The keyhole shows its own error under the field: not twice. */}
+      {err && !(mode === 'unlock' && (hasPass || (phone && hasPrf && !usePass))) && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{err}</p>}
       {elsewhere && mode === 'unlock' && (
         <div style={{ marginTop: 8 }}>
           <KeyButton size="sm" onClick={() => { setErr(null); setElsewhere(false); void (phone && hasPrf && !usePass ? faceId(true) : unlock(true)); }}>OPEN IT HERE</KeyButton>

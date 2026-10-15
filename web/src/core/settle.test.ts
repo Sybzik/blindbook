@@ -6,7 +6,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import * as cashu from '@cashu/cashu-ts';
 import golden from '../../../crates/blindbook-mint/tests/data/keysets-js.json';
-import type { Api } from './api';
+import { ApiError, type Api } from './api';
 import { deriveOutput, split, yOf } from './blind';
 import { toHex, utf8 } from './bytes';
 import { Wallet, newWalletData, type InFlight } from './wallet';
@@ -155,5 +155,91 @@ describe('requests given up on', () => {
     expect(await w.settleDoubts()).toBe(1);
     expect(w.data.duels?.[0]).toMatchObject({ duel: 'd1', secret: 'cancel-me', status: 'open' });
     expect(w.data.duels?.[0]?.opened_ms).toBeGreaterThan(0);
+  });
+});
+
+// The same vault open on two devices (a 12-word restore on a phone): a slip spent on one is still in
+// the other, whose next request is refused as spent. The public log shows which of its slips are
+// gone; they leave the wallet, so the request after that goes through.
+describe('slips spent elsewhere', () => {
+  function setup() {
+    const log = { seq: 20, deltas: new Map<number, { spent?: { Y: string }[] }>() };
+    const api = {
+      seq: 20,
+      head: async () => ({ height: 10, seq: log.seq, root: '00', pow_bits: { light: 8, heavy: 8 }, halted: false }),
+      text: async (path: string) => {
+        const seq = Number(/\/delta\/(\d+)\./.exec(path)?.[1]);
+        if (!seq) throw new Error('only single deltas here');
+        return JSON.stringify({ seq, issued: [], spent: [], ...log.deltas.get(seq) });
+      },
+      trade: async () => {
+        throw new ApiError(400, 'spent');
+      },
+    } as unknown as Api;
+    const w = new Wallet(newWalletData(sha256(utf8('spent-elsewhere'))), M, api, async () => undefined);
+    const gone = { id: w.credit.id, amount: 1024, secret: 'spent-on-the-phone', C: '02'.padEnd(66, '1') };
+    const kept = { id: w.credit.id, amount: 512, secret: 'still-ours', C: '02'.padEnd(66, '2') };
+    w.data.slips = [gone, kept];
+    log.deltas.set(18, { spent: [{ Y: yOf(gone.secret) }] });
+    return { w, gone };
+  }
+  const bet = (w: Wallet) => w.buy('00'.repeat(32), 0, 1024, 9_500);
+
+  it('a refusal as spent takes the slips the log shows spent out of the wallet', async () => {
+    const { w, gone } = setup();
+    w.data.slipSeq = { [gone.secret]: 15, 'still-ours': 15 };
+    await expect(bet(w)).rejects.toMatchObject({ code: 'spent' });
+    expect(w.takePruned()).toBe(1);
+    expect(w.data.slips.map((s) => s.secret)).toEqual(['still-ours']);
+    expect(w.data.slipSeq).toEqual({ 'still-ours': 15 });
+    expect(w.creditBalance()).toBe(512);
+  });
+
+  it('a restored vault reads from where the restore read', async () => {
+    const late = setup().w;
+    late.data.syncedSeq = 18;
+    await expect(bet(late)).rejects.toMatchObject({ code: 'spent' });
+    expect(late.data.slips).toHaveLength(2);
+    const early = setup().w;
+    early.data.syncedSeq = 17;
+    await expect(bet(early)).rejects.toMatchObject({ code: 'spent' });
+    expect(early.data.slips.map((s) => s.secret)).toEqual(['still-ours']);
+  });
+});
+
+describe('a spend the log does not show yet', () => {
+  it('sets the refused slips aside until the next blocks tell', async () => {
+    const log = { seq: 20, deltas: new Map<number, { spent?: { Y: string }[] }>() };
+    const api = {
+      seq: 20,
+      head: async () => ({ height: 10, seq: log.seq, root: '00', pow_bits: { light: 8, heavy: 8 }, halted: false }),
+      text: async (path: string) => {
+        const seq = Number(/\/delta\/(\d+)\./.exec(path)?.[1]);
+        return JSON.stringify({ seq, issued: [], spent: [], batches: [], events: [], ...log.deltas.get(seq) });
+      },
+      trade: async () => {
+        throw new ApiError(400, 'spent');
+      },
+    } as unknown as Api;
+    const w = new Wallet(newWalletData(sha256(utf8('aside'))), M, api, async () => undefined);
+    const big = { id: w.credit.id, amount: 1024, secret: 'spent-a-moment-ago', C: '02'.padEnd(66, '1') };
+    const small = { id: w.credit.id, amount: 512, secret: 'never-spent', C: '02'.padEnd(66, '2') };
+    w.data.slips = [big, small];
+    w.data.slipSeq = { [big.secret]: 15, [small.secret]: 15 };
+    w.data.syncedSeq = 20;
+    await expect(w.buy('00'.repeat(32), 0, 1024, 9_500)).rejects.toMatchObject({ code: 'spent' });
+    expect(w.takePruned()).toBe(1);
+    expect(w.creditBalance()).toBe(512);
+    // The next block shows the spend: the slip leaves for good.
+    log.deltas.set(21, { spent: [{ Y: yOf(big.secret) }] });
+    log.seq = 21;
+    await w.sync();
+    expect(w.data.slips.map((s) => s.secret)).toEqual([small.secret]);
+    // A slip set aside that the log never shows spent comes back two blocks on.
+    await expect(w.buy('00'.repeat(32), 0, 512, 9_500)).rejects.toMatchObject({ code: 'spent' });
+    expect(w.creditBalance()).toBe(0);
+    log.seq = 23;
+    await w.sync();
+    expect(w.creditBalance()).toBe(512);
   });
 });

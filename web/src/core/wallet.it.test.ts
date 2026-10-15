@@ -95,6 +95,73 @@ describe.skipIf(!BASE)('wallet against the devserver', () => {
     expect(r.calledNext).toBe(w.data.calledNext);
   }, 90_000);
 
+  it('the same vault on two devices stays one wallet', async () => {
+    const api = new Api(new DirectTransport(BASE), pow);
+    const market = (await api.live()).markets[0]!.id;
+    const seed = sha256(utf8('twins' + Date.now()));
+    const phone = new Wallet(newWalletData(seed), M, api, async () => {});
+    phone.registerMarket(market);
+    const pos = phone.keysetOf(market, 0);
+    await phone.sync();
+    const t = await phone.topupStart(10_000_000);
+    await fetch(`${BASE}/dev/pay/${t.id}`, { method: 'POST' });
+    let rec = t;
+    for (let i = 0; i < 240 && rec.status !== 'confirmed' && rec.status !== 'credited'; i++) {
+      await new Promise((r) => setTimeout(r, 250));
+      rec = await phone.topupPoll(t.id);
+    }
+    expect(phone.creditBalance()).toBe(10_000);
+    const nextBlock = async () => {
+      const at = (await api.head()).seq;
+      for (let i = 0; i < 1_200 && (await api.head()).seq <= at; i++) await new Promise((r) => setTimeout(r, 500));
+    };
+    await nextBlock();
+
+    // The same 12 words restored on a computer, from the public log alone.
+    const head = await api.head();
+    const r = restore(seed, M, (await deltaTexts(api, 1, head.seq, head.seq)).map((x) => JSON.parse(x) as DeltaLike), yOf);
+    const data = newWalletData(seed);
+    Object.assign(data, { slips: r.slips, counters: r.counters, calledNext: r.calledNext, syncedSeq: head.seq });
+    const desk = new Wallet(data, M, new Api(new DirectTransport(BASE), pow), async () => {});
+    desk.registerMarket(market);
+    expect(desk.creditBalance()).toBe(10_000);
+    const same = () => {
+      expect(desk.creditBalance()).toBe(phone.creditBalance());
+      expect(desk.balance(pos.id)).toBe(phone.balance(pos.id));
+    };
+
+    // The computer bets: the phone, a block later, has its shares and change, and its spent slips gone.
+    await desk.buy(market, 0, 3_000, 9_900);
+    await nextBlock();
+    const seen = await phone.sync();
+    expect(seen.gone).toBeGreaterThan(0);
+    expect(seen.found).toBeGreaterThan(0);
+    same();
+
+    // Now the phone bets: its outputs come after the computer's (no output asked for twice), and
+    // the computer sees them.
+    await phone.buy(market, 0, 2_000, 9_900);
+    await nextBlock();
+    await desk.sync();
+    same();
+    expect(phone.balance(pos.id)).toBeGreaterThan(0);
+
+    // A device that bets before the other's block is out (the same bet picks the same slips): refused
+    // as spent, those slips are set aside, and once the block is read the two agree again.
+    await desk.buy(market, 0, 1_000, 9_900);
+    const stale = phone.creditBalance();
+    await expect(phone.buy(market, 0, 1_000, 9_900)).rejects.toMatchObject({ code: 'spent' });
+    expect(phone.takePruned()).toBeGreaterThan(0);
+    expect(phone.creditBalance()).toBeLessThan(stale);
+    await nextBlock();
+    await phone.sync();
+    same();
+    await phone.buy(market, 0, 1_000, 9_900);
+    await nextBlock();
+    await desk.sync();
+    same();
+  }, 600_000);
+
   it('a request without an answer is settled from the public log', async () => {
     // A transport that loses the next POST: after the server answered ('after'), or before it
     // ever reached it ('before').

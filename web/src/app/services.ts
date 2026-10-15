@@ -3,7 +3,7 @@
 
 import { Api, ApiError, DirectTransport, type Head, type Live, type PriceHistory, type Transport } from '../core/api';
 import { InDoubtError, Wallet, newWalletData, type HistoryEntry, type LocalData, type MyDuel, type Outgoing, type TopupRecord, type WalletData } from '../core/wallet';
-import { blankOutputs } from '../core/blind';
+import { BLANK_OUTPUTS, blankOutputs } from '../core/blind';
 import { restore, type DeltaLike } from '../core/restore';
 import { SEGMENT, deltaTexts } from '../core/log';
 import { yOf } from '../core/blind';
@@ -148,6 +148,31 @@ function refreshWallet() {
   });
 }
 
+let syncing = false;
+let syncedAt = -1;
+
+/** The same vault may be open on another device: the public log is read once per new block. */
+async function syncWallet(seq: number) {
+  if (!wallet || syncing || seq === syncedAt) return;
+  syncing = true;
+  try {
+    const { gone, found } = await wallet.sync();
+    syncedAt = seq;
+    if (gone || found) {
+      refreshWallet();
+      const parts = [
+        found ? `${found === 1 ? 'a slip' : `${found} slips`} this vault got on another device ${found === 1 ? 'is' : 'are'} here too` : '',
+        gone ? `${gone === 1 ? 'a slip' : `${gone} slips`} spent on another device ${gone === 1 ? 'is' : 'are'} taken out` : '',
+      ].filter(Boolean);
+      app.set({ notice: `The same vault is open elsewhere: ${parts.join(', and ')}. Your balance is up to date.` });
+    }
+  } catch {
+    /* read again with the next block */
+  } finally {
+    syncing = false;
+  }
+}
+
 let settling = false;
 let settledAt = -1;
 
@@ -194,6 +219,7 @@ async function pollLive() {
     void notePayouts(live);
     void pollTopups();
     void settleDoubts(live.head.seq);
+    void syncWallet(live.head.seq);
   } catch {
     // The lamp shows the link state; a missed poll is retried. Three in a row: the server is out.
     if (++missed >= 3 && app.get().reachable) app.set({ reachable: false });
@@ -403,6 +429,8 @@ export async function restoreFromWords(words: string, passphrase: string | null,
   data.mnemonic = words.trim().toLowerCase().split(/\s+/).join(' ');
   data.local = { backedUp: true };
   data.slips = r.slips;
+  data.syncedSeq = head.seq;
+  data.scanFrom = Object.fromEntries(Object.entries(r.counters).map(([id, c]) => [id, c - BLANK_OUTPUTS]));
   data.counters = r.counters;
   data.calledNext = r.calledNext;
   await vault.create(data, passphrase ?? undefined);
@@ -420,7 +448,13 @@ async function act<T>(label: string, f: (w: Wallet) => Promise<T>): Promise<T> {
     refreshWallet();
     return out;
   } catch (e) {
-    const msg = e instanceof ApiError ? plainError(e) : String((e as Error)?.message ?? e);
+    const pruned = e instanceof ApiError && e.code === 'spent' ? wallet.takePruned() : 0;
+    const msg = pruned
+      ? `Slips in this vault had been spent already: by this vault open on another device, or by a request whose answer never came. They are set aside and your balance is updated (the next block confirms it). Nothing was taken; try again.`
+      : e instanceof ApiError
+        ? plainError(e)
+        : String((e as Error)?.message ?? e);
+    if (pruned) refreshWallet();
     app.set({ error: msg });
     cue(e instanceof InDoubtError ? 'doubt' : e instanceof ApiError ? 'refused' : 'error');
     throw e;

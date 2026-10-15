@@ -11,6 +11,10 @@
 // outputs signed, sees our slips spent, or sees enough blocks pass without either. A request given
 // up on stays watched for a while longer: if its outputs turn up signed after all, they are ours
 // and the slips it spent leave the wallet.
+//
+// The same 12 words may be open on another device. sync() reads each new block of the log: slips
+// spent there leave, slips signed there come in, and the counters move past the other device's
+// outputs, so the two never ask for the same outputs.
 
 import { fromHex, toHex, randomBytes } from './bytes';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -21,6 +25,7 @@ import { calledItSecret, calledItTag, decodeSlips, encodeSlips } from './codes';
 import { seal } from './seal';
 import { ApiError, type Api, type FillRecord } from './api';
 import { deltaTexts } from './log';
+import { GAP, type DeltaLike } from './restore';
 import { short, trace } from './trace';
 
 export interface HistoryEntry {
@@ -67,6 +72,16 @@ export interface WalletData {
   inflight?: InFlight[];
   /** Requests given up on (their slips came back), still looked for in the log for a while. */
   released?: InFlight[];
+  /** For each slip (by secret), a head seq from before it was signed: it can only be spent later.
+   *  Kept in the vault only, never sent anywhere. */
+  slipSeq?: Record<string, number>;
+  /** The log was read up to this head seq: slips without an entry above were unspent then, and
+   *  every output signed for this seed up to it is known (see sync()). */
+  syncedSeq?: number;
+  /** Per keyset, the counter from which outputs of another device with these words may appear,
+   *  and the counter ranges this device took since (its own: skipped when reading the log). */
+  scanFrom?: Record<string, number>;
+  own?: Record<string, [number, number][]>;
 }
 
 /** A range of our deterministic outputs a request asked to have signed. */
@@ -221,8 +236,13 @@ export class Wallet {
   /** Our spendable slips of a keyset. */
   private free(id: string): Proof[] {
     const held = this.locked();
-    return this.data.slips.filter((s) => s.id === id && !held.has(s.secret));
+    return this.data.slips.filter((s) => s.id === id && !held.has(s.secret) && !this.aside.has(s.secret));
   }
+
+  /** Slips refused as spent that the log doesn't show spent yet (the spend is in the block being
+   *  built), by the head seq of the refusal: kept out of new requests until the log is read two
+   *  blocks past it; sync() takes out the ones it shows spent. */
+  private aside = new Map<string, number>();
 
   balance(id: string): number {
     return this.free(id).reduce((n, s) => n + s.amount, 0);
@@ -251,7 +271,13 @@ export class Wallet {
       // A refusal (4xx) happens before anything is spent; anything else may have gone through.
       if (e instanceof ApiError && e.status < 500) {
         drop();
+        this.disown(outs);
         await this.save(this.data);
+        const ours = inputs.filter((p) => this.data.slips.some((s) => s.secret === p.secret));
+        if (e.code === 'spent' && ours.length && (await this.pruneSpent(ours).catch(() => 0)) === 0) {
+          for (const p of ours) this.aside.set(p.secret, this.api.seq);
+          this.pruned += ours.length;
+        }
         throw e;
       }
       f.doubt = true;
@@ -270,6 +296,174 @@ export class Wallet {
     const n = this.redirected;
     this.redirected = 0;
     return n;
+  }
+
+  /** Slips taken out (or set aside) since the last call because they are spent already. */
+  private pruned = 0;
+
+  takePruned(): number {
+    const n = this.pruned;
+    this.pruned = 0;
+    return n;
+  }
+
+  /**
+   * A request was refused because a slip it spent is spent already: by this vault open on another
+   * device, or by a request whose answer never came and that went through after we gave up on it.
+   * The public log, read as every verifier reads it (so the server can't tell what we look for),
+   * shows which of our slips are spent since the oldest refused one was signed; they leave the
+   * wallet, so the next request doesn't pick them again.
+   */
+  private async pruneSpent(refused: Proof[]): Promise<number> {
+    const head = await this.api.head();
+    const seqs = this.data.slipSeq ?? {};
+    const base = this.data.syncedSeq ?? 0;
+    const since = (p: Proof) => seqs[p.secret] ?? base;
+    const from = Math.min(...refused.map(since)) + 1;
+    if (from > head.seq) return 0;
+    const spent = new Set<string>();
+    for (const t of await deltaTexts(this.api, from, head.seq, head.seq)) {
+      for (const s of (JSON.parse(t) as { spent: { Y: string }[] }).spent) spent.add(s.Y);
+    }
+    // A slip is spent once: any of ours in there is gone, whenever it was signed.
+    const gone = new Set(this.data.slips.filter((s) => spent.has(yOf(s.secret))).map((s) => s.secret));
+    if (gone.size === 0) return 0;
+    this.data.slips = this.data.slips.filter((s) => !gone.has(s.secret));
+    this.data.slipSeq = Object.fromEntries(Object.entries(seqs).filter(([k]) => !gone.has(k)));
+    for (const k of gone) this.aside.delete(k);
+    await this.save(this.data);
+    this.pruned += gone.size;
+    trace(() => `spent  ${gone.size} of our slips are spent in the public log already: taken out`);
+    return gone.size;
+  }
+
+  /** A refused request got nothing signed: its counter ranges are no longer ours to skip (another
+   *  device with these words may use them, and its outputs there are to be found). */
+  private disown(outs: OutRange[]) {
+    for (const o of outs) {
+      const id = o.market === undefined ? this.credit.id : this.keysetOf(o.market, o.outcome ?? 0).id;
+      const own = this.data.own?.[id];
+      if (own) this.data.own![id] = own.filter(([a]) => a !== o.counter);
+    }
+  }
+
+  /** Our outputs, derived once (sync() reads the same counters block after block). */
+  private derivedCache = new Map<string, Pending>();
+
+  private derive(id: string, counter: number): Pending {
+    const key = `${id}:${counter}`;
+    let p = this.derivedCache.get(key);
+    if (!p) {
+      p = deriveOutput(this.seed, id, counter);
+      this.derivedCache.set(key, p);
+    }
+    return p;
+  }
+
+  /** The first sync after opening, or after a pause: new requests wait for it (reserve()). */
+  private catchingUp?: Promise<unknown>;
+  private lastSync = 0;
+
+  /**
+   * Read the public log since the last look (`syncedSeq`), for these 12 words open on another
+   * device: our slips spent there leave; slips signed for this seed there come in (derived from the
+   * same seed, they are ours), and the counters move past its outputs with a margin for a request
+   * of its still in flight. Read like every verifier reads the log, so the server can't tell.
+   */
+  async sync(): Promise<{ gone: number; found: number }> {
+    const run = this.syncNow();
+    if (Date.now() - this.lastSync > 120_000) this.catchingUp = run;
+    try {
+      const r = await run;
+      this.lastSync = Date.now();
+      return r;
+    } finally {
+      if (this.catchingUp === run) this.catchingUp = undefined;
+    }
+  }
+
+  private async syncNow(): Promise<{ gone: number; found: number }> {
+    const head = await this.api.head();
+    if (this.data.syncedSeq === undefined) {
+      // Made here, or before this was kept: nothing to catch up on.
+      this.data.syncedSeq = head.seq;
+      await this.save(this.data);
+      return { gone: 0, found: 0 };
+    }
+    const from = this.data.syncedSeq + 1;
+    if (from > head.seq) return { gone: 0, found: 0 };
+    return this.readSince(from, head.seq);
+  }
+
+  private async readSince(from: number, to: number): Promise<{ gone: number; found: number }> {
+    const deltas = (await deltaTexts(this.api, from, to, to)).map((t) => JSON.parse(t) as DeltaLike);
+    const spent = new Set(deltas.flatMap((d) => d.spent.map((s) => s.Y)));
+    const issued = new Map(deltas.flatMap((d) => d.issued).map((r) => [r.B_, r]));
+    // Outputs at counters this device didn't take: another device's. Read from where one may appear
+    // (past the last one seen), skipping our own ranges.
+    const found: Proof[] = [];
+    const scanFrom = (this.data.scanFrom ??= {});
+    const ownAll = (this.data.own ??= {});
+    for (const id of new Set([...issued.values()].map((r) => r.id))) {
+      const ks = this.known.get(id);
+      if (!ks) continue;
+      const own = ownAll[id] ?? [];
+      const start = scanFrom[id] ?? this.data.counters[id] ?? 0;
+      let misses = 0;
+      let last = -1;
+      for (let c = start; misses < GAP; c++) {
+        const mine = own.find(([a, b]) => c >= a && c < b);
+        if (mine) {
+          c = mine[1] - 1;
+          continue;
+        }
+        const p = this.derive(id, c);
+        const r = issued.get(p.B_);
+        if (!r) {
+          misses++;
+          continue;
+        }
+        misses = 0;
+        last = c;
+        try {
+          const [proof] = receive([{ list: 'outputs', index: 0, amount: r.amount, id: r.id, C_: r.C_, dleq: r.dleq }], { outputs: [p] }, this.keysets(ks));
+          if (proof && !spent.has(yOf(proof.secret))) found.push(proof);
+        } catch {
+          /* a signature that fails its check is no slip of ours */
+        }
+      }
+      if (last >= 0) {
+        // Past its outputs, with a margin for a request of its still in flight; and the next read
+        // starts right after its last one.
+        this.data.counters[id] = Math.max(this.data.counters[id] ?? 0, last + 1 + BLANK_OUTPUTS);
+        scanFrom[id] = Math.max(start, last + 1);
+        ownAll[id] = own.filter(([, b]) => b > scanFrom[id]!);
+      } else scanFrom[id] = start;
+    }
+    // Called-it indices used there: ours continue after them, so no two bets share a tag.
+    const tags = new Set(deltas.flatMap((d) => (d.batches ?? []).flatMap((b) => b.orders.map((o) => o.tag))));
+    if (tags.size) {
+      for (let i = this.data.calledNext, misses = 0; misses < 64; i++) {
+        if (tags.has(calledItTag(calledItSecret(this.seed, i)))) {
+          this.data.calledNext = i + 1;
+          misses = 0;
+        } else misses++;
+      }
+    }
+    // Spent there: out (not the slips of our own requests still in flight; they settle as usual).
+    const held = this.locked();
+    const gone = spent.size ? new Set(this.data.slips.filter((s) => !held.has(s.secret) && spent.has(yOf(s.secret))).map((s) => s.secret)) : new Set<string>();
+    const have = new Set(this.data.slips.map((s) => s.secret));
+    const fresh = found.filter((p) => !have.has(p.secret));
+    this.data.slips = this.data.slips.filter((s) => !gone.has(s.secret)).concat(fresh);
+    const seqs = Object.fromEntries(Object.entries(this.data.slipSeq ?? {}).filter(([k]) => !gone.has(k)));
+    for (const p of fresh) seqs[p.secret] = from - 1;
+    this.data.slipSeq = seqs;
+    this.data.syncedSeq = Math.max(this.data.syncedSeq ?? 0, to);
+    for (const [k, at] of this.aside) if (gone.has(k) || at + 2 <= to) this.aside.delete(k);
+    await this.save(this.data);
+    if (gone.size || fresh.length) trace(() => `sync   blocks ${from}–${to}: ${gone.size} of our slips spent elsewhere, ${fresh.length} signed elsewhere for these words`);
+    return { gone: gone.size, found: fresh.length };
   }
 
   /** Requests the public log is still read for: in doubt, or given up on lately. */
@@ -313,7 +507,7 @@ export class Wallet {
       if (d.parked) this.data.duels = [...(this.data.duels ?? []).filter((x) => x.duel !== d.parked!.duel), { ...d.parked, opened_ms: d.parked.opened_ms ?? Date.now() }];
       if (d.duel?.action === 'cancel') this.data.duels = (this.data.duels ?? []).map((x) => (x.duel === d.duel!.id ? { ...x, status: 'cancelled' as const } : x));
       if (d.code) this.data.outbox = (this.data.outbox ?? []).filter((o) => o.code !== d.code);
-      await this.commit(d.inputs, got, { ...d.entry, at_ms: Date.now(), stored: { ...d.entry.stored, ...stored, recovered_from_log: true } });
+      await this.commit(d.inputs, got, { ...d.entry, at_ms: Date.now(), stored: { ...d.entry.stored, ...stored, recovered_from_log: true } }, d.seq);
     };
     let settled = 0;
     for (const d of doubts) {
@@ -371,8 +565,16 @@ export class Wallet {
 
   /** Reserve `n` counters for a keyset and persist the reservation before use. */
   private async reserve(id: string, n: number): Promise<number> {
+    // Reopened after a while: the counters wait for the log to be read up to now (another device
+    // with these words may have used the next ones meanwhile).
+    if (this.catchingUp) await this.catchingUp.catch(() => undefined);
     const start = this.data.counters[id] ?? 0;
     this.data.counters[id] = start + n;
+    // Ours, so sync() never takes them for another device's.
+    const scanFrom = (this.data.scanFrom ??= {});
+    scanFrom[id] ??= start;
+    const own = (this.data.own ??= {});
+    own[id] = [...(own[id] ?? []), [start, start + n]];
     await this.save(this.data);
     return start;
   }
@@ -386,9 +588,14 @@ export class Wallet {
     return new Map(ks.map((k) => [k.id, k]));
   }
 
-  private async commit(spent: Proof[], got: Proof[], entry: HistoryEntry) {
+  /** Spent slips out, new ones in. `seq`: a head seq from before the new ones were signed (null:
+   *  not known, so a later look-up for them reads from `syncedSeq`). */
+  private async commit(spent: Proof[], got: Proof[], entry: HistoryEntry, seq: number | null = this.api.seq) {
     const gone = new Set(spent.map((p) => p.secret));
     this.data.slips = this.data.slips.filter((s) => !gone.has(s.secret)).concat(got);
+    const seqs = Object.fromEntries(Object.entries(this.data.slipSeq ?? {}).filter(([k]) => !gone.has(k)));
+    if (seq !== null) for (const p of got) seqs[p.secret] = seq;
+    this.data.slipSeq = seqs;
     this.data.history.push(entry);
     await this.save(this.data);
   }
@@ -658,7 +865,7 @@ export class Wallet {
     const ks = this.keysetOf(d.market, d.outcome);
     const got = receive(sigs.map((s) => ({ ...s, list: 'duel' as const })), { duel: blankOutputs(this.seed, ks.id, d.counter).pending }, this.keysets(ks));
     d.status = 'taken';
-    await this.commit([], got, { at_ms: Date.now(), kind: 'duel_won', stored: { kind: 'duel_taken', duel } });
+    await this.commit([], got, { at_ms: Date.now(), kind: 'duel_won', stored: { kind: 'duel_taken', duel } }, null);
     return got.reduce((n, p) => n + p.amount, 0);
   }
 

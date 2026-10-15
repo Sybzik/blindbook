@@ -49,7 +49,8 @@ class Tunnel {
   readonly ready: Promise<void>;
   private port: MessagePort;
 
-  constructor(ipr?: string) {
+  /** The exit this tunnel was pinned to (VITE_BB_IPR), or undefined: one picked at random. */
+  constructor(readonly ipr?: string) {
     this.frame = document.createElement('iframe');
     this.frame.hidden = true;
     this.frame.setAttribute('aria-hidden', 'true');
@@ -134,7 +135,10 @@ export class DeadlineError extends Error {
  *  turns WebAssembly off) can never link, so it doesn't try. */
 export const mixnetSupported = () => typeof WebAssembly === 'object' && typeof Worker === 'function';
 
-/** The main transport: one live tunnel, one warm spare, replaced on any missed deadline. */
+/** The main transport: one live tunnel, one warm spare, replaced on any missed deadline.
+ *  With a pinned exit (VITE_BB_IPR), every race pairs it with an exit picked at random, and the
+ *  spare always takes the other kind than the live tunnel: the client never falls back from a
+ *  pinned exit by itself, so an exit that goes away can't take the link down with it. */
 export class MixnetTransport implements Transport {
   private live?: Tunnel;
   private spare?: Tunnel;
@@ -182,7 +186,7 @@ export class MixnetTransport implements Transport {
     this.set(this.live ? 'relinking' : 'linking');
     for (;;) {
       const a = new Tunnel(this.ipr);
-      const b = new Tunnel(this.ipr);
+      const b = new Tunnel();
       const probe = async (t: Tunnel) => {
         await t.ready;
         const r = await t.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
@@ -196,7 +200,7 @@ export class MixnetTransport implements Transport {
         this.live = winner;
         loser.destroy();
         this.spare?.destroy();
-        this.spare = new Tunnel(this.ipr);
+        this.spare = this.other(winner);
         if (this.failedRounds >= UNREACHABLE_AFTER) this.onUnreachable?.(false);
         this.failedRounds = 0;
         this.set('linked');
@@ -212,6 +216,11 @@ export class MixnetTransport implements Transport {
         this.set('relinking');
       }
     }
+  }
+
+  /** A spare of the other kind than the live tunnel: random behind a pinned one, pinned behind a random one. */
+  private other(live: Tunnel): Tunnel {
+    return new Tunnel(live.ipr ? undefined : this.ipr);
   }
 
   /** Replace a tunnel that missed a deadline with the spare, or link anew. A failure on a tunnel
@@ -230,7 +239,7 @@ export class MixnetTransport implements Transport {
           const r = await spare.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
           if (r.status === 200) {
             this.live = spare;
-            this.spare = new Tunnel(this.ipr);
+            this.spare = this.other(spare);
             this.set('linked');
             return;
           }
@@ -276,14 +285,15 @@ export class MixnetTransport implements Transport {
   }
 }
 
-/** A one-off tunnel with its own identity for a top-up or a withdrawal (the "cage"): two race,
- *  the first to answer GET /v1/head stays (up to three rounds), the other is destroyed. */
+/** A one-off tunnel with its own identity for a top-up or a withdrawal (the "cage"): two race
+ *  (a pinned exit against a random one, as above), the first to answer GET /v1/head stays (up to
+ *  three rounds), the other is destroyed. */
 export async function openCage(api: string, ipr?: string): Promise<Transport & { close(): void }> {
   if (!mixnetSupported()) throw new Error('this browser cannot run the mixnet client (no WebAssembly)');
   let t: Tunnel | undefined;
   for (let round = 0; round < 3 && !t; round++) {
     const a = new Tunnel(ipr);
-    const b = new Tunnel(ipr);
+    const b = new Tunnel();
     const probe = async (x: Tunnel) => {
       await x.ready;
       const r = await x.fetch('GET', api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);

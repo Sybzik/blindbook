@@ -78,7 +78,7 @@ Blindbook is an e-cash mint in front of a shielded reserve: the operator holds t
 
 | You trust | For | What limits it, and how you check |
 |---|---|---|
-| the signer, one isolated machine | keeping the reserve and signing slips | the reserve's viewing key is public, so anyone can see it covers every slip outstanding (P400 in the browser, `blindbook-verify --chain`); the house's loss per market is capped by a fixed buffer the signer enforces; stakes are small (at most 2 TAZ a trade on testnet); threshold custody (FROST 2-of-3) is the next step |
+| the signer, one isolated machine | keeping the reserve and signing slips | the reserve's viewing key is public: `blindbook-verify --chain` checks the real reserve covers every slip outstanding, and P400 in the browser checks the reserve reports in the log; the house's loss per market is capped by a fixed buffer the signer enforces; stakes are small (at most 2 TAZ a trade on testnet); threshold custody (FROST 2-of-3) is the next step |
 | the signer to keep serving | trading, cash-in, withdrawals | it can refuse everyone, but it can't pick you out: it never learns who sends a request, and requests can't be linked to each other |
 | Polymarket's result | settlement | the signer reads each result from Polymarket's contract on Polygon itself and refuses any other; `blindbook-verify --polygon` reads them again |
 | the host serving the web app | loading the app | as with any web app, the host serves the code you run; it sees only that an IP opened the page (or use the .onion mirror); the code is open, and every slip the API returns is checked in your browser against keys derived from the master key the app pins |

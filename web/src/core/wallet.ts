@@ -8,7 +8,9 @@
 // mixnet route died, a deadline passed, the server answered 5xx), the request may still have
 // been processed: its slips are held back, and settleDoubts() reads the public log (the same
 // segments every verifier reads, so the server can't tell what we look for) until it finds our
-// outputs signed, sees our slips spent, or sees enough blocks pass without either.
+// outputs signed, sees our slips spent, or sees enough blocks pass without either. A request given
+// up on stays watched for a while longer: if its outputs turn up signed after all, they are ours
+// and the slips it spent leave the wallet.
 
 import { fromHex, toHex, randomBytes } from './bytes';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -63,6 +65,8 @@ export interface WalletData {
   duels?: MyDuel[];
   /** Spending requests sent and not settled yet (see the top of this file). */
   inflight?: InFlight[];
+  /** Requests given up on (their slips came back), still looked for in the log for a while. */
+  released?: InFlight[];
 }
 
 /** A range of our deterministic outputs a request asked to have signed. */
@@ -77,8 +81,16 @@ export interface OutRange {
 export interface InFlight {
   id: string;
   at_ms: number;
-  /** The log's head seq when it left: a processed request shows up in a later delta. */
+  /** The log's head seq when it left, as last seen: a processed request shows up in a later delta. */
   seq: number;
+  /** The head seq first read after the answer failed to come. That one is current, so the wait
+   *  for a trace counts from it (`seq` may be older than the head when the request left). */
+  wait_from?: number;
+  /** Given up on at this head seq: its slips are ours again, and its outputs are looked for until
+   *  RECHECK_BLOCKS later. */
+  released_at?: number;
+  /** A duel offer given up on: kept, cancel secret and all, in case it opened after all. */
+  parked?: MyDuel;
   /** Slips it spends (ours, or a code we take over). */
   inputs: Proof[];
   outs: OutRange[];
@@ -100,6 +112,9 @@ export class InDoubtError extends Error {
 /** Published blocks (log deltas) after which a request that left no trace never went through. An
  *  empty block is published at least every 4th chain block, so this is at most about 12 blocks. */
 const SETTLE_BLOCKS = 3;
+
+/** Published blocks after giving up during which a request's outputs are still looked for. */
+const RECHECK_BLOCKS = 20;
 
 export interface MyDuel {
   duel: string;
@@ -257,17 +272,26 @@ export class Wallet {
     return n;
   }
 
+  /** Requests the public log is still read for: in doubt, or given up on lately. */
+  watching(): number {
+    return this.inDoubt() + (this.data.released ?? []).length;
+  }
+
   async settleDoubts(): Promise<number> {
     const doubts = (this.data.inflight ?? []).filter((f) => f.doubt);
-    if (doubts.length === 0) return 0;
+    const late = this.data.released ?? [];
+    if (doubts.length === 0 && late.length === 0) return 0;
     const head = await this.api.head();
-    const from = Math.min(...doubts.map((d) => d.seq)) + 1;
+    const fresh = doubts.filter((d) => d.wait_from === undefined);
+    for (const d of fresh) d.wait_from = head.seq;
+    if (fresh.length) await this.save(this.data);
+    const from = Math.min(...[...doubts, ...late].map((d) => d.seq)) + 1;
     if (from > head.seq) return 0;
     const deltas = (await deltaTexts(this.api, from, head.seq, head.seq)).map(
       (t) => JSON.parse(t) as { seq: number; issued: { id: string; amount: number; B_: string; C_: string; dleq: { e: string; s: string } }[]; spent: { Y: string }[] },
     );
-    let settled = 0;
-    for (const d of doubts) {
+    /** Our outputs the log shows signed after the request left, and whether its slips were spent. */
+    const traceOf = (d: InFlight) => {
       const after = deltas.filter((x) => x.seq > d.seq);
       const issued = new Map(after.flatMap((x) => x.issued).map((r) => [r.B_, r]));
       const spent = new Set(after.flatMap((x) => x.spent.map((s) => s.Y)));
@@ -282,29 +306,55 @@ export class Wallet {
         });
         if (sigs.length) got.push(...receive(sigs, { outputs: pending }, this.keysets(ks)));
       }
-      const wentThrough = got.length > 0 || d.inputs.some((p) => spent.has(yOf(p.secret)));
-      if (!wentThrough && head.seq < d.seq + SETTLE_BLOCKS) continue;
+      return { got, inputsSpent: d.inputs.some((p) => spent.has(yOf(p.secret))) };
+    };
+    /** A request that went through: what it changed, then its slips out and its outputs in. */
+    const wentThrough = async (d: InFlight, got: Proof[], stored: Record<string, unknown>) => {
+      if (d.parked) this.data.duels = [...(this.data.duels ?? []).filter((x) => x.duel !== d.parked!.duel), { ...d.parked, opened_ms: d.parked.opened_ms ?? Date.now() }];
+      if (d.duel?.action === 'cancel') this.data.duels = (this.data.duels ?? []).map((x) => (x.duel === d.duel!.id ? { ...x, status: 'cancelled' as const } : x));
+      if (d.code) this.data.outbox = (this.data.outbox ?? []).filter((o) => o.code !== d.code);
+      await this.commit(d.inputs, got, { ...d.entry, at_ms: Date.now(), stored: { ...d.entry.stored, ...stored, recovered_from_log: true } });
+    };
+    let settled = 0;
+    for (const d of doubts) {
+      const { got, inputsSpent } = traceOf(d);
+      const through = got.length > 0 || inputsSpent;
+      if (!through && head.seq < (d.wait_from ?? head.seq) + SETTLE_BLOCKS) continue;
       this.data.inflight = (this.data.inflight ?? []).filter((x) => x.id !== d.id);
       // Spent, yet not one of the outputs it asked for signed: the signer signs them in the same
       // batch (a duel's shares come at the take), so the request was changed on its way.
-      const redirected = wentThrough && got.length === 0 && d.outs.some((o) => o.n > 0) && d.duel?.action !== 'open';
+      const redirected = through && got.length === 0 && d.outs.some((o) => o.n > 0) && d.duel?.action !== 'open';
       if (redirected) {
         this.redirected++;
         d.entry = { ...d.entry, stored: { ...d.entry.stored, outputs_never_signed: true } };
         trace(() => `doubt  ALARM: the slips were spent but none of the requested outputs was signed`);
       }
-      if (wentThrough) {
-        if (d.duel?.action === 'cancel') this.data.duels = (this.data.duels ?? []).map((x) => (x.duel === d.duel!.id ? { ...x, status: 'cancelled' as const } : x));
-        if (d.code) this.data.outbox = (this.data.outbox ?? []).filter((o) => o.code !== d.code);
-        await this.commit(d.inputs, got, { ...d.entry, at_ms: Date.now(), stored: { ...d.entry.stored, recovered_from_log: true } });
+      if (through) {
+        await wentThrough(d, got, {});
         trace(() => `doubt  settled from the public log: it went through · ${got.length} slips recovered`);
       } else {
-        // Never processed: the slips are ours again, and a duel that never opened is forgotten.
-        if (d.duel?.action === 'open') this.data.duels = (this.data.duels ?? []).filter((x) => x.duel !== d.duel!.id);
+        // No trace: the slips are ours again, and a duel that never opened leaves the list. Its
+        // outputs are still looked for a while (only they tell: its slips may be spent again).
+        const parked = d.duel?.action === 'open' ? this.data.duels?.find((x) => x.duel === d.duel!.id) : undefined;
+        if (parked) this.data.duels = (this.data.duels ?? []).filter((x) => x.duel !== parked.duel);
+        if (d.outs.some((o) => o.n > 0)) this.data.released = [...(this.data.released ?? []), { ...d, released_at: head.seq, parked }];
         await this.save(this.data);
         trace(() => `doubt  settled from the public log: it never went through · slips released`);
       }
       settled++;
+    }
+    for (const d of late) {
+      const { got } = traceOf(d);
+      if (got.length > 0) {
+        // It went through after all, after its slips came back: they are spent, its outputs ours.
+        this.data.released = (this.data.released ?? []).filter((x) => x.id !== d.id);
+        await wentThrough(d, got, { went_through_late: true });
+        trace(() => `doubt  a request given up on went through after all · ${got.length} slips recovered`);
+        settled++;
+      } else if (head.seq >= (d.released_at ?? 0) + RECHECK_BLOCKS) {
+        this.data.released = (this.data.released ?? []).filter((x) => x.id !== d.id);
+        await this.save(this.data);
+      }
     }
     return settled;
   }

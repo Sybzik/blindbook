@@ -153,7 +153,7 @@ let settledAt = -1;
 
 /** Requests without an answer: look them up in the public log once per new block. */
 async function settleDoubts(seq: number) {
-  if (!wallet || settling || wallet.inDoubt() === 0 || seq === settledAt) return;
+  if (!wallet || settling || wallet.watching() === 0 || seq === settledAt) return;
   settling = true;
   try {
     const n = await wallet.settleDoubts();

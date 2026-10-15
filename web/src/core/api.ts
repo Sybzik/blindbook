@@ -162,6 +162,8 @@ function check<T>(r: { status: number; body: unknown }): T {
 
 export class Api {
   private headCache?: Head;
+  /** The head seq the last live poll carried (polled far more often than the head). */
+  private liveSeq = 0;
 
   constructor(
     public transport: Transport,
@@ -177,13 +179,15 @@ export class Api {
     return h;
   }
 
-  /** The log's head seq as last seen (0 before the first head). */
+  /** The log's head seq as last seen (0 before the first head or live poll). */
   get seq(): number {
-    return this.headCache?.seq ?? 0;
+    return Math.max(this.headCache?.seq ?? 0, this.liveSeq);
   }
 
   async live(): Promise<Live> {
-    return check<Live>(await this.transport.request('GET', '/v1/live'));
+    const l = check<Live>(await this.transport.request('GET', '/v1/live'));
+    if (Number.isSafeInteger(l?.head?.seq) && l.head.seq > this.liveSeq) this.liveSeq = l.head.seq;
+    return l;
   }
 
   private async bits(kind: 'light' | 'heavy'): Promise<number> {

@@ -233,7 +233,7 @@ Assumptions: the A + B row assumes a zero-spread book (ask_B = 1 − 0.60); with
 1. For trade request i, the client derives a secret `s_i` from the vault seed (NUT-13 style path, separate counter) and sends `tag_i = SHA256("bb-called-it" ‖ s_i)`.
 2. The batch result in the public log lists `(tag_i, market_id, outcome, side, filled_units, avg_price_bp, height, batch_id)`. The root of the log that contains it is anchored on-chain.
 3. **Proof** = `s_i`, optionally packed as `bbproof1:` + base64url(CBOR [s_i, height]) or a link that carries the proof after `#` (`https://…/#p=<…>`), so neither our servers nor link-preview bots ever receive it.
-4. **Verification** happens in any browser (or the CLI): compute `SHA256("bb-called-it" ‖ s_i)`, find it in the log the browser downloads and checks (hash chain, signatures), and show the fill. The command-line verifier with `--chain` also checks that each on-chain anchor names the log's root.
+4. **Verification** happens in any browser (or the CLI): compute `SHA256("bb-called-it" ‖ s_i)`, find the block published at `height` (an interpolation search over single deltas), read it and every block since, check that they hash up to the published head (each delta carries the previous root), and show the fill. A call made minutes ago costs a few small reads, not the whole log; the full verifier (F4) checks everything else. The command-line verifier with `--chain` also checks that each on-chain anchor names the log's root.
 5. **Revealing one proof says nothing about other trades:** every tag uses an independent secret.
 
 ## 7. Resolution and redemption

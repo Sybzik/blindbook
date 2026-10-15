@@ -17,6 +17,7 @@ import { concat, fromHex, toHex, utf8 } from '../../core/bytes';
 import { creditKeyset, keyFor, outcomeKeyset, type Keyset } from '../../core/keysets';
 import { decodeProof } from '../../core/codes';
 import { deltaTexts } from '../../core/log';
+import { ChainBroken, checkCall, type CallHit } from '../../core/calls';
 import { coin, height, zat } from '../../app/format';
 import { COIN } from '../../app/config';
 import { play } from '../sound';
@@ -230,89 +231,76 @@ function audit(deltas: Delta[], headRoot: string): Omit<Result, 'ms' | 'replay'>
   };
 }
 
-/** The root a list of deltas chains up to (the hash chain the audit checks, PROTOCOL section 8). */
-function chainRoot(list: Delta[]): string {
-  let prev = GENESIS;
-  for (const d of list) prev = toHex(sha256(concat(fromHex(prev), sha256(utf8(canonical(d))))));
-  return prev;
-}
-
 /** How many new blocks a proof link waits for before it says NOT FOUND (about 3 minutes). */
 const PROOF_WAIT_BLOCKS = 8;
 
-function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string }) {
+/** A CALLED IT proof, checked on its own: the call's block and every block since must hash up to
+ *  the published head (core/calls.ts), so a link opened a minute after the bet reads a few blocks,
+ *  not the whole log. The full verifier above checks everything else. */
+/** The call in words; the market's names fill in once the catalog is in. */
+const callLine = (f: CallHit, m?: { question: string; outcomes: string[] }) =>
+  `${f.side === 'buy' ? 'bought' : 'sold'} ${m ? m.outcomes[f.outcome]!.toUpperCase() : 'outcome ' + f.outcome} · ${coin(f.shares)} shares @ ${Math.round(f.avgPriceBp / 100)}¢ · blk ${height(f.height)} · ${m?.question ?? 'market ' + f.market.slice(0, 8) + '…'}`;
+
+function ProofCheck({ proof }: { proof?: string }) {
   const markets = useStore(app, (s) => s.markets);
   const head = useStore(app, (s) => s.head);
   const [text, setText] = useState(proof ?? '');
-  // `ok: null`: opened from a link right after the call, which isn't in the log yet.
-  const [res, setRes] = useState<{ ok: boolean | null; line: string } | null>(null);
-  // Blocks published after the verifier's download, read while a proof link waits.
-  const [extra, setExtra] = useState<Delta[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  // `ok: null`: the call is newer than the published log; it is checked again on every new block.
+  const [res, setRes] = useState<{ ok: boolean | null; line: string; found?: CallHit } | null>(null);
   const waited = useRef(0);
-  const check = (t = text, list: Delta[] = [...(deltas ?? []), ...extra], fromLink = false) => {
+  const waiting = useRef<string | null>(null);
+  const running = useRef(false);
+  const started = useRef(false);
+  const check = async (t = text) => {
+    if (running.current) return;
+    let p: ReturnType<typeof decodeProof>;
     try {
-      const p = decodeProof(t);
-      for (const d of list) {
-        for (const b of d.batches) {
-          const i = b.orders.findIndex((o) => o.tag === p.tag);
-          if (i < 0) continue;
-          const o = b.orders[i]!;
-          const f = b.fills[i]!;
-          const m = markets.find((x) => x.id === b.market);
-          play('stamp');
-          setRes({
-            ok: true,
-            line: `${o.side === 'buy' ? 'bought' : 'sold'} ${m ? m.outcomes[o.outcome]!.toUpperCase() : 'outcome ' + o.outcome} · ${coin(o.side === 'buy' ? f.out : f.kept)} shares @ ${Math.round(f.avg_price_bp / 100)}¢ · blk ${height(d.height)} · ${m?.question ?? b.market}`,
-          });
-          return;
-        }
-      }
-      if (fromLink && waited.current < PROOF_WAIT_BLOCKS) {
-        waited.current++;
-        setRes({ ok: null, line: 'This call is newer than the log this browser downloaded: a bet reaches the public log with the next block. Checking again as each new block is published…' });
-        return;
-      }
-      setRes({ ok: false, line: 'This proof is not in the public log: it is not genuine, or the log you downloaded is older than the call.' });
+      p = decodeProof(t);
     } catch {
       setRes({ ok: false, line: 'That is not a CALLED IT proof: the link is incomplete or was changed.' });
+      return;
+    }
+    running.current = true;
+    setBusy("reading the call's block");
+    try {
+      const r = await checkCall(getApi(), p.tag, p.height, (done, of) => setBusy(`reading the blocks since the call · ${done} of ${of}`));
+      if ('found' in r) {
+        waiting.current = null;
+        play('stamp');
+        setRes({ ok: true, line: '', found: r.found });
+      } else if ('pending' in r && waited.current < PROOF_WAIT_BLOCKS) {
+        waited.current++;
+        waiting.current = t;
+        setRes({ ok: null, line: 'This call is newer than the published log: a bet reaches it with the next block. Checking again as each new block is published…' });
+      } else {
+        waiting.current = null;
+        setRes({ ok: false, line: 'This proof is not in the public log: it is not genuine.' });
+      }
+    } catch (e) {
+      waiting.current = null;
+      setRes({
+        ok: false,
+        line: e instanceof ChainBroken ? 'The blocks since the call do not hash up to the published head: this is not the log everyone reads.' : 'The public log could not be read just now. Try again.',
+      });
+    } finally {
+      running.current = false;
+      setBusy(null);
     }
   };
-  // Opened from a proof link: check it as soon as the log is in.
+  // Opened from a proof link: checked as soon as the app reaches the log (its first head).
   useEffect(() => {
-    setExtra([]);
-    waited.current = 0;
-    if (proof && deltas) check(proof, deltas, true);
-  }, [deltas]);
-  // While it waits: the blocks published since, on the same hash chain as the log already checked.
+    if (!proof || !head || started.current) return;
+    started.current = true;
+    void check(proof);
+  }, [head]);
+  // Waiting for the call's block: again with every new head.
   useEffect(() => {
-    if (!res || res.ok !== null || !deltas || !head) return;
-    const have = [...deltas, ...extra];
-    const last = have.at(-1)?.seq ?? 0;
-    if (head.seq <= last) return;
-    let gone = false;
-    void (async () => {
-      try {
-        const api = getApi();
-        const h = await api.head();
-        const more = (await deltaTexts(api, last + 1, h.seq, h.seq)).map((t) => JSON.parse(t) as Delta);
-        if (gone) return;
-        const all = [...have, ...more];
-        if (chainRoot(all) !== h.root) {
-          setRes({ ok: false, line: 'The new blocks do not link up to the log already checked. Run the verifier again.' });
-          return;
-        }
-        setExtra((e) => [...e, ...more]);
-        check(proof ?? text, all, true);
-      } catch {
-        /* the next block tries again */
-      }
-    })();
-    return () => {
-      gone = true;
-    };
-  }, [head?.seq, res?.ok]);
+    if (waiting.current) void check(waiting.current);
+  }, [head?.seq]);
   return (
-    <div style={{ maxWidth: 640, marginTop: 24 }}>
+    <div style={{ maxWidth: 640, marginTop: proof ? 12 : 24 }}>
+      {busy && <p className="bb-ui bb-dim" role="status">Checking this call: {busy}…</p>}
       {res && res.ok === null && (
         <div className="tk-proofres" role="status">
           <p className="bb-label" style={{ margin: 0 }}>WAITING FOR THE NEXT BLOCK</p>
@@ -322,13 +310,13 @@ function ProofCheck({ deltas, proof }: { deltas: Delta[] | null; proof?: string 
       {res && res.ok !== null && (
         <div className="tk-proofres" role="status">
           <Stamp tone={res.ok ? 'phosphor' : 'alarm'} size="lg" rotate={-4} worn={false} slam>{res.ok ? 'VERIFIED ✓' : 'NOT FOUND'}</Stamp>
-          <p className="bb-ui">{res.line}</p>
-          {res.ok && <p className="bb-conditions">Checked in this browser against the public log. It proves this one call and nothing else: not who made it, their balance or their other bets.</p>}
+          <p className="bb-ui">{res.found ? callLine(res.found, markets.find((x) => x.id === res.found!.market)) : res.line}</p>
+          {res.ok && <p className="bb-conditions">Checked in this browser: the call's block and every block since hash up to the published head. It proves this one call and nothing else: not who made it, their balance or their other bets.</p>}
         </div>
       )}
       <TextInput label="CHECK A CALLED IT PROOF" placeholder="bbproof1:… or a link" value={text} onChange={setText} message="Checked here, against the public log. The proof is never sent anywhere." />
       <div style={{ marginTop: 8 }}>
-        <KeyButton size="sm" disabled={!text || !deltas} onClick={() => check()} data-hint={deltas ? undefined : 'Run the verifier first: the proof is checked against the log it downloads.'}>CHECK PROOF</KeyButton>
+        <KeyButton size="sm" disabled={!text || !!busy || !head} onClick={() => void check()}>CHECK PROOF</KeyButton>
       </div>
     </div>
   );
@@ -376,12 +364,10 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
   const [run, setRun] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [progress, setProgress] = useState('');
   const [res, setRes] = useState<Result | null>(null);
-  const [deltas, setDeltas] = useState<Delta[] | null>(null);
   const go = async () => {
     setRun('running');
     try {
-      const { result, deltas } = await runAudit(setProgress);
-      setDeltas(deltas);
+      const { result } = await runAudit(setProgress);
       setRes(result);
       setRun('done');
       play('stamp');
@@ -390,12 +376,10 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
       setRun('error');
     }
   };
-  useEffect(() => {
-    if (proof) void go();
-  }, []);
   return (
     <Win title="P400 · VERIFY" onClose={onClose}>
       <TeletextHeader page="P400" title="VERIFY IT YOURSELF" />
+      {proof && <ProofCheck proof={proof} />}
       <div style={{ maxWidth: 680, marginTop: 12 }}>
         <LeaderRow label="PUBLIC LOG" value={head ? `seq ${head.seq.toLocaleString('en-US')} · root ${head.root.slice(0, 8)}…${head.root.slice(-4)}` : '…'} />
         <LeaderRow label="CHAIN HEIGHT" value={head ? 'blk ' + height(head.height) : '…'} />
@@ -476,7 +460,7 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
         </KeyButton>
       </div>
       <RunIt />
-      <ProofCheck deltas={deltas} proof={proof} />
+      {!proof && <ProofCheck />}
     </Win>
   );
 }

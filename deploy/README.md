@@ -124,7 +124,7 @@ Then open the app from a clean browser: the lamp turns LINKED, a judge code adds
 
 ## The mainnet proof
 
-The same build with micro stakes, next to the playground on the same two servers. It runs for Gate 2 on the iPhone and for the recorded proof, and stops before mainnet activates NU7 (ROADMAP R26): our pinned Zcash crates don't know mainnet's activation height. Stop it with `docker compose -f compose.yml -f compose.mainnet.yml stop signer-main` on VPS-2 and `… stop api-main` on VPS-1, after withdrawing what it holds.
+The same build with micro stakes, next to the playground on the same two servers. It runs for Gate 2 on the iPhone and for the recorded proof, and is switched off before judging starts (the organizers agreed, Oct 13; ROADMAP R28): our pinned Zcash crates don't know mainnet's NU7 activation height. Stop it with `docker compose -f compose.yml -f compose.mainnet.yml stop signer-main` on VPS-2 and `… stop api-main` on VPS-1, after withdrawing what it holds.
 
 - VPS-2: `signer-main.env` (from `signer.env.example`, with `BB_NETWORK=mainnet`, `BB_ZCASH_NET=main`, `BB_LWD=zecrocks-main`, the mainnet API's URL and its own token), then a second key set: `docker compose -f compose.yml -f compose.mainnet.yml run --rm signer-main blindbook-signer keygen /secrets/master.key`, `… init /secrets/treasury tip`, and an empty `secrets-main/voucher-hashes.txt` (no judge codes on mainnet). Start with `docker compose -f compose.yml -f compose.mainnet.yml up -d`.
 - VPS-1: `api-main.env` and `config-main/`, the mainnet host added to `BB_SITES` (`… main.example.org=api-main:8080`); start with `docker compose -f compose.yml -f compose.mainnet.yml up -d`.

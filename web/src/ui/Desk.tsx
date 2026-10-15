@@ -428,6 +428,12 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   const titleOf = (id: string) => (id === 'market' ? `${market?.page ?? 'P2xx'} · MARKET` : id.startsWith('tt:') ? `P${id.slice(3)} · TELETEXT` : TITLES[id] ?? id);
   const isApp = (id: string) => (APP_ICONS as { id: string }[]).some((a) => a.id === id);
   const showVault = vaultWin && vault !== 'checking' && (vault !== 'unlocked' || vaultHold);
+  // Left for another window before it finished (F3 right after making the vault): nothing to hold
+  // up any more. A hold left over would keep the window's old key, and the next unlock attempt
+  // would remount it, taking its message and the typed passphrase with it.
+  useEffect(() => {
+    if (!showVault && vaultHold) setVaultHold(false);
+  }, [showVault, vaultHold]);
   const closeVault = () => {
     setVaultHold(false);
     setVaultWin(false);

@@ -1,5 +1,5 @@
 # Secret scanning for CI (ROADMAP R13). Real keys, seeds and wallets never enter the repo
-# (.gitignore, ..\blindbook-work\wallets). The allowlist covers public test data only.
+# (.gitignore, a work directory outside the repository). The allowlist covers public test data only.
 [extend]
 useDefault = true
 

@@ -46,7 +46,6 @@ desktop.ini
 .vscode/*
 !.vscode/extensions.json
 
-# --- local tooling ---
 
 # Built from crates/blindbook-engine-wasm by web/scripts/wasm.mjs
 web/src/wasm/

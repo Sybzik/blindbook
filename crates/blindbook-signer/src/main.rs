@@ -31,7 +31,7 @@
 //!     BB_POLYGON_RPCS    comma-separated Polygon RPCs the signer reads results from itself
 //!                        (default: the two public ones the API uses; both must agree)
 //! ```
-//! Keys, codes and journals never go into the repository (`..\blindbook-work\` locally).
+//! Keys, codes and journals never go into the repository (a work directory beside it, locally).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};

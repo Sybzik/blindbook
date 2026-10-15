@@ -4,5 +4,4 @@ web
 spikes
 docs
 deploy
-.git
-.github
+.*

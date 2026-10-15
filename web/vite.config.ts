@@ -11,7 +11,7 @@ import react from '@vitejs/plugin-react';
  *   frames, and nothing else (no CDN, font, analytics or Polymarket request) is possible.
  *   'wasm-unsafe-eval' runs the engine's WebAssembly in the verifier; frame-src 'self' allows the
  *   tunnel frames.
- * - A tunnel frame (tunnel.html) runs the mixnet client: its worker starts from a data: URL and
+ * - A tunnel frame (tunnel/index.html) runs the mixnet client: its worker starts from a data: URL and
  *   loads its code from our own host (opaqueMixnetWorkerPlugin below), and it connects only to
  *   Nym's directory API and, over WebSocket, to the entry gateway. That worker has an opaque
  *   origin, and Safari reads 'self' in its policy as that opaque origin, so the app's own origins
@@ -28,7 +28,7 @@ function cspPlugin(): Plugin {
       appOrigins = appOriginsOf(c.env);
     },
     transformIndexHtml(html, ctx) {
-      const policy = ctx.path.endsWith('tunnel.html')
+      const policy = ctx.path.endsWith('tunnel/index.html')
         ? [...common, `script-src 'self'${appOrigins ? ' ' + appOrigins : ''} 'wasm-unsafe-eval'`, 'worker-src data:', 'connect-src wss: https://validator.nymtech.net', "img-src 'none'", "style-src 'none'", "font-src 'none'", "frame-src 'none'"]
         : [...common, "script-src 'self' 'wasm-unsafe-eval'", "worker-src 'self'", "connect-src 'self'", "img-src 'self' data: blob:", "style-src 'self'", "font-src 'self'", "frame-src 'self'"];
       // frame-ancestors only works as an HTTP header: the static host and Caddy send it.
@@ -127,15 +127,23 @@ function serviceWorkerPlugin(): Plugin {
     generateBundle(_, bundle) {
       // The mixnet worker's code is loaded by a worker with an opaque origin, which the service
       // worker never sees: the browser's HTTP cache keeps it (`_headers`: immutable).
-      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !f.startsWith('assets/nym-worker-'));
-      const shell = ['/', '/index.html', '/tunnel.html', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
+      // The pages by the paths every static host serves without a redirect ('/', '/tunnel/'): hosts
+      // that drop `.html` (Cloudflare, Netlify) answer '/index.html' with a redirect to '/'.
+      const files = Object.keys(bundle).filter((f) => !f.endsWith('.map') && !f.startsWith('assets/nym-worker-') && !f.endsWith('.html'));
+      const shell = ['/', '/tunnel/', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png'];
       const list = [...new Set([...shell, ...files.map((f) => '/' + f)])];
       const version = createHash('sha256').update(list.join(' ')).update(JSON.stringify(Object.values(bundle).map((b) => ('code' in b ? b.code.length : 0)))).digest('hex').slice(0, 16);
       const sw = `// Generated at build. Serves the app from its cache; never touches /v1/.
 const CACHE = 'blindbook-${version}';
 const FILES = ${JSON.stringify(list)};
+// A response that came through a redirect is stored as a plain copy: a browser refuses a
+// redirected response as the answer to a navigation, so the app would not open from the cache.
+const store = (c, f) => fetch(f).then(async (r) => {
+  if (!r.ok) throw new Error(f + ': ' + r.status);
+  return c.put(f, r.redirected ? new Response(await r.blob(), { status: r.status, statusText: r.statusText, headers: r.headers }) : r);
+});
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(FILES.map((f) => store(c, f)))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
@@ -144,7 +152,7 @@ self.addEventListener('fetch', (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== 'GET' || u.origin !== self.location.origin || u.pathname.startsWith('/v1/') || u.pathname.startsWith('/dev/')) return;
   // Navigations get the app shell (the URL never changes inside the app, and proof links ride after #).
-  const key = e.request.mode === 'navigate' ? (u.pathname === '/tunnel.html' ? '/tunnel.html' : '/index.html') : u.pathname;
+  const key = e.request.mode === 'navigate' ? (u.pathname === '/tunnel/' ? '/tunnel/' : '/') : u.pathname;
   e.respondWith(caches.open(CACHE).then((c) => c.match(key).then((hit) => hit || fetch(e.request))));
 });
 `;
@@ -166,7 +174,7 @@ function integrityPlugin(): Plugin {
     closeBundle() {
       // On the files as written (the last plugin has run), so the hashes are the served bytes.
       const dir = 'dist';
-      for (const html of ['index.html', 'tunnel.html']) {
+      for (const html of ['index.html', 'tunnel/index.html']) {
         const path = join(dir, html);
         const text = readFileSync(path, 'utf8').replace(/<(script|link)([^>]*?)(src|href)="\/(assets\/[^"]+\.(?:js|css))"([^>]*)>/g, (m, tag, a, attr, file, b) => {
           if (m.includes('integrity=')) return m;
@@ -214,7 +222,7 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       // The app, and the tunnel frame (its own copy of mix-fetch per frame).
-      input: { index: 'index.html', tunnel: 'tunnel.html' },
+      input: { index: 'index.html', tunnel: 'tunnel/index.html' },
     },
     // The app shell must stay under 300 KB gzip (ARCHITECTURE "Speed under load"); the mixnet
     // module is a separate lazy chunk.

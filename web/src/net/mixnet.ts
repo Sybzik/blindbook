@@ -1,6 +1,6 @@
 // The mixnet transport (PROTOCOL section 4, THREAT_MODEL N1–N13).
 //
-// - Every tunnel runs in its own hidden same-origin frame (tunnel.html), with a fresh random
+// - Every tunnel runs in its own hidden same-origin frame (/tunnel/), with a fresh random
 //   mixnet identity held only in its worker's memory (the worker has an opaque origin, so Nym's
 //   directory and gateway never see the app's site). Identities an older build stored in
 //   IndexedDB are deleted at boot.
@@ -55,7 +55,9 @@ class Tunnel {
     this.frame.setAttribute('aria-hidden', 'true');
     this.frame.tabIndex = -1;
     const pw = toHex(randomBytes(16));
-    this.frame.src = `/tunnel.html#cid=${this.cid}&pw=${pw}${ipr ? '&ipr=' + encodeURIComponent(ipr) : ''}`;
+    // `/tunnel/`, not `/tunnel.html`: static hosts that drop `.html` (Cloudflare, Netlify) answer
+    // the latter with a redirect, and every host serves a directory's index.html at its `/` path.
+    this.frame.src = `/tunnel/#cid=${this.cid}&pw=${pw}${ipr ? '&ipr=' + encodeURIComponent(ipr) : ''}`;
     let readyRes!: () => void;
     let readyRej!: (e: Error) => void;
     this.ready = new Promise((res, rej) => {
@@ -81,10 +83,10 @@ class Tunnel {
         else w.resolve({ status: d.status ?? 0, text: d.text, bytes: d.bytes });
       }
     };
-    // The frame's end of the channel goes over once tunnel.html has loaded (its module script, which
-    // waits for it, has run by then).
+    // The frame's end of the channel goes over once the tunnel page has loaded (its module script,
+    // which waits for it, has run by then).
     const handOver = () => {
-      if (!this.frame.contentWindow?.location.href.includes('/tunnel.html')) return;
+      if (this.frame.contentWindow?.location.pathname !== '/tunnel/') return;
       this.frame.removeEventListener('load', handOver);
       this.frame.contentWindow.postMessage({ type: 'port' }, location.origin, [channel.port2]);
     };

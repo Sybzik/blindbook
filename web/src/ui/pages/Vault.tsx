@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { KeyButton, LeaderRow, TextInput, UnlockKeyhole } from '../../ds';
 import { InstallHint, Win } from '../win';
-import { app, createVault, newWords, prfSupported, restoreFromWords, unlockWithPasskey, unlockWithPassphrase } from '../../app/services';
+import { VaultElsewhereError, app, createVault, newWords, prfSupported, restoreFromWords, unlockWithPasskey, unlockWithPassphrase } from '../../app/services';
 import { useStore } from '../../app/store';
 import { coinLabel } from '../../app/format';
 import { config } from '../../app/config';
@@ -29,6 +29,8 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
   const [summary, setSummary] = useState<{ slips: number; trades: number; balance: number; foreign: number } | null>(null);
   const [backedUp, setBackedUp] = useState(false);
   const [usePass, setUsePass] = useState(false);
+  // Open in another tab of this browser: offered to open it here instead (that tab locks).
+  const [elsewhere, setElsewhere] = useState(false);
   const phone = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   const hasPrf = wraps.some((w) => w.kind === 'prf');
   const hasPass = wraps.some((w) => w.kind === 'pass');
@@ -37,7 +39,14 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
     setTimeout(() => setClosing(true), 500);
   };
 
-  const unlock = async () => {
+  const failed = (e: unknown) => {
+    onHold?.(false);
+    setSt('error');
+    setElsewhere(e instanceof VaultElsewhereError);
+    setErr(String((e as Error).message));
+  };
+
+  const unlock = async (take = false) => {
     if (!pass) {
       setErr('Type your passphrase first. It never leaves this computer.');
       return;
@@ -45,25 +54,21 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
     setSt('unlocking');
     onHold?.(true);
     try {
-      await unlockWithPassphrase(pass);
+      await unlockWithPassphrase(pass, take);
       done();
     } catch (e) {
-      onHold?.(false);
-      setSt('error');
-      setErr(String((e as Error).message));
+      failed(e);
     }
   };
 
-  const faceId = async () => {
+  const faceId = async (take = false) => {
     setSt('unlocking');
     onHold?.(true);
     try {
-      await unlockWithPasskey();
+      await unlockWithPasskey(take);
       done();
     } catch (e) {
-      onHold?.(false);
-      setSt('error');
-      setErr(String((e as Error).message));
+      failed(e);
     }
   };
 
@@ -106,6 +111,11 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
     <Win title={title} closable={!!onDismiss && !closing} onClose={onDismiss} resizable={false} maxWidth={520} style={{ alignSelf: 'center', width: '100%', marginTop: 24 }} closing={closing} onClosed={onOpen}>
       {body}
       {err && <p className="bb-conditions" style={{ color: 'var(--alarm)' }} role="status">{err}</p>}
+      {elsewhere && mode === 'unlock' && (
+        <div style={{ marginTop: 8 }}>
+          <KeyButton size="sm" onClick={() => { setErr(null); setElsewhere(false); void (phone && hasPrf && !usePass ? faceId(true) : unlock(true)); }}>OPEN IT HERE</KeyButton>
+        </div>
+      )}
       {onDismiss && (mode === 'choose' || mode === 'unlock') && (
         <p className="bb-ui bb-dim" style={{ textAlign: 'center', margin: '16px 0 0' }}>
           <button type="button" className="bb-link" onClick={onDismiss}>look around first: markets, verify and how it works need no vault</button>
@@ -117,7 +127,7 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
   if (mode === 'unlock' && phone && hasPrf && !usePass)
     return shell(
       'VAULT · LOCKED',
-      <UnlockKeyhole device="phone" state={st === 'unlocking' ? 'prompt' : st} error={err ?? undefined} onUnlock={faceId}
+      <UnlockKeyhole device="phone" state={st === 'unlocking' ? 'prompt' : st} error={err ?? undefined} onUnlock={() => faceId()}
         onUsePassphrase={() => (hasPass ? setUsePass(true) : setMode('restore'))} />,
     );
 
@@ -126,11 +136,11 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
       'VAULT · LOCKED',
       <>
         {hasPass && (
-          <UnlockKeyhole device="desktop" state={st} passphrase={pass} onPassphrase={(v: string) => { setPass(v); setErr(null); }} error={err ?? undefined} onUnlock={unlock} onForgot={() => { setMode('restore'); setErr(null); }} />
+          <UnlockKeyhole device="desktop" state={st} passphrase={pass} onPassphrase={(v: string) => { setPass(v); setErr(null); }} error={err ?? undefined} onUnlock={() => unlock()} onForgot={() => { setMode('restore'); setErr(null); }} />
         )}
         {hasPrf && (
           <div style={{ marginTop: 16, textAlign: 'center' }}>
-            <KeyButton onClick={faceId} loading={st === 'unlocking'}>UNLOCK WITH FACE ID</KeyButton>
+            <KeyButton onClick={() => faceId()} loading={st === 'unlocking'}>UNLOCK WITH FACE ID</KeyButton>
           </div>
         )}
         {!hasPass && (

@@ -375,6 +375,8 @@ export function newWords(): string {
 }
 
 export async function createVault(words: string, passphrase: string | null, passkey: boolean, backedUp = false) {
+  // A new vault replaces the one on this device: another tab that has it open locks first.
+  await holdVault(true);
   const data = newWalletData(seedFromMnemonic(words));
   data.mnemonic = words;
   data.local = { backedUp };
@@ -394,21 +396,79 @@ export async function addPasskey(): Promise<boolean> {
   return true;
 }
 
-export async function unlockWithPassphrase(passphrase: string) {
-  openWallet((await vault.unlockWithPassphrase(passphrase)) as WalletData);
+/** One tab at a time keeps the vault open: two would each save their own copy over the other's
+ *  and could ask for the same outputs. A Web Lock marks the tab that has it open; a tab that opens
+ *  it anyway asks that one to lock first (BroadcastChannel). */
+const TAB_LOCK = 'blindbook-vault';
+const tabs = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(TAB_LOCK);
+let releaseTab: (() => void) | undefined;
+tabs?.addEventListener('message', (e: MessageEvent) => {
+  if (e.data !== 'take') return;
+  if (!wallet) return letGoOfVault();
+  lockVault();
+  app.set({ notice: 'The vault was opened in another tab of this browser, so it is locked here.' });
+});
+
+export class VaultElsewhereError extends Error {
+  constructor() {
+    super('The vault is open in another tab of this browser. Use it there, or open it here and that tab locks.');
+  }
+}
+
+/** Hold the vault for this tab. Without `take` it refuses while another tab has it open; with it,
+ *  that tab is asked to lock, for up to 5 s (a tab asleep in the background can't answer). */
+async function holdVault(take: boolean): Promise<void> {
+  const locks = (navigator as Navigator & { locks?: LockManager }).locks;
+  if (!locks || releaseTab) return;
+  await new Promise<void>((resolve, reject) => {
+    const abort = new AbortController();
+    const timer = take ? setTimeout(() => abort.abort(), 5_000) : undefined;
+    locks
+      .request(TAB_LOCK, take ? { signal: abort.signal } : { ifAvailable: true }, (lock) => {
+        clearTimeout(timer);
+        if (!lock) return reject(new VaultElsewhereError());
+        resolve();
+        return new Promise<void>((r) => (releaseTab = r));
+      })
+      .catch(() => reject(new Error('The other tab did not let go of the vault. Close it, then try again.')));
+    if (take) tabs?.postMessage('take');
+  });
+}
+
+function letGoOfVault() {
+  releaseTab?.();
+  releaseTab = undefined;
+}
+
+/** Open the vault in this tab: hold it first, let go if opening fails (a wrong passphrase). */
+async function openHere(take: boolean, open: () => Promise<WalletData>) {
+  await holdVault(take);
+  try {
+    openWallet(await open());
+  } catch (e) {
+    letGoOfVault();
+    throw e;
+  }
+}
+
+export async function unlockWithPassphrase(passphrase: string, take = false) {
+  await openHere(take, async () => (await vault.unlockWithPassphrase(passphrase)) as WalletData);
   cue('vault.unlocked');
 }
 
-export async function unlockWithPasskey() {
+export async function unlockWithPasskey(take = false) {
   const w = app.get().wraps.find((x) => x.kind === 'prf');
   if (!w?.credential) throw new Error('no passkey on this device');
-  const prf = await unlockPasskey(w.credential, w.salt);
-  if (!prf) throw new Error('the passkey did not unlock');
-  openWallet((await vault.unlockWithPrf(prf)) as WalletData);
+  await openHere(take, async () => {
+    const prf = await unlockPasskey(w.credential!, w.salt);
+    if (!prf) throw new Error('the passkey did not unlock');
+    return (await vault.unlockWithPrf(prf)) as WalletData;
+  });
   cue('vault.unlocked');
 }
 
 export function lockVault() {
+  letGoOfVault();
   vault.lock();
   wallet = undefined;
   refreshWallet();
@@ -419,6 +479,7 @@ export function lockVault() {
 /** Rebuild a vault from 12 words with zero-query restore over the public files. */
 export async function restoreFromWords(words: string, passphrase: string | null, onProgress?: (s: string) => void) {
   const seed = seedFromMnemonic(words);
+  await holdVault(true);
   onProgress?.('DOWNLOADING THE PUBLIC LOG');
   const head = await api.head();
   const texts = await deltaTexts(api, 1, head.seq, head.seq, (n, of) => onProgress?.(`DOWNLOADING THE PUBLIC LOG ${n}/${of}`));

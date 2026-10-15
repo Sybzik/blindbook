@@ -243,3 +243,13 @@ describe('a spend the log does not show yet', () => {
     expect(w.creditBalance()).toBe(512);
   });
 });
+
+describe('a request in flight when the page closed', () => {
+  it('is in doubt when the vault opens again, so the log settles it', () => {
+    const data = newWalletData(sha256(utf8('reloaded')));
+    const slip = { id: 'x', amount: 1024, secret: 'held', C: '02'.padEnd(66, '1') };
+    data.inflight = [{ id: 'f1', at_ms: 0, seq: 3, inputs: [slip], outs: [{ counter: 0, n: 31 }], entry: { at_ms: 0, kind: 'buy', stored: {} }, doubt: false }];
+    const w = new Wallet(data, M, {} as Api, async () => undefined);
+    expect(w.inDoubt()).toBe(1);
+  });
+});

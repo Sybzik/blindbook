@@ -209,6 +209,9 @@ export class Wallet {
     private save: (d: WalletData) => Promise<void>,
   ) {
     this.seed = fromHex(data.seed);
+    // In flight when the page last closed (reloaded mid-bet): no answer will come now, so the
+    // public log settles it like any request without an answer.
+    for (const f of data.inflight ?? []) f.doubt = true;
     this.credit = creditKeyset(m);
     this.known.set(this.credit.id, this.credit);
   }

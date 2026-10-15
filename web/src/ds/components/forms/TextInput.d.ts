@@ -23,7 +23,7 @@ export interface PreflightItem { label: string; ok: string; fail: string; }
  * @startingPoint section="Cage" subtitle="4-row privacy preflight that ticks" viewport="700x300"
  */
 export interface PreflightChecklistProps {
-  /** default: MIXNET LINKED, PHRASE BACKED UP, STANDARD AMOUNT, PAY FROM YOUR ORCHARD/IRONWOOD BALANCE */
+  /** default: MIXNET LINKED, PHRASE BACKED UP, STANDARD AMOUNT, PAY FROM YOUR SHIELDED BALANCE */
   items?: PreflightItem[];
   /** controlled per-row status */
   statuses?: Array<'pending' | 'checking' | 'ok' | 'fail'>;

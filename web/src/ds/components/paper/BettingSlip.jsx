@@ -9,9 +9,9 @@ const SLIP_STATES = {
   open: { stamp: 'OPEN', rot: -4 },
   won: { stamp: 'WON', rot: -10 },
   lost: { stamp: 'LOST', rot: 8 },
-  refunded: { stamp: 'REFUNDED', rot: -6, note: 'Market cancelled. Your stake is back in your balance.' },
+  refunded: { stamp: 'REFUNDED', rot: -6, note: 'Nothing filled within your price limit: the full amount is back in your balance.' },
   exposed: { stamp: 'EXPOSED', rot: -8, band: 'alarm', bandText: 'EXPOSED', note: 'The top-up behind this slip was linkable. Withdraw to a fresh address.' },
-  'amount-visible': { stamp: null, band: 'amber', bandText: 'AMOUNT VISIBLE', note: 'Not a standard size, so it can be linked. Use 0.01 / 0.05 / 0.1 / 0.5.' },
+  'amount-visible': { stamp: null, band: 'amber', bandText: 'AMOUNT VISIBLE', note: 'Paid from Sapling funds, so the amount showed on chain. Keep your ZEC in Ironwood.' },
 };
 
 /* Betting slip: serial, market, outcome, shares, stamp. */

@@ -26,7 +26,7 @@ export const PREFLIGHT_DEFAULT = [
   { label: 'MIXNET LINKED', ok: '3 HOPS', fail: 'NOT LINKED' },
   { label: 'PHRASE BACKED UP', ok: 'BACKED UP', fail: 'BACK UP FIRST' },
   { label: 'STANDARD AMOUNT', ok: '0.05 ZEC', fail: 'NON-STANDARD' },
-  { label: 'PAY FROM YOUR ORCHARD/IRONWOOD BALANCE', ok: 'SHIELDED', fail: 'TRANSPARENT' },
+  { label: 'PAY FROM YOUR SHIELDED BALANCE', ok: 'SHIELDED', fail: 'TRANSPARENT' },
 ];
 
 /* Aircraft-style privacy preflight. Rows tick themselves off before every payment. */

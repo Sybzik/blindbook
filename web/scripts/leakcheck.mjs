@@ -4,11 +4,12 @@
 // and every window, then fails on the first stray request or CSP violation.
 //
 // Usage (after `pnpm build`): CHROME_PATH=/path/to/chrome node scripts/leakcheck.mjs
-// A deployed app: APP=https://example.org CHROME_PATH=… node scripts/leakcheck.mjs. A mixnet
-// build may also reach the mixnet client's bootstrap (Nym's directory over HTTPS, the entry
-// gateway over WebSocket; THREAT_MODEL N5), and nothing else; the check then also waits for the
-// link and fails if any of those requests names the site (an `Origin` other than `null`, or a
-// `Referer`). Every request is seen as sent, from the page, its frames and their workers.
+// A deployed app: APP=https://example.org CHROME_PATH=… node scripts/leakcheck.mjs (CHROME_PROXY=
+// http://host:port to reach it through a proxy). A mixnet build may also reach the mixnet
+// client's bootstrap (Nym's directory over HTTPS, the entry gateway over WebSocket; THREAT_MODEL
+// N5), and nothing else; the check then also waits for the link and fails if any of those
+// requests names the site (an `Origin` other than `null`, or a `Referer`). Every request is seen
+// as sent, from the page, its frames and their workers.
 // A local mixnet build: MIXNET=1 (build it with VITE_BB_APP_ORIGIN=http://127.0.0.1:4173 and an
 // API the mixnet can reach, e.g. VITE_BB_API=https://httpbin.org/anything, which answers anything).
 
@@ -57,7 +58,7 @@ const errors = [];
 let failed = false;
 try {
   await up();
-  const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+  const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', ...(process.env.CHROME_PROXY ? [`--proxy-server=${process.env.CHROME_PROXY}`] : [])] });
   // Watch every target (the page, the tunnel frames' workers) at the network level.
   // Request ids are unique across targets, and one request can show up in two (a frame's worker).
   const watch = async (client) => {

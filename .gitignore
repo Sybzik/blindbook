@@ -31,10 +31,7 @@ coverage/
 npm-debug.log*
 pnpm-debug.log*
 
-# --- video ---
-video/out/
-# the script stays local until the video is out (it holds the reveal)
-video/SCRIPT.md
+# --- video files ---
 *.mp4
 *.mov
 

@@ -23,7 +23,7 @@ function terms(d: { shares: number; price_bp: number; stake: number }, m: Market
 }
 
 /** `onTaken`: the page keeps the confirmation, since the challenge leaves the board once taken. */
-function Challenge({ d, m, mine, focus, vault, onTaken }: { d: OpenDuel; m: MarketMeta | undefined; mine: boolean; focus: boolean; vault: string; onTaken: (duel: string, line: string) => void }) {
+function Challenge({ d, m, mine, focus, vault, open, onTaken }: { d: OpenDuel; m: MarketMeta | undefined; mine: boolean; focus: boolean; vault: string; open: boolean; onTaken: (duel: string, line: string) => void }) {
   const busy = useStore(app, (s) => s.busy);
   const balance = useStore(app, (s) => s.balance);
   const t = terms(d, m, d.outcome);
@@ -44,6 +44,8 @@ function Challenge({ d, m, mine, focus, vault, onTaken }: { d: OpenDuel; m: Mark
       <LeaderRow label={`TAKE ${t.yours}`} value={`pay ${coin(t.cost)} · win ${coin(d.shares)} ${COIN} if ${t.yours} wins`} tone="hi" />
       {mine ? (
         <p className="bb-conditions">This is your challenge. Cancel it under YOUR DUELS.</p>
+      ) : !open ? (
+        <p className="bb-conditions">Trading has closed for this market, so this challenge can't be taken; the challenger can cancel it for a refund.</p>
       ) : (
         <div className="row" style={{ gap: 8, marginTop: 8 }}>
           <KeyButton size="sm" disabled={vault !== 'unlocked' || balance < t.cost || !!busy} loading={busy === 'TAKING THE DUEL'} onClick={take}
@@ -162,7 +164,7 @@ export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; fo
           {focusGone && taken?.duel !== focus && <p className="bb-conditions">That challenge is no longer open: someone took it, or it was cancelled.</p>}
           {board.length === 0 && <p className="bb-ui bb-dim">No open challenges. Start one with NEW DUEL.</p>}
           {board.map((d) => (
-            <Challenge key={d.duel} d={d} m={markets.find((m) => m.id === d.market)} mine={mine.some((x) => x.duel === d.duel)} focus={d.duel === focus} vault={vault} onTaken={(duel, line) => setTaken({ duel, line })} />
+            <Challenge key={d.duel} d={d} m={markets.find((m) => m.id === d.market)} mine={mine.some((x) => x.duel === d.duel)} focus={d.duel === focus} vault={vault} open={live?.markets.find((x) => x.id === d.market)?.state === 'open'} onTaken={(duel, line) => setTaken({ duel, line })} />
           ))}
         </div>
       )}

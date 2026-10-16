@@ -21,7 +21,7 @@ What the configuration guarantees, and where:
 - A domain: one host name for the API on VPS-1 (`api.example.org`) and one for the app on the static host (`example.org`). Point the API name's A record at VPS-1.
 - Two VPS with Docker (Compose v2), ideally from different providers. VPS-1 needs ports 80 and 443 open; VPS-2 needs nothing open (SSH by key only).
 - Check that VPS-1 can read Polymarket: `curl -s 'https://gamma-api.polymarket.com/markets?limit=1'` must return JSON.
-- On testnet, about 48 TAZ for the reserve (0.5 TAZ buffers for up to 12 markets, a judge code for 20 redemptions of 1 TAZ plus 5 single-use codes for our checks, and a margin for the house's losses over the month; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
+- On testnet, about 48 TAZ for the reserve (0.5 TAZ buffers for up to 12 markets, a judge code for 20 redemptions of 1 TAZ plus 10 single-use codes for our checks, and a margin for the house's losses over the month; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
 
 ## 2. The image (on both servers)
 
@@ -46,7 +46,7 @@ mkdir -p secrets data && sudo chown -R 10001:10001 secrets data && sudo chmod 70
 docker compose run --rm signer blindbook-signer keygen /secrets/master.key
 docker compose run --rm signer blindbook-signer init /secrets/treasury tip
 docker compose run --rm signer blindbook-signer vouchers 1 /secrets/judge-code.txt /secrets/judge-hashes.txt 20
-docker compose run --rm signer blindbook-signer vouchers 5 /secrets/check-codes.txt /secrets/check-hashes.txt
+docker compose run --rm signer blindbook-signer vouchers 10 /secrets/check-codes.txt /secrets/check-hashes.txt
 cat secrets/judge-hashes.txt secrets/check-hashes.txt > secrets/voucher-hashes.txt
 openssl rand -hex 32                     # the signer token: put it in signer.env and api.env
 ```

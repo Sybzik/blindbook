@@ -31,7 +31,7 @@ const MAX_WINDOWS = 4;
 const IDLE_MS = 120_000;
 /** The vault locks itself after 15 minutes without input, or 15 minutes in the background. */
 const LOCK_MS = 15 * 60_000;
-const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'KeyB', 'KeyA'];
 
 const TITLES: Record<string, string> = {
   markets: 'P100 · MARKETS',
@@ -294,12 +294,14 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
   };
 
   // Keyboard: console (` or Ctrl/⌘+K), ESC ESC leaves the booth, three digits open a page,
-  // the Konami code. Never while typing in a field.
+  // the Konami code. Never while typing in a field. Letter keys by their place (e.code), so they
+  // work on any layout (where ` types another letter, the key is still the same).
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const typing = (e.target as HTMLElement).closest?.('input,textarea,[contenteditable]');
-      if (e.key === '`' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k')) {
-        if (typing && e.key === '`') return;
+      const tick = e.code === 'Backquote' && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (tick || ((e.metaKey || e.ctrlKey) && e.code === 'KeyK')) {
+        if (typing && tick) return;
         e.preventDefault();
         setCon((c) => !c);
         return;
@@ -309,7 +311,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
         if (now - lastEsc.current < 450 && vault === 'unlocked') lock();
         lastEsc.current = now;
       }
-      konami.current = e.key === KONAMI[konami.current] ? konami.current + 1 : e.key === KONAMI[0] ? 1 : 0;
+      konami.current = e.code === KONAMI[konami.current] ? konami.current + 1 : e.code === KONAMI[0] ? 1 : 0;
       if (konami.current === KONAMI.length) {
         konami.current = 0;
         desk.insider();

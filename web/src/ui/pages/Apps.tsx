@@ -70,10 +70,11 @@ function NullifierSnake({ active }: { active: boolean }) {
   const restart = () => setG({ ...snInit(), running: true });
   useEffect(() => {
     if (!active) return;
-    const map: Record<string, Cell> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0] };
+    // By the key's place, not its letter: WASD works on any layout, with Caps Lock or Shift.
+    const map: Record<string, Cell> = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], KeyW: [0, -1], KeyS: [0, 1], KeyA: [-1, 0], KeyD: [1, 0] };
     const k = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).closest?.('input,textarea')) return;
-      const m = map[e.key];
+      const m = map[e.code];
       if (m) {
         e.preventDefault();
         turn(m);

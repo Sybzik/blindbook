@@ -43,7 +43,6 @@ await click(d, 'look around first');
 await wait(800);
 await click(d, 'MARKETS', '.bb-dicon');
 await wait(1200);
-await shot(d, 'markets.jpg');
 await d.evaluate(() => [...document.querySelectorAll('.tk-row')].find((r) => /vs/.test(r.textContent))?.click());
 await wait(2500);
 await shot(d, 'market.jpg');

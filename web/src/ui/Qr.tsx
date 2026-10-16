@@ -12,6 +12,10 @@ export function Qr({ value, size = 220, paper = false, title, ecc = 'M' }: { val
   const n = q.getModuleCount();
   const quiet = 4;
   const total = n + quiet * 2;
+  // Whole device pixels per module: a grid stretched by a fraction draws modules 3 and 4 pixels
+  // wide by turns, and a camera can't read a dense slip code like that off a screen.
+  const dpr = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  const side = (Math.max(1, Math.round((size * dpr) / total)) * total) / dpr;
   const rects: string[] = [];
   for (let y = 0; y < n; y++) {
     for (let x = 0; x < n; x++) {
@@ -21,7 +25,7 @@ export function Qr({ value, size = 220, paper = false, title, ecc = 'M' }: { val
   const fg = paper ? '#111' : 'var(--phosphor-hi)';
   const bg = paper ? '#fff' : 'var(--void)';
   return (
-    <svg viewBox={`0 0 ${total} ${total}`} width={size} height={size} shapeRendering="crispEdges" role="img" aria-label={title ?? 'QR code'} style={{ flex: 'none', display: 'block' }}>
+    <svg viewBox={`0 0 ${total} ${total}`} width={side} height={side} shapeRendering="crispEdges" role="img" aria-label={title ?? 'QR code'} style={{ flex: 'none', display: 'block' }}>
       <rect width={total} height={total} fill={bg} />
       <path d={rects.join('')} fill={fg} />
     </svg>

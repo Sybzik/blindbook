@@ -190,7 +190,7 @@ apply the 1% fee, allocate pro-rata as CREDIT
 u ← u − S ;  c ← c − proceeds
 ```
 
-**Why sells need the invariant too** (found in external review): selling removes cash `c` while the other side's shares stay outstanding.
+**Why sells need the invariant too:** selling removes cash `c` while the other side's shares stay outstanding.
 
 Example with `L = 0.02`: users hold `u_A = u_B = 0.10`, and `c = 0.10` (complete sets, W = 0). Polymarket jumps and someone sells 0.10 A at 0.85.
 - **Without the check:** the curve pays 0.0814 (below 0.10 · 0.85, so the curve binds, not the bid), leaving `u_A = 0`, `u_B = 0.10`, `c = 0.0186`, so W = 0.0814 > L.

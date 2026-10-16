@@ -32,14 +32,15 @@
 
 ## Judges: the first minute
 
-1. Open **[blindbook.tech](https://blindbook.tech)** on a phone or a computer and step inside. The lamp in the status bar turns **LINKED** once the mixnet is up, a few seconds later.
-2. **NEW VAULT**, then a passphrase (Face ID on a phone). On testnet the 12 words can wait.
-3. **F3 CAGE → JUDGE CODE**: paste the code from the submission. 1 TAZ (testnet ZEC) of private balance arrives.
-4. **F1 MARKETS** → a market → **BUY**. The slip prints in a few seconds, and the Bookie stamps it without looking.
-5. On the slip, **CALLED IT?** → copy the link and open it in another browser: **VERIFIED ✓**, and nothing else about you.
-6. **F4 VERIFY** re-checks the whole public log in your browser; **P600** shows what the server stored about each of your requests.
+No wallet needed. On a phone, every page below is under **MENU**.
 
-On a phone the same pages are under MENU. Everything here runs on testnet; the mainnet run with real ZEC is shown in the video and is switched off.
+1. Open **[blindbook.tech](https://blindbook.tech)** → **STEP INSIDE**. The lamp in the status bar turns **LINKED** within seconds.
+2. **NEW VAULT** → **I WROTE THEM DOWN** → **later** → a passphrase, or Face ID on a phone.
+3. **CAGE** → **JUDGE CODE** → paste the code from the submission → **REDEEM**. +1 TAZ (testnet ZEC) arrives.
+4. **MARKETS** → any market → **BUY**. The slip prints in a few seconds.
+5. On the slip, **CALLED IT?** → **COPY LINK** → open it in another browser: **VERIFIED ✓**, and nothing else about you.
+
+Then, if you have a minute more: **VERIFY** re-checks the whole public log in your browser, and **P600** shows everything the server stored about each of your requests.
 
 ## Why
 
@@ -82,7 +83,7 @@ flowchart LR
 |---|---|
 | prices, volumes, every batch's orders and fills (participants redacted), every slip issued and spent, the reserve, payout totals | who you are, which bets are yours, your balance, your top-up and payout addresses, your IP |
 
-**The server can't see who you are, and custody is verifiable.** The internet-facing server holds no secrets. Every known leak, who could see it and what closes it is in the [threat model](docs/THREAT_MODEL.md).
+**The server can't see who you are, and custody is verifiable.** The internet-facing server holds no secrets. Who could learn what, and what stops each of them, is in the [threat model](docs/THREAT_MODEL.md).
 
 ## What you trust, and what you can check
 
@@ -171,7 +172,7 @@ The development build talks to the server directly. The production build (`VITE_
 | [ARCHITECTURE](docs/ARCHITECTURE.md) | the five layers, components and keys, every flow, pricing, settlement, verification, timing, deployment |
 | [PROTOCOL](docs/PROTOCOL.md) | units, keysets, slips, the API, the anchored LMSR with the exposure invariant, CALLED IT, duels, the public log, the signer, chain transactions |
 | [MARKETS](docs/MARKETS.md) | what we take from Polymarket, named outcomes, listing rules, the rules panel, halts, on-chain settlement |
-| [THREAT_MODEL](docs/THREAT_MODEL.md) | adversaries, who can learn what, every leak and what closes it, residual risks |
+| [THREAT_MODEL](docs/THREAT_MODEL.md) | adversaries, who can learn what, and what stops each of them |
 | [ROADMAP](docs/ROADMAP.md) | what is done, what remains before submission, gates, risks |
 | [SUBMISSION](docs/SUBMISSION.md) | the Zecathon rules check, the description, the judge quickstart, the video plan |
 | [RESEARCH](docs/RESEARCH.md) | Zcash after Ironwood, Polymarket, Nym, Cashu, prior art |

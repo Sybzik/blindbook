@@ -103,8 +103,6 @@ BB_API_ORIGIN=https://api.example.org BB_APP_ORIGIN=https://example.org \
 
 ## 7. Check it
 
-Tested end to end on Oct 8 with both stacks in Docker on one machine (testnet, live Polymarket data): keys, treasury and judge codes made with the commands above; the signer admitted; two markets listed by the rules (one kept out for having no start time); a judge code typed in lower case with spaces redeemed in 0.5 s; a bet filled in 1 s at the quoted share count and published in the next block; both verifiers green on the log, and the command-line one correctly failing the on-chain reserve check of the unfunded test reserve; Caddy answering writes with `Connection: close`, without a `Server` header, 404 outside `/v1/`, and never resuming a TLS session; the leak check clean against the deployed app. On Oct 9 the API ran natively against the same signer and data: an entry edited in the markets file and a new slug were listed within a minute without a restart, and `BB_AUTO_LIST=6` listed two matches on its own, each with a live reference. On Oct 10 the image rebuilt from the current code ran both stacks again from empty data directories: the signer admitted, two markets listed with the testnet parameters (b = 4 TAZ, L = 0.5 TAZ), blocks closing, Caddy closing writes without a `Server` header, and `blindbook-verify` from the image: everything checks out.
-
 ```sh
 curl -s https://api.example.org/v1/head                      # height, seq, root, pow_bits
 curl -s https://api.example.org/v1/live | head -c 400        # markets with prices

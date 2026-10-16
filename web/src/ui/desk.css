@@ -219,3 +219,5 @@
 .bb-tray__seg--extra{padding:0 4px}
 .ld-tr .tk-sound{margin-left:6px}
 .pg-status .tk-sound{min-width:36px;min-height:36px}
+/* The narrowest phones (320 px): the block height steps aside so the sound key stays on screen. */
+@media (max-width:359px){.pg-status{gap:4px;padding:10px 8px 8px}.pg-status .bb-flap{display:none}}

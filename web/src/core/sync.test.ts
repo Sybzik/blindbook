@@ -10,7 +10,7 @@ import golden from '../../../crates/blindbook-mint/tests/data/keysets-js.json';
 import type { Api } from './api';
 import { deriveOutput, yOf } from './blind';
 import { toHex, utf8 } from './bytes';
-import { calledItSecret, calledItTag } from './codes';
+import { calledItSecret, calledItTag, encodeSlips } from './codes';
 import { Wallet, newWalletData } from './wallet';
 
 const Point = secp256k1.Point;
@@ -65,12 +65,12 @@ describe('the same vault on two devices', () => {
     log.deltas.set(12, { issued: [theirs(40, 512), theirs(41, 256)], batches: [{ market: '00'.repeat(32), orders: [0, 1].map((i) => ({ tag: calledItTag(calledItSecret(seed, i)) })), fills: [] }] });
     log.deltas.set(13, { spent: [{ Y: yOf(old.secret) }] });
     log.seq = 13;
-    expect(await w.sync()).toEqual({ gone: 1, found: 2, duels: 0 });
+    expect(await w.sync()).toEqual({ gone: 1, found: 2, duels: 0, taken: 0 });
     expect(w.creditBalance()).toBe(768);
     expect(w.data.counters[w.credit.id]).toBe(41 + 1 + 31);
     expect(w.data.calledNext).toBe(2);
     expect(w.data.syncedSeq).toBe(13);
-    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0 });
+    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0, taken: 0 });
   });
 
   it("leaves the slips of this device's own requests in flight to settle as usual", async () => {
@@ -78,7 +78,7 @@ describe('the same vault on two devices', () => {
     w.data.inflight = [{ id: 'f1', at_ms: 0, seq: 10, inputs: [old], outs: [], entry: { at_ms: 0, kind: 'buy', stored: {} }, doubt: false }];
     log.deltas.set(11, { spent: [{ Y: yOf(old.secret) }] });
     log.seq = 11;
-    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0 });
+    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0, taken: 0 });
     expect(w.data.slips).toHaveLength(1);
   });
 
@@ -86,7 +86,7 @@ describe('the same vault on two devices', () => {
     const { w, log } = setup();
     w.data.syncedSeq = undefined;
     log.seq = 50;
-    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0 });
+    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0, taken: 0 });
     expect(w.data.syncedSeq).toBe(50);
   });
 
@@ -105,6 +105,16 @@ describe('the same vault on two devices', () => {
     await reading;
     await counterAsked;
     expect(asked).toBe(31 + 1 + 31);
+  });
+
+  it('notices a code it handed over being taken over', async () => {
+    const { w, log } = setup();
+    const slip = { id: w.credit.id, amount: 512, secret: 'handed-over', C: '02'.padEnd(66, '3') };
+    w.data.outbox = [{ code: encodeSlips([slip]), at_ms: 0, id: w.credit.id, amount: 512, paper: false }];
+    log.deltas.set(11, { spent: [{ Y: yOf('handed-over') }] });
+    log.seq = 11;
+    expect((await w.sync()).taken).toBe(1);
+    expect(w.data.outbox).toHaveLength(0);
   });
 
   it('collects a duel taken while it was away, from the log', async () => {

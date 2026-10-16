@@ -156,8 +156,12 @@ async function syncWallet(seq: number) {
   if (!wallet || syncing || seq === syncedAt) return;
   syncing = true;
   try {
-    const { gone, found, duels } = await wallet.sync();
+    const { gone, found, duels, taken } = await wallet.sync();
     syncedAt = seq;
+    if (taken) {
+      refreshWallet();
+      app.set({ notice: `${taken === 1 ? 'A code you handed over was' : `${taken} codes you handed over were`} taken over.` });
+    }
     if (duels) {
       refreshWallet();
       cue('duel.taken');

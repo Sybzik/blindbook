@@ -41,11 +41,18 @@ export function Scan({ onCode, onCancel, accept = isSlipCode }: { onCode: (code:
     (async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-        const v = video.current!;
-        v.srcObject = stream;
-        await v.play();
-        const c = canvas.current!;
-        while (!stop) {
+      } catch {
+        setErr('No camera here, or it was not allowed. Pick a photo of the slip instead.');
+        return;
+      }
+      const v = video.current!;
+      // Muted as a property too: a browser that doesn't see it refuses to play without a tap.
+      v.muted = true;
+      v.srcObject = stream;
+      await v.play().catch(() => undefined);
+      const c = canvas.current!;
+      while (!stop) {
+        try {
           if (v.videoWidth) {
             c.width = v.videoWidth;
             c.height = v.videoHeight;
@@ -56,10 +63,10 @@ export function Scan({ onCode, onCancel, accept = isSlipCode }: { onCode: (code:
               return;
             }
           }
-          await new Promise((r) => setTimeout(r, 200));
+        } catch {
+          /* a frame that can't be read is skipped */
         }
-      } catch {
-        setErr('No camera here, or it was not allowed. Pick a photo of the slip instead.');
+        await new Promise((r) => setTimeout(r, 200));
       }
     })();
     return () => {

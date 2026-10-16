@@ -122,6 +122,8 @@ export interface SyncResult {
   gone: number;
   found: number;
   duels: number;
+  /** Codes we handed over that someone took over. */
+  taken: number;
 }
 
 /** A request left and no answer came back: it may or may not have gone through. */
@@ -398,10 +400,10 @@ export class Wallet {
       // Made here, or before this was kept: nothing to catch up on.
       this.data.syncedSeq = head.seq;
       await this.save(this.data);
-      return { gone: 0, found: 0, duels: 0 };
+      return { gone: 0, found: 0, duels: 0, taken: 0 };
     }
     const from = this.data.syncedSeq + 1;
-    if (from > head.seq) return { gone: 0, found: 0, duels: 0 };
+    if (from > head.seq) return { gone: 0, found: 0, duels: 0, taken: 0 };
     return this.readSince(from, head.seq);
   }
 
@@ -459,6 +461,18 @@ export class Wallet {
         .map(({ index, r }) => ({ index, amount: r!.amount, id: r!.id, C_: r!.C_, dleq: r!.dleq }));
       if (sigs.length && (await this.duelClaim(d.duel, sigs).catch(() => 0)) > 0) duels++;
     }
+    // Codes we handed over and someone took over: their slips are spent in the log.
+    const outbox = this.data.outbox ?? [];
+    const takenCodes = spent.size
+      ? outbox.filter((o) => {
+          try {
+            return decodeSlips(o.code).some((p) => spent.has(yOf(p.secret)));
+          } catch {
+            return false;
+          }
+        })
+      : [];
+    if (takenCodes.length) this.data.outbox = outbox.filter((o) => !takenCodes.includes(o));
     // Called-it indices used there: ours continue after them, so no two bets share a tag.
     const tags = new Set(deltas.flatMap((d) => (d.batches ?? []).flatMap((b) => b.orders.map((o) => o.tag))));
     if (tags.size) {
@@ -482,7 +496,7 @@ export class Wallet {
     for (const [k, at] of this.aside) if (gone.has(k) || at + 2 <= to) this.aside.delete(k);
     await this.save(this.data);
     if (gone.size || fresh.length) trace(() => `sync   blocks ${from}–${to}: ${gone.size} of our slips spent elsewhere, ${fresh.length} signed elsewhere for these words`);
-    return { gone: gone.size, found: fresh.length, duels };
+    return { gone: gone.size, found: fresh.length, duels, taken: takenCodes.length };
   }
 
   /** Requests the public log is still read for: in doubt, or given up on lately. */

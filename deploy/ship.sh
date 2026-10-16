@@ -5,7 +5,8 @@
 #
 #   sh deploy/ship.sh <user@host> api|signer
 #
-# Builds blindbook:latest here if it isn't built yet, streams it to the server's Docker
+# Builds blindbook:latest here from the checked-out commit (cached layers make it quick when
+# nothing changed, and an older image is never shipped by mistake), streams it to the server's Docker
 # (docker save | gzip | ssh … docker load), and copies deploy/<role> to ~/blindbook/deploy/<role>
 # there: Compose files, Caddy and Tor configuration, examples and, for the API, onion-site/ once
 # deploy/web/build.sh has made it. Env files, keys, config and data are never sent: those are
@@ -18,8 +19,9 @@ case "$role" in api | signer) ;; *) echo "the role is api or signer"; exit 2 ;; 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 ssh_opts="${SSH_OPTS:--i $HOME/.ssh/blindbook_vps}"
 
-docker image inspect blindbook:latest > /dev/null 2>&1 || docker build -f "$root/deploy/Dockerfile" -t blindbook:latest "$root"
-echo "image $(docker image inspect blindbook:latest --format '{{.Id}}') → $host"
+[ -z "$(git -C "$root" status --porcelain 2>/dev/null)" ] || echo "warning: uncommitted changes go into the image"
+docker build -q -f "$root/deploy/Dockerfile" -t blindbook:latest "$root" > /dev/null
+echo "image $(docker image inspect blindbook:latest --format '{{.Id}}') of $(git -C "$root" rev-parse --short HEAD 2>/dev/null) → $host"
 # shellcheck disable=SC2086
 docker save blindbook:latest | gzip | ssh $ssh_opts "$host" 'gunzip | docker load'
 

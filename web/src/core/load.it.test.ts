@@ -11,6 +11,8 @@
 //   BB_LOAD_DEV=1    devserver: fund by simulated top-ups, withdraw, pay out with /dev/payout
 //   BB_LOAD_M        the master public key M (default the devserver's)
 //   BB_LOAD_OUT      a JSON-lines file for every action, and <file>.summary.json at the end
+//   BB_LOAD_SETTLE_MS  at the end, keep settling requests in doubt this long, then record what is
+//                    left per wallet as a 'final' row (chaos tests: nothing should be)
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -29,6 +31,7 @@ const M = env.BB_LOAD_M ?? '0204559d9106c538b0f21bd82b50c47117bfda93530ed212fb81
 const SEAL_PK = env.BB_LOAD_SEAL ?? '45a6018a2cf7c127c6ddfb1246298c9e2e09db027ab6cb4c3dc22bd7f838e745';
 const PAYEE = 'utest166fy5luckyz2fnztzsznh6rwt5pe0va4mpnqm6axfklss87w53fw50aqg3rwmt2stt5nnmnzgteckxjquxx2yjuk4rmrntds7gtghekc';
 const OUT = env.BB_LOAD_OUT;
+const SETTLE_MS = Number(env.BB_LOAD_SETTLE_MS ?? 0);
 const codes = (env.BB_LOAD_CODES ?? Array.from({ length: 90 }, (_, i) => `DEV-${String(i + 1).padStart(4, '0')}`).join(',')).split(',').filter(Boolean);
 const pow: PowFn = async (body, bits) => withPow(body, bits);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -109,11 +112,14 @@ describe.skipIf(!BASE)('load', () => {
         const w = ws[i]!;
         const live = await api.live();
         const open = live.markets.filter((m) => m.state === 'open' && m.price_a_ppm !== null);
-        // Duels taken from us: collect the shares from the feed, as the app does.
+        // As the app does with each block: settle requests in doubt, then read the new blocks
+        // (slips spent elsewhere, duels taken from us), then claim what the feed still shows.
+        await w.settleDoubts().catch(() => 0);
+        const synced = await w.sync().catch((e) => String((e as Error)?.message ?? e).slice(0, 80));
+        if (typeof synced === 'string') record({ t: Date.now(), w: i, kind: 'sync', ms: 0, ok: false, err: synced });
         for (const f of live.duel_fills ?? []) {
           if ((w.data.duels ?? []).some((d) => d.duel === f.duel && d.status === 'open')) await timed(i, 'duel_claim', () => w.duelClaim(f.duel, f.signatures));
         }
-        await w.settleDoubts().catch(() => 0);
         await fund(i);
         if (!open.length) return;
         const m = pick(open);
@@ -173,11 +179,25 @@ describe.skipIf(!BASE)('load', () => {
           }
         }),
       );
+      if (SETTLE_MS) {
+        const until = Date.now() + SETTLE_MS;
+        while (Date.now() < until && ws.some((w) => w.watching())) {
+          for (const w of ws) {
+            await w.settleDoubts().catch(() => 0);
+            await w.sync().catch(() => undefined);
+          }
+          await sleep(15_000);
+        }
+        ws.forEach((w, i) => {
+          const left = w.watching();
+          record({ t: Date.now(), w: i, kind: 'final', ms: 0, ok: left === 0, err: left ? `${w.inDoubt()} in doubt, ${(w.data.released ?? []).length} released` : undefined });
+        });
+      }
       const s = summary();
       console.log('final', JSON.stringify(s));
       if (OUT) writeFileSync(OUT + '.summary.json', JSON.stringify({ base: BASE, minutes: MINUTES, wallets: WALLETS, pace: PACE, dev: DEV, summary: s }, null, 2));
       expect(rows.some((r) => r.kind === 'buy' && r.ok)).toBe(true);
     },
-    MINUTES * 60_000 + 300_000,
+    MINUTES * 60_000 + SETTLE_MS + 300_000,
   );
 });

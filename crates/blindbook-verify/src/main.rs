@@ -155,10 +155,11 @@ async fn main() {
         println!("  anchor {txid} → root {root}");
     }
     let zec = |z: u64| format!("{}.{:08}", z / 100_000_000, z % 100_000_000);
-    println!("liabilities now: {} ZEC", zec(r.liabilities_zat));
+    let unit = coin(source, &opts).await;
+    println!("liabilities now: {} {unit}", zec(r.liabilities_zat));
     match r.reserve {
         Some((h, reserve, unswept, owed)) => println!(
-            "reserve reported at height {h}: {} ZEC + {} unswept, liabilities then {} ZEC{}",
+            "reserve reported at height {h}: {} {unit} + {} unswept, liabilities then {} {unit}{}",
             zec(reserve),
             zec(unswept),
             zec(owed),
@@ -171,7 +172,7 @@ async fn main() {
         None => println!("no reserve report yet"),
     }
     if let Some(lwd) = opts.get("chain") {
-        match chain::check(source, lwd, &opts, &r).await {
+        match chain::check(source, lwd, &opts, &r, unit).await {
             Ok(lines) => lines.iter().for_each(|l| println!("{l}")),
             Err(e) => r.failures.push(format!("on-chain reserve check: {e}")),
         }
@@ -198,6 +199,25 @@ async fn main() {
             println!("FAIL: {f}");
         }
         std::process::exit(1);
+    }
+}
+
+/// The network's own coin for the amounts: TAZ on testnet, ZEC on mainnet (from `--net`, or the
+/// network the deployment publishes next to its reserve key).
+async fn coin(source: &str, opts: &std::collections::BTreeMap<String, String>) -> &'static str {
+    let net = match opts.get("net") {
+        Some(n) => n.clone(),
+        None => fetch(source, "reserve.json")
+            .await
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v["network"].as_str().map(str::to_owned))
+            .unwrap_or_default(),
+    };
+    if net.starts_with("main") {
+        "ZEC"
+    } else {
+        "TAZ"
     }
 }
 
@@ -241,6 +261,7 @@ mod chain {
         lwd: &str,
         opts: &BTreeMap<String, String>,
         r: &Report,
+        unit: &str,
     ) -> Result<Vec<String>, String> {
         let p = match (opts.get("reserve"), opts.get("birthday")) {
             (Some(u), Some(b)) => Published {
@@ -275,12 +296,12 @@ mod chain {
         let zec = |z: u64| format!("{}.{:08}", z / 100_000_000, z % 100_000_000);
         let unswept = r.reserve.map_or(0, |(_, _, u, _)| u);
         let mut out = vec![format!(
-            "reserve on-chain at height {tip}: {} ZEC (view-only wallet of the published key, synced here)",
+            "reserve on-chain at height {tip}: {} {unit} (view-only wallet of the published key, synced here)",
             zec(onchain)
         )];
         if let Some((h, reported, _, _)) = r.reserve {
             out.push(format!(
-                "  last report (height {h}): {} ZEC; difference {} ZEC",
+                "  last report (height {h}): {} {unit}; difference {} {unit}",
                 zec(reported),
                 if onchain >= reported {
                     format!("+{}", zec(onchain - reported))
@@ -324,14 +345,14 @@ mod chain {
         ));
         if onchain + unswept < r.liabilities_zat {
             return Err(format!(
-                "on-chain reserve {} + {} unswept is below the liabilities of {} ZEC",
+                "on-chain reserve {} + {} unswept is below the liabilities of {} {unit}",
                 zec(onchain),
                 zec(unswept),
                 zec(r.liabilities_zat)
             ));
         }
         out.push(format!(
-            "SOLVENT on-chain: {} + {} unswept covers {} ZEC of liabilities",
+            "SOLVENT on-chain: {} + {} unswept covers {} {unit} of liabilities",
             zec(onchain),
             zec(unswept),
             zec(r.liabilities_zat)
@@ -348,6 +369,7 @@ mod chain {
         _: &str,
         _: &std::collections::BTreeMap<String, String>,
         _: &blindbook_verify::Report,
+        _: &str,
     ) -> Result<Vec<String>, String> {
         Err("built without the `chain` feature".into())
     }

@@ -33,6 +33,9 @@ pub struct Schedule {
 
 /// Report the reserve at least this often (blocks), even when it did not change.
 const RESERVE_EVERY: u64 = 48;
+/// After a failed anchor (an empty reserve, lightwalletd away), blocks to wait before the next try,
+/// so the treasury doesn't retry and warn every 10 seconds.
+const ANCHOR_RETRY: u64 = 4;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct State {
@@ -47,6 +50,9 @@ struct State {
     #[serde(default)]
     last_root: Option<H32>,
     last_anchor: u64,
+    /// The height of the last failed anchor (kept apart from `last_anchor`, which counts successes).
+    #[serde(default)]
+    anchor_failed: u64,
     last_sweep: u64,
     last_payout: u64,
 }
@@ -233,7 +239,7 @@ async fn pass(
         }
     }
 
-    if h >= state.last_anchor + sched.anchor_every {
+    if h >= state.last_anchor + sched.anchor_every && h >= state.anchor_failed + ANCHOR_RETRY {
         let head = station.lock().unwrap_or_else(|e| e.into_inner()).log.head;
         if head.seq > 0 && state.last_root != Some(head.root) {
             let memo = format!("bb1:anchor:{}:{}", head.height, head.root);
@@ -248,7 +254,10 @@ async fn pass(
                     state.last_root = Some(head.root);
                     save(state_path, state);
                 }
-                Err(e) => tracing::warn!(error = %e, "anchor failed"),
+                Err(e) => {
+                    tracing::warn!(error = %e, retry_in_blocks = ANCHOR_RETRY, "anchor failed");
+                    state.anchor_failed = h;
+                }
             }
         }
     }

@@ -16,6 +16,7 @@
 </p>
 
 <p align="center">
+  <a href="#judges-the-first-minute">Judges</a> ·
   <a href="#why">Why</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#privacy-in-five-layers">Privacy</a> ·
@@ -28,6 +29,17 @@
 </p>
 
 ---
+
+## Judges: the first minute
+
+1. Open **[blindbook.tech](https://blindbook.tech)** on a phone or a computer and step inside. The lamp in the status bar turns **LINKED** once the mixnet is up, a few seconds later.
+2. **NEW VAULT**, then a passphrase (Face ID on a phone). On testnet the 12 words can wait.
+3. **F3 CAGE → JUDGE CODE**: paste the code from the submission. 1 TAZ (testnet ZEC) of private balance arrives.
+4. **F1 MARKETS** → a market → **BUY**. The slip prints in a few seconds, and the Bookie stamps it without looking.
+5. On the slip, **CALLED IT?** → copy the link and open it in another browser: **VERIFIED ✓**, and nothing else about you.
+6. **F4 VERIFY** re-checks the whole public log in your browser; **P600** shows what the server stored about each of your requests.
+
+On a phone the same pages are under MENU. Everything here runs on testnet; the mainnet run with real ZEC is shown in the video and is switched off.
 
 ## Why
 

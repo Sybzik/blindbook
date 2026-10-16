@@ -3,7 +3,7 @@
 //! The resolver reads the ConditionalTokens payout vector on two independent Polygon RPC
 //! providers, each at its own `finalized` block. A market resolves only when both report the same
 //! non-zero denominator and numerators; one provider lagging means "not yet", and two providers
-//! reporting different payouts is an alarm. Verified on mainnet in `spikes/e-polymarket`.
+//! reporting different payouts is an alarm. Verified on mainnet.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};

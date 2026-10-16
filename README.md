@@ -173,18 +173,11 @@ The development build talks to the server directly. The production build (`VITE_
 | [PROTOCOL](docs/PROTOCOL.md) | units, keysets, slips, the API, the anchored LMSR with the exposure invariant, CALLED IT, duels, the public log, the signer, chain transactions |
 | [MARKETS](docs/MARKETS.md) | what we take from Polymarket, named outcomes, listing rules, the rules panel, halts, on-chain settlement |
 | [THREAT_MODEL](docs/THREAT_MODEL.md) | adversaries, who can learn what, and what stops each of them |
-| [ROADMAP](docs/ROADMAP.md) | what is done, what remains before submission, gates, risks |
-| [SUBMISSION](docs/SUBMISSION.md) | the Zecathon rules check, the description, the judge quickstart, the video plan |
-| [RESEARCH](docs/RESEARCH.md) | Zcash after Ironwood, Polymarket, Nym, Cashu, prior art |
 | [DESIGN](docs/DESIGN.md) | the Blind Booth: clarity rules, usability targets, hard privacy constraints |
 | [DEPLOY](deploy/README.md) | two servers and a static host: keys, Compose, Caddy, Tor, the app builds, checks |
 | [SECURITY](SECURITY.md) | how to report a leak |
 
-## Status
-
-Built and tested: every server component (live on Zcash testnet), the web app on desktop and phone, its mixnet link in Chromium, Firefox and WebKit, both verifiers, and the [deployment package](deploy/README.md) (both servers run in Docker end to end against testnet and live Polymarket data). Still ahead before submission (Oct 27): running it on the two servers with a domain, the iPhone test with the mixnet and Face ID, the testnet playground for judges, a mainnet proof with micro stakes, and the video. Details in the [roadmap](docs/ROADMAP.md).
-
-### Repository layout
+## Repository layout
 
 ```
 crates/
@@ -200,7 +193,6 @@ crates/
   blindbook-seal/         sealed withdrawal addresses (X25519 + HKDF + AES-GCM) and their commitments
   blindbook-verify/       the independent auditor (the same replay runs in the browser)
 web/                      the app: vault, slip wallet, mixnet client, terminal UI, pager, 3D booth
-spikes/                   the Gate 1 experiments and their measurements
 docs/                     everything above
 deploy/                   Docker image, Compose files, Caddy and Tor configuration, app build script
 ```
@@ -208,6 +200,8 @@ deploy/                   Docker image, Compose files, Caddy and Tor configurati
 ## Built with
 
 [Zcash](https://z.cash) Ironwood and [librustzcash](https://github.com/zcash/librustzcash) · [Nym](https://nym.com) mixnet (mix-fetch) · [Cashu](https://cashubtc.github.io/nuts/) blind-signature primitives · [Polymarket](https://polymarket.com) public market data · Polygon (Polymarket's ConditionalTokens) for settlement · Rust, React, three.js.
+
+Every dependency is MIT or Apache-2.0 licensed; the fonts are under the SIL Open Font License.
 
 Blindbook is an independent project. It is not affiliated with Polymarket, Zcash or Nym.
 

@@ -2,7 +2,7 @@
 //! [`Feed`], a once-a-second mid sampler for the anchor, and reference snapshots on demand.
 //!
 //! Polymarket drops a slow consumer (close 1013 "send buffer full") and 200 markets produce about
-//! 1 MB/s (`spikes/e-polymarket`), so assets are spread over several connections; a dropped or
+//! 1 MB/s, so assets are spread over several connections; a dropped or
 //! inconsistent connection is redone and re-subscribed, which brings fresh `book` snapshots.
 
 use std::collections::HashMap;

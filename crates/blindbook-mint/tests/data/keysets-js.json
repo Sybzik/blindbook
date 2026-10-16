@@ -1,5 +1,5 @@
 {
- "producer": "@cashu/cashu-ts 4.11.0 + @noble/curves 2.4.0 (spikes/d-blind, Oct 6 2026)",
+ "producer": "@cashu/cashu-ts 4.11.0 + @noble/curves 2.4.0 (Oct 6 2026)",
  "test_mint_label": "blindbook/spike-d/test-mint-master",
  "m_pub": "02af2f2a5433557e3a8e2d64c91728ca98233371331f50e14db48cf5d1a01358c8",
  "entries": [

@@ -7,7 +7,7 @@ If you find anything that breaks that claim, please tell us: a leak, a linkabili
 
 - Check [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) first. If your finding isn't listed there, it's new.
 - Report privately through GitHub's **"Report a vulnerability"** button (Security tab).
-- Please don't open public issues for unfixed leaks.
+- Please report privately rather than in a public issue.
 
 ## Scope
 
@@ -27,6 +27,6 @@ Out of scope: Zcash, Nym and Polymarket themselves, and denial of service agains
 - **No IPs.** Clients reach the API only through the Nym mixnet. Top-ups and withdrawals use a separate mixnet identity; the API closes the connection after every write and disables TLS session resumption. The API can't log requests: its log filter switches the HTTP stack's logging off whatever the configuration says, and a test fails if the code ever reads a client address or a proxy header.
 - **No targeted queries.** Every client downloads the same public files (live feed, catalog, price history, the log in segments) and filters locally; the indexers fetch whole blocks, never a single transaction.
 - **Verifiable custody.** The reserve viewing key is public. The verifier (P400 in the browser, `blindbook-verify` on the command line) replays every batch and checks every signature, the supply, solvency and the exposure invariant `max(u_A, u_B) − c ≤ L`; the command line also checks the reserve and the anchors on-chain (`--chain`) and every result on Polygon (`--polygon`).
-- **Known residual risks** are listed honestly at the end of the threat model.
+- **Trust boundaries:** what the design relies on, and how each part is checked, closes the threat model.
 
-This is hackathon software. The demo runs on testnet; the mainnet proof uses micro stakes. Don't put in more than you can afford to lose.
+The playground runs on Zcash testnet with test funds.

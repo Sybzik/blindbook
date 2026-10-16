@@ -6,7 +6,7 @@
 //   IndexedDB are deleted at boot.
 // - Boot races two tunnels and keeps the first that answers GET /v1/head within 20 s: about a
 //   third of random routes come up "ready" and never answer, and a healthy one can take 3 to 20 s
-//   for its first request (TCP and TLS inside the tunnel; spikes/a-mixnet).
+//   for its first request (TCP and TLS inside the tunnel).
 // - The app talks to each frame over its own MessageChannel (see tunnel.ts).
 // - Every request has an app-level deadline (mix-fetch has none). A tunnel that misses one is
 //   replaced while the lamp shows RELINKING, and a warm spare is kept so the swap is instant.

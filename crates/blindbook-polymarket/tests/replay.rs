@@ -1,5 +1,5 @@
 //! Replays 407 real frames of one live market (HANJIN BRION vs Natus Vincere, Oct 6 2026,
-//! captured in spikes/e-polymarket) through the feed: the local books must track Polymarket's
+//! captured live) through the feed: the local books must track Polymarket's
 //! own best prices, stay mirrored between the two outcomes, and yield a healthy reference.
 
 use blindbook_engine::{Params, Schedule, halt_reason};

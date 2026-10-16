@@ -120,7 +120,7 @@ mod tests {
     use crate::fixed::MICRO;
 
     fn book() -> Book {
-        // The sample `book` event from spikes/e-polymarket/data/ws_samples.json (best 3 levels).
+        // A sample `book` event captured live (best 3 levels).
         Book::from_levels(
             [
                 (790_000, 46_133_150_000),

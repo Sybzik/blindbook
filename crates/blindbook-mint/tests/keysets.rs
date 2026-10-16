@@ -1,5 +1,5 @@
 //! The keyset derivation must match the browser byte for byte: these golden vectors were produced
-//! by `@cashu/cashu-ts` 4.11 + `@noble/curves` in spikes/d-blind.
+//! by `@cashu/cashu-ts` 4.11 + `@noble/curves`.
 
 use blindbook_mint::cashu::dhke::{blind_message, unblind_message};
 use blindbook_mint::cashu::{PublicKey, SecretKey};

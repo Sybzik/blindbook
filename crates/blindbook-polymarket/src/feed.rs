@@ -1,6 +1,6 @@
 //! Feed state without I/O: local books for every subscribed token, and the health of each.
 //!
-//! **Health, not activity** (PROTOCOL section 5.2, `spikes/e-polymarket`): a quiet market isn't a
+//! **Health, not activity** (PROTOCOL section 5.2): a quiet market isn't a
 //! stale reference. A token's reference is unhealthy from the moment any of these starts:
 //!
 //! - its connection is down, or delivered nothing (not even a `PONG`) for `dead_after_ms`;

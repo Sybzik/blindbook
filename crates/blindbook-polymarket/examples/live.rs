@@ -16,7 +16,7 @@ use blindbook_polymarket::net::{http_client, proxy_from_env};
 use blindbook_polymarket::polygon::{DEFAULT_RPCS, PolygonReader};
 use blindbook_polymarket::reference::{DEFAULT_GUARD_SHARES, MarketFeed};
 
-/// "Will the price of Bitcoin be above $74,000 on October 5?" resolved Yes (spikes/e-polymarket).
+/// "Will the price of Bitcoin be above $74,000 on October 5?" resolved Yes.
 const RESOLVED: &str = "0x2ebd864919bd149475d00db8aa75a70768a6ad3f33a0ab56a2ee0d54cbad9e3e";
 
 fn env(k: &str) -> Option<u64> {

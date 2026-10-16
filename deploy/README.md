@@ -21,7 +21,7 @@ What the configuration guarantees, and where:
 - A domain: one host name for the API on VPS-1 (`api.example.org`) and one for the app on the static host (`example.org`). Point the API name's A record at VPS-1.
 - Two VPS with Docker (Compose v2), ideally from different providers. VPS-1 needs ports 80 and 443 open; VPS-2 needs nothing open (SSH by key only).
 - Check that VPS-1 can read Polymarket: `curl -s 'https://gamma-api.polymarket.com/markets?limit=1'` must return JSON.
-- On testnet, about 48 TAZ for the reserve (0.5 TAZ buffers for up to 12 markets, a judge code for 20 redemptions of 1 TAZ plus 10 single-use codes for our checks, and a margin for the house's losses over the month; see [ROADMAP](../docs/ROADMAP.md#operating-budget-lean)).
+- On testnet, about 48 TAZ for the reserve (0.5 TAZ buffers for up to 12 markets, a judge code for 20 redemptions of 1 TAZ plus 10 single-use codes for our checks, and a margin for the house's losses over the month).
 
 ## 2. The image (on both servers)
 
@@ -111,20 +111,9 @@ docker run --rm blindbook:latest blindbook-verify <M> https://api.example.org --
 
 Then open the app from a clean browser: the lamp turns LINKED, a judge code adds balance, a bet prints a slip, F4 VERIFY shows all checks green, and a CALLED IT link opened elsewhere says VERIFIED. The leak check runs against the deployed app too: `APP=https://example.org CHROME_PATH=<chrome> node web/scripts/leakcheck.mjs`.
 
-**On an iPhone** (ROADMAP Gate 2), in Safari, then again from the home screen. Note the seconds and screenshot anything that looks wrong:
-
-1. Open the app's address. Time from opening the page to the lamp showing **LINKED** (target: under 20 s).
-2. **STEP INSIDE**, make a vault with **Face ID**, and stamp the 12 words.
-3. `CAGE` → **JUDGE CODE**: paste a code from `check-codes.txt`. The balance appears.
-4. Open a market, **BUY**. Time from pressing BUY to the printed slip (target: 3 s typical, 6 s at most).
-5. On the slip, **CALLED IT** → copy the link → open it on another device: `VERIFIED ✓`.
-6. Share → **Add to Home Screen** and open it from there. The installed app has its own storage, separate from Safari's: choose **RESTORE FROM 12 WORDS**, type them, and the balance and the slip come back from the public log (the server is asked nothing). Set Face ID there, close the app, reopen it, unlock with Face ID.
-7. Lock the phone for a minute and come back: the lamp relinks by itself and trading unlocks.
-8. Mainnet instance only: `CAGE` → **TOP UP** with ~0.001 ZEC; the address opens Zodl through its deep link; the top-up is credited within seconds.
-
 ## The mainnet proof
 
-The same build with micro stakes, next to the playground on the same two servers. It runs for Gate 2 on the iPhone and for the recorded proof, and is switched off before judging starts (the organizers agreed, Oct 13; ROADMAP R28): our pinned Zcash crates don't know mainnet's NU7 activation height. Stop it with `docker compose -f compose.yml -f compose.mainnet.yml stop signer-main` on VPS-2 and `… stop api-main` on VPS-1, after withdrawing what it holds.
+The same build with micro stakes, next to the playground on the same two servers. It runs for the recorded proof and is switched off before judging starts, as agreed with the organizers; judges use the testnet playground. Stop it with `docker compose -f compose.yml -f compose.mainnet.yml stop signer-main` on VPS-2 and `… stop api-main` on VPS-1, after withdrawing what it holds.
 
 - VPS-2: `signer-main.env` (from `signer.env.example`, with `BB_NETWORK=mainnet`, `BB_ZCASH_NET=main`, `BB_LWD=zecrocks-main`, the mainnet API's URL and its own token), then a second key set: `docker compose -f compose.yml -f compose.mainnet.yml run --rm signer-main blindbook-signer keygen /secrets/master.key`, `… init /secrets/treasury tip`, and an empty `secrets-main/voucher-hashes.txt` (no judge codes on mainnet). Start with `docker compose -f compose.yml -f compose.mainnet.yml up -d`.
 - VPS-1: `api-main.env` and `config-main/`, the mainnet host added to `BB_SITES` (`… main.example.org=api-main:8080`); start with `docker compose -f compose.yml -f compose.mainnet.yml up -d`.

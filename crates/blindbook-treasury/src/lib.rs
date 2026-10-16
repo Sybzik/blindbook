@@ -11,7 +11,7 @@
 //! - **sweep:** all spendable deposit notes → the reserve;
 //! - **payout:** always exactly 8 Ironwood actions (≤ 7 recipients, zero-value padding to fresh
 //!   throwaway addresses, one change output), built with `OvkPolicy::Discard`, so even the
-//!   reserve's viewing key can't see who was paid or how much (verified in `spikes/g-payout`);
+//!   reserve's viewing key can't see who was paid or how much (verified on testnet);
 //! - **anchor:** a zero-value self-payment with the memo `bb1:anchor:<height>:<root-hex>`.
 
 use std::num::NonZeroUsize;

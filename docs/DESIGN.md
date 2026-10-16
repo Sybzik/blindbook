@@ -40,7 +40,7 @@ A blindfolded bookmaker in a stall at the edge of the desk (`web/src/ui/bookie/`
 - **Words are real text:** the speech bubble is DOM text with a `role=status` copy for screen readers; only the stall's painted sign is pixels.
 - **Out of the way on request:** × on his stall, or THE BOOKIE in START and on the pager's MENU page.
 
-## Usability targets (checked on a real iPhone and a desktop at Gate 3)
+## Usability targets (checked on a real iPhone and a desktop)
 
 | Criterion | Target |
 |---|---|

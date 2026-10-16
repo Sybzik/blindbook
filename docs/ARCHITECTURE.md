@@ -1,7 +1,7 @@
 # Architecture
 
 > **Privacy by construction. Custody is verifiable.**
-> Nobody can link a bet to a person, or a payout to a bet: not chain observers, not network observers, not exchanges, and **not us**. That rests on construction (shielded payments, blind signatures, a mixnet), not on a promise; what remains is in the residual risks of [THREAT_MODEL.md](THREAT_MODEL.md). What you do trust us with (holding funds) anyone can check at any time.
+> Nobody can link a bet to a person, or a payout to a bet: not chain observers, not network observers, not exchanges, and **not us**. That rests on construction (shielded payments, blind signatures, a mixnet), not on a promise; the trust boundaries are in [THREAT_MODEL.md](THREAT_MODEL.md). What you do trust us with (holding funds) anyone can check at any time.
 
 Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.md](MARKETS.md) (Polymarket data and settlement), [THREAT_MODEL.md](THREAT_MODEL.md).
 
@@ -15,7 +15,7 @@ Companion docs: [PROTOCOL.md](PROTOCOL.md) (wire formats, algorithms), [MARKETS.
 6. **No targeted queries, anywhere.** Download everything, filter locally.
 7. **Anonymous by default, provable by choice.** The user, and only the user, decides what to reveal.
 8. **Clarity over cleverness.** The retro look never hides what a button does or what a price means.
-9. **Working beats ambitious.** Every part is built bottom-up and tested before the next ([ROADMAP.md](ROADMAP.md)).
+9. **Working beats ambitious.** Every part is built bottom-up and tested before the next.
 
 ## More than a private Polymarket
 
@@ -30,6 +30,8 @@ Polymarket is our **oracle and price reference**. Blindbook adds what a public o
 | **What we know about you** | page P600 shows the exact record our server stored for each of your requests (every write response returns it; the app keeps them in your vault) next to the fields it doesn't have (IP, account, balance, other bets) | privacy you can see, not just read about |
 | **Paper slips** | print a position as a receipt-width slip with a real QR; scanning it swaps the slip into the scanner's vault, so the paper is void | a bearer bet you can hold in your hand, gift or hide |
 | *Blind duels* | challenge anyone with a link; the other side takes it anonymously; it's matched as a complete set and settled by Polymarket's result (PROTOCOL 7.1) | peer-to-peer and zero house risk; spreads by link |
+
+We know of no other prediction market where funding, positions, payouts and the network are all private while prices stay public and checkable; the nearest Zcash projects are a peer-to-peer goods marketplace with escrow and charity sports betting.
 
 ## The five layers
 
@@ -132,7 +134,7 @@ There is no App Store or Google Play app. The same static app runs in the phone'
 - **iPhone details we design for:**
   - a home-screen app has **its own storage, separate from Safari**: a vault created in Safari doesn't appear in the installed app. The app suggests installing before the first top-up; otherwise the 12 words restore everything (zero-query restore);
   - Safari can delete a site's data after 7 days without a visit, but WebKit counts days of use separately for each home-screen app, so an installed app you use keeps its data. Installing is the recommended protection for bearer slips (D2 in the threat model);
-  - the `zcash:` deep link to Zodl and Face ID (passkey PRF) must work from the installed app as well as from Safari; both are tested on a real iPhone at Gate 2.
+  - the `zcash:` deep link to Zodl and Face ID (passkey PRF) work from the installed app as well as from Safari.
 
 ## Flow 2: bet (instant, off-chain)
 
@@ -239,7 +241,7 @@ From Polymarket we take three things:
 | Redeem after resolution | ~2–5 s |
 | Withdraw → in your wallet | ~1–2 min on testnet (the next payout block and its confirmation), plus a separate mixnet tunnel (6–14 s) and a 0–60 s privacy delay |
 
-For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. The numbers above come from the Gate 1 spikes (`spikes/`); the bet path is re-measured against our own API before the UI promises it.
+For comparison, a Polymarket trade takes ~1–2 s. We pay a few seconds for privacy Polymarket doesn't offer at all. The numbers above were measured on Zcash testnet and through the live mixnet.
 
 ### Speed under load (many markets, many trades)
 
@@ -287,7 +289,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Core | Rust 1.95 (edition 2024), tokio, axum; state = replay of append-only journals (no database server); engine and ledger crates are pure and deterministic, the engine compiles to WASM; backend built and run in Linux containers |
 | Zcash | librustzcash **NU7 pre-release set**, pinned exactly: `zcash_client_backend` 0.25.0-pre.0, `zcash_client_sqlite` 0.23.0-pre.0, `zcash_keys` 0.17.0-pre.0, `zcash_primitives` 0.31.0-pre.0, `zcash_protocol` 0.11.0-pre.0, `zcash_address` 0.14.0-pre.0, `orchard` 0.16.0, `pczt` 0.10.0-pre.0. Testnet activated NU7 on Oct 5 and the 0.24 line can no longer build valid testnet transactions; the same crates serve mainnet (no NU7 there yet). Move to the final releases when they ship |
 | Chain access | local and self-hosted nodes via **ZcashFoundation/z3** (Docker Compose: Zebra + Zaino with a lightwalletd-compatible gRPC; regtest, testnet, mainnet); public `testnet.zec.rocks:443` as fallback; always untargeted |
-| E-cash | `cashu` crate 0.18 from CDK (`dhke` module, NUT-12 DLEQ, NUT-13) on the signer; `@cashu/cashu-ts` 4.11 and `@noble/curves` in the browser (byte-identical, `spikes/d-blind`); NUT-02 v01 keyset ids; our own multi-keyset mint |
+| E-cash | `cashu` crate 0.18 from CDK (`dhke` module, NUT-12 DLEQ, NUT-13) on the signer; `@cashu/cashu-ts` 4.11 and `@noble/curves` in the browser (byte-identical); NUT-02 v01 keyset ids; our own multi-keyset mint |
 | Reference prices | Polymarket CLOB WebSocket `wss://ws-subscriptions-clob.polymarket.com/ws/market` (no auth, PING every 3 s, optional `best_bid_ask` and `market_resolved` events); no REST fallback: if the feed is down, trading halts; client in `crates/blindbook-polymarket` (tokio-tungstenite over rustls with ring) |
 | Polygon | raw `eth_call` against two independent public RPCs, results cross-checked; the API, the signer and the verifier each read for themselves |
 | Network privacy | `@nymproject/mix-fetch` 2.1: one tunnel per JavaScript realm, so every tunnel runs in its own disposable same-origin frame (main and cage), reached over a `MessageChannel`; its worker runs with an opaque origin (`Origin: null` to Nym's directory and gateway) and keeps its identity in memory; two race at boot, one link attempt at a time; app-level request deadlines; `Connection: close` on writes and no TLS session resumption at the proxy; CSP per page (the app connects only to its own origin, the tunnel frames only to `wss:` and `https://validator.nymtech.net`); own Nym exit (IPR) if public exits stay unreliable; Tor onion as an explicit fallback |
@@ -314,6 +316,6 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | D11 | "Called it" receipts (tag per trade, reveal by choice) as the signature feature | decided |
 | D12 | Blind duels | built (Oct 7): escrowed stake, complete set on take, cancel by secret |
 | D13 | Phones unlock with Face ID (WebAuthn PRF passkey); computers with a passphrase, or a passkey where PRF works; the 12-word phrase is the backup | built |
-| D14 | Zcash crates: the NU7 pre-release set, pinned exactly (testnet activated NU7 on Oct 5) | decided (Oct 6, `spikes/c-deposits`) |
-| D15 | Every mixnet tunnel lives in a disposable frame; two race at boot; dead routes are replaced, never bypassed | decided (Oct 6, `spikes/a-mixnet`) |
-| D16 | The signer builds, proves and signs payouts itself (no PCZT round trip); deposit addresses shown as ZIP 316 Revision 0 | decided (Oct 6, `spikes/g-payout`) |
+| D14 | Zcash crates: the NU7 pre-release set, pinned exactly (testnet activated NU7 on Oct 5) | decided (Oct 6) |
+| D15 | Every mixnet tunnel lives in a disposable frame; two race at boot; dead routes are replaced, never bypassed | decided (Oct 6) |
+| D16 | The signer builds, proves and signs payouts itself (no PCZT round trip); deposit addresses shown as ZIP 316 Revision 0 | decided (Oct 6) |

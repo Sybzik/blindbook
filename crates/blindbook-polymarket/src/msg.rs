@@ -1,5 +1,5 @@
 //! Polymarket CLOB market-channel messages (`wss://ws-subscriptions-clob.polymarket.com/ws/market`).
-//! Formats as captured in `spikes/e-polymarket/data/ws_samples.json`.
+//! Formats as captured from the live feed.
 
 use serde::Deserialize;
 

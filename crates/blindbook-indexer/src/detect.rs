@@ -1,7 +1,7 @@
 //! Payment detection with the incoming viewing key only: raw trial decryption of every Ironwood
 //! and Orchard action (`zcash_note_encryption` under `IronwoodDomain` / `OrchardDomain`), then the
-//! diversifier index from the note's recipient. Verified against the wallet library on testnet in
-//! `spikes/c-deposits` (both paths agreed on txid, action, value and index).
+//! diversifier index from the note's recipient. Verified against the wallet library on testnet
+//! (both paths agreed on txid, action, value and index).
 
 use orchard::note::Note;
 use orchard::note_encryption::{CompactAction, IronwoodDomain, OrchardDomain};

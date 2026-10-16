@@ -223,6 +223,7 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
         <TextInput label="NEW PASSPHRASE" type="password" value={pass} onChange={setPass} message="For this device." />
         <TextInput label="AGAIN" type="password" value={pass2} onChange={setPass2} />
         <KeyButton loading={!!progress} disabled={!!progress} onClick={restore}>{progress ?? 'RESTORE'}</KeyButton>
+        {progress && <span data-working="" hidden />}
         {vault !== 'none' && <KeyButton variant="secondary" size="sm" onClick={() => setMode('unlock')}>BACK</KeyButton>}
       </div>,
     );

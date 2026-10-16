@@ -393,12 +393,14 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     };
   }, []);
 
-  // Two idle minutes bring the screensaver.
+  // Two idle minutes bring the screensaver, but never over work in progress (an action, the
+  // verifier, a restore): someone waiting for it to finish isn't away.
   useEffect(() => {
-    let t = setTimeout(() => setIdle(true), IDLE_MS);
+    const doze = () => (app.get().busy || document.querySelector('[data-working]') ? reset() : setIdle(true));
+    let t = setTimeout(doze, IDLE_MS);
     const reset = () => {
       clearTimeout(t);
-      t = setTimeout(() => setIdle(true), IDLE_MS);
+      t = setTimeout(doze, IDLE_MS);
     };
     const evs = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'];
     evs.forEach((e) => addEventListener(e, reset, { passive: true }));

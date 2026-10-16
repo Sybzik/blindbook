@@ -402,7 +402,7 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
           </>
         )}
       </div>
-      {run === 'running' && <p className="tk-hex" aria-live="polite">{progress}</p>}
+      {run === 'running' && <p className="tk-hex" aria-live="polite" data-working="">{progress}</p>}
       {run === 'error' && <p className="bb-conditions" style={{ color: 'var(--alarm)' }}>{progress}</p>}
       {run === 'done' && res && (
         <div className="row" style={{ gap: 16, margin: '20px 0', flexWrap: 'wrap' }}>

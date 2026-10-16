@@ -78,6 +78,11 @@ jobs:
           done
           echo "app shell: $total bytes gzip"
           test "$total" -le 307200
+      - name: the build names no machine (no home directory or cargo path in any file, the wasm included)
+        run: |
+          if grep -R -a -l -E '/home/runner|\.cargo[/\\]registry|/Users/|[A-Za-z]:\\Users' dist; then
+            echo "a local path got into the build output"; exit 1
+          fi
       - name: the build makes no third-party requests (only same-origin assets)
         run: |
           if grep -R -E -o "https?://[a-zA-Z0-9.-]+" dist --include=*.html --include=*.css | grep -v -E "validator\.nymtech\.net|www\.w3\.org"; then

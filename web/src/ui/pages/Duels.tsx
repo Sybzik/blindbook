@@ -22,15 +22,15 @@ function terms(d: { shares: number; price_bp: number; stake: number }, m: Market
   return { theirs, yours, cost, price: Math.round(d.price_bp / 100) };
 }
 
-function Challenge({ d, m, mine, focus, vault }: { d: OpenDuel; m: MarketMeta | undefined; mine: boolean; focus: boolean; vault: string }) {
+/** `onTaken`: the page keeps the confirmation, since the challenge leaves the board once taken. */
+function Challenge({ d, m, mine, focus, vault, onTaken }: { d: OpenDuel; m: MarketMeta | undefined; mine: boolean; focus: boolean; vault: string; onTaken: (duel: string, line: string) => void }) {
   const busy = useStore(app, (s) => s.busy);
   const balance = useStore(app, (s) => s.balance);
-  const [done, setDone] = useState<string | null>(null);
   const t = terms(d, m, d.outcome);
   const take = async () => {
     try {
       const n = await actions.duelTake(d);
-      setDone(`Taken: ${coin(n)} ${t.yours} shares are in your slips. They pay ${coin(n)} ${COIN} if ${t.yours} wins.`);
+      onTaken(d.duel, `Taken: ${coin(n)} ${t.yours} shares are in your slips. They pay ${coin(n)} ${COIN} if ${t.yours} wins.`);
     } catch {
       /* shown */
     }
@@ -42,9 +42,7 @@ function Challenge({ d, m, mine, focus, vault }: { d: OpenDuel; m: MarketMeta | 
         <span className="bb-redact" role="img" aria-label="redacted participant">████████</span> bets <b className={d.outcome === 0 ? 'bb-a' : 'bb-b'}>{t.theirs}</b> at {t.price}¢ for {coin(d.shares)} shares.
       </p>
       <LeaderRow label={`TAKE ${t.yours}`} value={`pay ${coin(t.cost)} · win ${coin(d.shares)} ${COIN} if ${t.yours} wins`} tone="hi" />
-      {done ? (
-        <p className="bb-conditions" role="status">{done}</p>
-      ) : mine ? (
+      {mine ? (
         <p className="bb-conditions">This is your challenge. Cancel it under YOUR DUELS.</p>
       ) : (
         <div className="row" style={{ gap: 8, marginTop: 8 }}>
@@ -136,6 +134,7 @@ export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; fo
   const [tab, setTab] = useState<'board' | 'new' | 'mine'>(initial ? 'new' : focus ? 'board' : 'board');
   const [link, setLink] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [taken, setTaken] = useState<{ duel: string; line: string } | null>(null);
   const board = useMemo(() => {
     const all = live?.duels ?? [];
     return focus ? [...all.filter((d) => d.duel === focus), ...all.filter((d) => d.duel !== focus)] : all;
@@ -159,10 +158,11 @@ export function DuelsPage({ onClose, focus, initial }: { onClose: () => void; fo
       </div>
       {tab === 'board' && (
         <div className="col" style={{ gap: 12, maxWidth: 760 }}>
-          {focusGone && <p className="bb-conditions">That challenge is no longer open: someone took it, or it was cancelled.</p>}
+          {taken && <p className="bb-conditions bb-hi" role="status">{taken.line}</p>}
+          {focusGone && taken?.duel !== focus && <p className="bb-conditions">That challenge is no longer open: someone took it, or it was cancelled.</p>}
           {board.length === 0 && <p className="bb-ui bb-dim">No open challenges. Start one with NEW DUEL.</p>}
           {board.map((d) => (
-            <Challenge key={d.duel} d={d} m={markets.find((m) => m.id === d.market)} mine={mine.some((x) => x.duel === d.duel)} focus={d.duel === focus} vault={vault} />
+            <Challenge key={d.duel} d={d} m={markets.find((m) => m.id === d.market)} mine={mine.some((x) => x.duel === d.duel)} focus={d.duel === focus} vault={vault} onTaken={(duel, line) => setTaken({ duel, line })} />
           ))}
         </div>
       )}

@@ -151,6 +151,40 @@ async fn pay(State(dev): State<Dev>, Path(id): Path<String>) -> String {
     "paid".into()
 }
 
+/// Settle a market as if Polymarket's result were final: `outcome` 0 or 1 wins, `half` splits it
+/// 50-50 (a cancelled match). The real signer reads the payout vector from Polygon; this one takes
+/// it from the request, for scripted runs of cash-in.
+async fn resolve(
+    State(dev): State<Dev>,
+    Path((market, outcome)): Path<(String, String)>,
+) -> String {
+    let Some(market) = H32::parse(&market) else {
+        return "market id: 64 hex characters".into();
+    };
+    let (den, num) = match outcome.as_str() {
+        "0" => (1, [1, 0]),
+        "1" => (1, [0, 1]),
+        "half" => (2, [1, 1]),
+        _ => return "outcome: 0, 1 or half".into(),
+    };
+    let (rtx, rrx) = oneshot::channel();
+    let op = Op::Resolve {
+        market,
+        den,
+        num,
+        polygon_block: 0,
+        polygon_tx: None,
+    };
+    if dev.tx.send(Cmd::Op(op, rtx)).await.is_err() {
+        return "sequencer stopped".into();
+    }
+    match rrx.await {
+        Ok(Ok(_)) => "resolved".into(),
+        Ok(Err(e)) => format!("refused: {e}"),
+        Err(_) => "no answer".into(),
+    }
+}
+
 async fn payout(State(dev): State<Dev>) -> String {
     let queued: Vec<H32> = dev
         .signer
@@ -361,6 +395,7 @@ async fn main() {
         Router::new()
             .route("/dev/pay/{id}", post(pay))
             .route("/dev/payout", post(payout))
+            .route("/dev/resolve/{market}/{outcome}", post(resolve))
             .with_state(dev),
     );
     let listener = tokio::net::TcpListener::bind("127.0.0.1:8090")

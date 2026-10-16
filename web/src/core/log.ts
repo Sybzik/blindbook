@@ -2,7 +2,21 @@
 // the rest, a few requests at a time. Every visitor reads the same files. The texts stay byte for
 // byte as published, so no number passes through a JS double before the engine sees it.
 
-import type { Api } from './api';
+import { ApiError, type Api } from './api';
+
+/** One public file, read again after a dropped connection (a long read over a flaky line or the
+ *  mixnet loses a request now and then): up to 4 tries, waiting 0.5, 1 and 2 s between them. A
+ *  file the server says isn't there (404) isn't asked for again. */
+export async function readFile(api: Api, path: string, tries = 4): Promise<string> {
+  for (let i = 0; ; i++) {
+    try {
+      return await api.text(path);
+    } catch (e) {
+      if (i + 1 >= tries || (e instanceof ApiError && e.status === 404)) throw e;
+      await new Promise((r) => setTimeout(r, 500 * 2 ** i));
+    }
+  }
+}
 
 /** Deltas per segment, as the server writes them (crates/blindbook-api/src/files.rs). */
 export const SEGMENT = 384;
@@ -38,11 +52,11 @@ export async function deltaTexts(
       seq++;
     }
   }
-  const one = (seq: number) => api.text(`/v1/delta/${seq}.json.gz`);
+  const one = (seq: number) => readFile(api, `/v1/delta/${seq}.json.gz`);
   async function run(j: Job): Promise<string[]> {
     if (j.seg !== null) {
       try {
-        const lines = (await api.text(`/v1/segment/${j.seg}.jsonl.gz`)).split('\n').filter((l) => l.length > 0);
+        const lines = (await readFile(api, `/v1/segment/${j.seg}.jsonl.gz`, 2)).split('\n').filter((l) => l.length > 0);
         const first = j.seg * SEGMENT + 1;
         if (lines.length === SEGMENT) return lines.slice(j.start - first, j.end - first + 1);
       } catch {

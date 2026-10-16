@@ -101,7 +101,9 @@ export function VaultWindow({ onOpen, onDismiss, onHold }: { onOpen: () => void;
       setMode('restored');
     } catch (e) {
       onHold?.(false);
-      setErr(String((e as Error).message));
+      const m = String((e as Error).message);
+      // A connection that dropped too often, said in words, not as the browser's "Failed to fetch".
+      setErr(/fetch|network|abort|timed? ?out|load failed|http/i.test(m) ? "The public log couldn't be downloaded: the connection kept dropping. Your 12 words are fine; press RESTORE to try again." : m);
     } finally {
       setProgress(null);
     }

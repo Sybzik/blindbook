@@ -10,7 +10,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import type { Api, Head } from './api';
 import { canonical } from './canonical';
 import { concat, fromHex, toHex, utf8 } from './bytes';
-import { deltaTexts } from './log';
+import { readFile, deltaTexts } from './log';
 
 export interface CallBlock {
   seq: number;
@@ -51,7 +51,7 @@ export function linkUp(blocks: CallBlock[]): string {
   return root;
 }
 
-const one = async (api: Api, seq: number) => JSON.parse(await api.text(`/v1/delta/${seq}.json.gz`)) as CallBlock;
+const one = async (api: Api, seq: number) => JSON.parse(await readFile(api, `/v1/delta/${seq}.json.gz`)) as CallBlock;
 
 /** The first published block at or above `height` (blocks only grow in height): an interpolation
  *  search, a handful of single-block reads. */

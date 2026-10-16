@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="BLINDBOOK: the price is public. You are not." width="100%">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/reel/hero.png">
+    <img src="docs/assets/reel/hero.gif" alt="BLINDBOOK: the price is public. You are not. Prices run along the bottom; in the recent fills every trader is blacked out." width="100%">
+  </picture>
 </p>
 
 <p align="center">
@@ -24,8 +27,7 @@
   <a href="#what-you-can-do">Features</a> ·
   <a href="#check-it-yourself">Verify</a> ·
   <a href="#run-it">Run it</a> ·
-  <a href="#docs">Docs</a> ·
-  <a href="#status">Status</a>
+  <a href="#docs">Docs</a>
 </p>
 
 ---
@@ -56,6 +58,13 @@ A prediction market needs **public prices**, not **public participants**. Zcash 
 3. **Hold bearer slips.** Positions are blind-signed e-cash. Sell them, hand them to anyone as a code or a printed slip, or cash them in when Polymarket's result is final on-chain.
 4. **Withdraw** to a fresh shielded address. Nobody, including us, can tie that payout to your bets.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/reel/bet.png">
+    <img src="docs/assets/reel/bet.gif" alt="A bet: BUY YES at 18¢, a 2-second sealed batch, a betting slip prints with the trader blacked out, stamped NO PEEKING." width="100%">
+  </picture>
+</p>
+
 ```mermaid
 flowchart LR
     W["Your Zcash wallet"] -->|"shielded top-up, one-time address"| D[("Deposit account: viewing key private")]
@@ -83,6 +92,13 @@ flowchart LR
 |---|---|
 | prices, volumes, every batch's orders and fills (participants redacted), every slip issued and spent, the reserve, payout totals | who you are, which bets are yours, your balance, your top-up and payout addresses, your IP |
 
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/reel/p600.png">
+    <img src="docs/assets/reel/p600.gif" alt="P600, what we know about you: the server's own record of a bet next to what it never has, your IP, an account, a name, your balance, your other bets, where you withdraw." width="100%">
+  </picture>
+</p>
+
 **The server can't see who you are, and custody is verifiable.** The internet-facing server holds no secrets. Who could learn what, and what stops each of them, is in the [threat model](docs/THREAT_MODEL.md).
 
 ## What you trust, and what you can check
@@ -91,7 +107,7 @@ Blindbook is an e-cash mint in front of a shielded reserve: the operator holds t
 
 | You trust | For | What limits it, and how you check |
 |---|---|---|
-| the signer, one isolated machine | keeping the reserve and signing slips | the reserve's viewing key is public: `blindbook-verify --chain` checks the real reserve covers every slip outstanding, and P400 in the browser checks the reserve reports in the log; the house's loss per market is capped by a fixed buffer the signer enforces; stakes are small (at most 2 TAZ a trade on testnet); threshold custody (FROST 2-of-3) is the next step |
+| the signer, one isolated machine | keeping the reserve and signing slips | the reserve's viewing key is public: `blindbook-verify --chain` checks the real reserve covers every slip outstanding, and P400 in the browser checks the reserve reports in the log; the house's loss per market is capped by a fixed buffer the signer enforces; stakes are small (at most 2 TAZ a trade on testnet) |
 | the signer to keep serving | trading, cash-in, withdrawals | it can refuse everyone, but it can't pick you out: it never learns who sends a request, and requests can't be linked to each other |
 | Polymarket's result | settlement | the signer reads each result from Polymarket's contract on Polygon itself and refuses any other; `blindbook-verify --polygon` reads them again |
 | the host serving the web app | loading the app | as with any web app, the host serves the code you run; it sees only that an IP opened the page (or use the .onion mirror); the code is open, and every slip the API returns is checked in your browser against keys derived from the master key the app pins |
@@ -100,6 +116,13 @@ Blindbook is an e-cash mint in front of a shielded reserve: the operator holds t
 You never trust us with your identity, the link between your top-up, bets and payout, or your balance: the system doesn't have them to give away. Your payout address reaches only the signer, sealed, and is forgotten once paid.
 
 ## What you can do
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/assets/reel/calledit.png">
+    <img src="docs/assets/reel/calledit.gif" alt="CALLED IT: a slip's secret opened in a private window; the public log says VERIFIED, bought YES at 18¢ at block 4,512,436, and nothing else." width="100%">
+  </picture>
+</p>
 
 - **Bet** on curated Polymarket markets, with both outcomes on the chart and Polymarket's rules word for word next to how Blindbook settles them.
 - **Sell** before the result, or **cash in** after it. Trading closes at the event start, so nobody trades on live information faster than the reference.

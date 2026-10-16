@@ -117,6 +117,13 @@ export interface InFlight {
   code?: string;
 }
 
+/** What a read of the log brought: slips spent elsewhere, slips signed elsewhere, duels taken. */
+export interface SyncResult {
+  gone: number;
+  found: number;
+  duels: number;
+}
+
 /** A request left and no answer came back: it may or may not have gone through. */
 export class InDoubtError extends Error {
   constructor() {
@@ -373,7 +380,7 @@ export class Wallet {
    * same seed, they are ours), and the counters move past its outputs with a margin for a request
    * of its still in flight. Read like every verifier reads the log, so the server can't tell.
    */
-  async sync(): Promise<{ gone: number; found: number }> {
+  async sync(): Promise<SyncResult> {
     const run = this.syncNow();
     if (Date.now() - this.lastSync > 120_000) this.catchingUp = run;
     try {
@@ -385,20 +392,20 @@ export class Wallet {
     }
   }
 
-  private async syncNow(): Promise<{ gone: number; found: number }> {
+  private async syncNow(): Promise<SyncResult> {
     const head = await this.api.head();
     if (this.data.syncedSeq === undefined) {
       // Made here, or before this was kept: nothing to catch up on.
       this.data.syncedSeq = head.seq;
       await this.save(this.data);
-      return { gone: 0, found: 0 };
+      return { gone: 0, found: 0, duels: 0 };
     }
     const from = this.data.syncedSeq + 1;
-    if (from > head.seq) return { gone: 0, found: 0 };
+    if (from > head.seq) return { gone: 0, found: 0, duels: 0 };
     return this.readSince(from, head.seq);
   }
 
-  private async readSince(from: number, to: number): Promise<{ gone: number; found: number }> {
+  private async readSince(from: number, to: number): Promise<SyncResult> {
     const deltas = (await deltaTexts(this.api, from, to, to)).map((t) => JSON.parse(t) as DeltaLike);
     const spent = new Set(deltas.flatMap((d) => d.spent.map((s) => s.Y)));
     const issued = new Map(deltas.flatMap((d) => d.issued).map((r) => [r.B_, r]));
@@ -443,6 +450,15 @@ export class Wallet {
         ownAll[id] = own.filter(([, b]) => b > scanFrom[id]!);
       } else scanFrom[id] = start;
     }
+    // Our duels taken while we weren't looking (the live feed keeps a fill for half an hour): the
+    // log has our shares, signed to the blank outputs the offer left for them.
+    let duels = 0;
+    for (const d of (this.data.duels ?? []).filter((x) => x.status === 'open')) {
+      const sigs = Array.from({ length: BLANK_OUTPUTS }, (_, index) => ({ index, r: issued.get(this.derive(d.keyset, d.counter + index).B_) }))
+        .filter((x) => x.r)
+        .map(({ index, r }) => ({ index, amount: r!.amount, id: r!.id, C_: r!.C_, dleq: r!.dleq }));
+      if (sigs.length && (await this.duelClaim(d.duel, sigs).catch(() => 0)) > 0) duels++;
+    }
     // Called-it indices used there: ours continue after them, so no two bets share a tag.
     const tags = new Set(deltas.flatMap((d) => (d.batches ?? []).flatMap((b) => b.orders.map((o) => o.tag))));
     if (tags.size) {
@@ -466,7 +482,7 @@ export class Wallet {
     for (const [k, at] of this.aside) if (gone.has(k) || at + 2 <= to) this.aside.delete(k);
     await this.save(this.data);
     if (gone.size || fresh.length) trace(() => `sync   blocks ${from}–${to}: ${gone.size} of our slips spent elsewhere, ${fresh.length} signed elsewhere for these words`);
-    return { gone: gone.size, found: fresh.length };
+    return { gone: gone.size, found: fresh.length, duels };
   }
 
   /** Requests the public log is still read for: in doubt, or given up on lately. */

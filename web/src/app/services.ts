@@ -156,8 +156,13 @@ async function syncWallet(seq: number) {
   if (!wallet || syncing || seq === syncedAt) return;
   syncing = true;
   try {
-    const { gone, found } = await wallet.sync();
+    const { gone, found, duels } = await wallet.sync();
     syncedAt = seq;
+    if (duels) {
+      refreshWallet();
+      cue('duel.taken');
+      app.set({ notice: `${duels === 1 ? 'Your duel was' : `${duels} of your duels were`} taken while you were away: the shares are in your slips.` });
+    }
     if (gone || found) {
       refreshWallet();
       const parts = [

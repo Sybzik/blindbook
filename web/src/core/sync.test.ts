@@ -17,10 +17,12 @@ const Point = secp256k1.Point;
 const N = Point.Fn.ORDER;
 const m = BigInt('0x' + toHex(sha256(utf8(golden.test_mint_label)))) % N;
 const toBytes32 = (n: bigint) => Uint8Array.from((n.toString(16).padStart(64, '0').match(/../g) ?? []).map((h) => parseInt(h, 16)));
-/** CREDIT's signature on `B_` for `amount`: the key is m + t_k, t_k from the keyset preimage. */
-function sign(B_hex: string, amount: number) {
+/** A keyset's signature on `B_` for `amount` (CREDIT unless a market and outcome are given): the
+ *  key is m + t_k, t_k from the keyset preimage. */
+function sign(B_hex: string, amount: number, market?: string, outcome?: 0 | 1) {
   const M = Point.fromHex(golden.m_pub);
-  const pre = new Uint8Array([...utf8('blindbook/keyset/v1'), ...M.toBytes(true), ...new Uint8Array(32), 0xff, Math.log2(amount)]);
+  const id = market ? Uint8Array.from(market.match(/../g)!.map((h) => parseInt(h, 16))) : new Uint8Array(32);
+  const pre = new Uint8Array([...utf8('blindbook/keyset/v1'), ...M.toBytes(true), ...id, market ? outcome! : 0xff, Math.log2(amount)]);
   const k = (m + (BigInt('0x' + toHex(sha256(pre))) % N)) % N;
   const dleq = cashu.createDLEQProof(Point.fromHex(B_hex), toBytes32(k));
   return { C_: Point.fromHex(B_hex).multiply(k).toHex(true), dleq: { e: toHex(dleq.e), s: toHex(dleq.s) } };
@@ -63,12 +65,12 @@ describe('the same vault on two devices', () => {
     log.deltas.set(12, { issued: [theirs(40, 512), theirs(41, 256)], batches: [{ market: '00'.repeat(32), orders: [0, 1].map((i) => ({ tag: calledItTag(calledItSecret(seed, i)) })), fills: [] }] });
     log.deltas.set(13, { spent: [{ Y: yOf(old.secret) }] });
     log.seq = 13;
-    expect(await w.sync()).toEqual({ gone: 1, found: 2 });
+    expect(await w.sync()).toEqual({ gone: 1, found: 2, duels: 0 });
     expect(w.creditBalance()).toBe(768);
     expect(w.data.counters[w.credit.id]).toBe(41 + 1 + 31);
     expect(w.data.calledNext).toBe(2);
     expect(w.data.syncedSeq).toBe(13);
-    expect(await w.sync()).toEqual({ gone: 0, found: 0 });
+    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0 });
   });
 
   it("leaves the slips of this device's own requests in flight to settle as usual", async () => {
@@ -76,7 +78,7 @@ describe('the same vault on two devices', () => {
     w.data.inflight = [{ id: 'f1', at_ms: 0, seq: 10, inputs: [old], outs: [], entry: { at_ms: 0, kind: 'buy', stored: {} }, doubt: false }];
     log.deltas.set(11, { spent: [{ Y: yOf(old.secret) }] });
     log.seq = 11;
-    expect(await w.sync()).toEqual({ gone: 0, found: 0 });
+    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0 });
     expect(w.data.slips).toHaveLength(1);
   });
 
@@ -84,7 +86,7 @@ describe('the same vault on two devices', () => {
     const { w, log } = setup();
     w.data.syncedSeq = undefined;
     log.seq = 50;
-    expect(await w.sync()).toEqual({ gone: 0, found: 0 });
+    expect(await w.sync()).toEqual({ gone: 0, found: 0, duels: 0 });
     expect(w.data.syncedSeq).toBe(50);
   });
 
@@ -103,5 +105,21 @@ describe('the same vault on two devices', () => {
     await reading;
     await counterAsked;
     expect(asked).toBe(31 + 1 + 31);
+  });
+
+  it('collects a duel taken while it was away, from the log', async () => {
+    const { w, log, seed } = setup();
+    const market = 'ab'.repeat(32);
+    const ks = w.keysetOf(market, 0);
+    w.data.duels = [{ duel: 'd1', market, outcome: 0, shares: 2048, price_bp: 5000, stake: 1024, keyset: ks.id, counter: 31, secret: 'cancel', at_ms: 0, opened_ms: 1, status: 'open' }];
+    const out = (i: number, amount: number) => {
+      const p = deriveOutput(seed, ks.id, 31 + i);
+      return { id: ks.id, amount, B_: p.B_, ...sign(p.B_, amount, market, 0) };
+    };
+    log.deltas.set(12, { issued: [out(0, 2048)] });
+    log.seq = 12;
+    expect((await w.sync()).duels).toBe(1);
+    expect(w.data.duels?.[0]?.status).toBe('taken');
+    expect(w.balance(ks.id)).toBe(2048);
   });
 });

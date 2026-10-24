@@ -21,6 +21,8 @@ export type LinkState = 'linking' | 'linked' | 'relinking' | 'down';
 const DB_PREFIX = 'wasm-client-storage-';
 export const BOOT_DEADLINE_MS = 20_000;
 export const SETUP_DEADLINE_MS = 25_000;
+/** When a third tunnel joins a link race that no tunnel has answered yet. */
+const HEDGE_MS = 14_000;
 /** Requests one tunnel has on the wire at once (more wait their turn). */
 const MAX_IN_FLIGHT = 4;
 /** A tunnel that is already up answers /v1/head well within this, even over a VPN. */
@@ -236,12 +238,24 @@ export class MixnetTransport implements Transport {
           throw e;
         }
       };
+      // A slow gateway or exit can hold a round for its whole deadline: if neither tunnel has
+      // answered after HEDGE_MS, a third (another random route) joins the race, and the first of
+      // the three to answer wins. Once per round: a network that blocks the mixnet costs three.
+      const all = [a, b];
+      let hedge = 0;
+      const third = new Promise<Tunnel>((resolve, reject) => {
+        hedge = window.setTimeout(() => {
+          const c = new Tunnel(undefined, this.setupMs());
+          all.push(c);
+          probe(c).then(resolve, reject);
+        }, HEDGE_MS);
+      });
       try {
-        const winner = await Promise.any([probe(a), probe(b)]);
-        const loser = winner === a ? b : a;
+        const winner = await Promise.any([probe(a), probe(b), third]);
+        clearTimeout(hedge);
+        for (const t of all) if (t !== winner) t.destroy();
         this.live?.destroy();
         this.live = winner;
-        loser.destroy();
         this.spare?.destroy();
         this.spare = this.other(winner);
         if (this.failedRounds >= UNREACHABLE_AFTER) this.onUnreachable?.(false);
@@ -250,8 +264,8 @@ export class MixnetTransport implements Transport {
         this.set('linked');
         return;
       } catch {
-        a.destroy();
-        b.destroy();
+        clearTimeout(hedge);
+        for (const t of all) t.destroy();
         if (++this.failedRounds === UNREACHABLE_AFTER) this.onUnreachable?.(true);
         this.set('down');
         // 2 s, then twice as long after every failed round, up to a minute: a network that blocks

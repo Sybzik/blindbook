@@ -298,8 +298,28 @@ function ProofCheck({ proof }: { proof?: string }) {
   useEffect(() => {
     if (waiting.current) void check(waiting.current);
   }, [head?.seq]);
+  // A proof link opened in a fresh browser waits for the mixnet first: say so, with its progress.
+  const link = useStore(app, (s) => s.link);
+  const [dots, setDots] = useState(0);
+  const waitingForLog = !!proof && !head && !res;
+  useEffect(() => {
+    if (!waitingForLog) return;
+    const t = setInterval(() => setDots((d) => (d + 1) % 4), 500);
+    return () => clearInterval(t);
+  }, [waitingForLog]);
   return (
     <div style={{ maxWidth: 640, marginTop: proof ? 12 : 24 }}>
+      {waitingForLog && (
+        <div className="tk-proofres" role="status">
+          <p className="bb-label" style={{ margin: 0 }}>A CALLED IT PROOF · CHECKING SOON{'.'.repeat(dots)}</p>
+          <p className="bb-ui">
+            {link === 'linked'
+              ? 'Reading the public log…'
+              : 'Linking to the mixnet first, so not even the network learns who checks this: three hops, usually 15–30 seconds. The check starts by itself the moment the public log is reachable.'}
+          </p>
+          <div className="tk-proofbar" aria-hidden="true"><i /></div>
+        </div>
+      )}
       {busy && <p className="bb-ui bb-dim" role="status">Checking this call: {busy}…</p>}
       {res && res.ok === null && (
         <div className="tk-proofres" role="status">

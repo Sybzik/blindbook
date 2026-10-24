@@ -241,3 +241,9 @@
 
 /* A phone zooms into any field set under 16px when it gets focus, and stays zoomed: never let it. */
 @media (pointer:coarse){input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea,select{font-size:16px!important}}
+
+/* A proof waiting for the mixnet: a bar that sweeps, so the wait reads as work. */
+.tk-proofbar{position:relative;height:6px;margin-top:10px;overflow:hidden;border:1px solid var(--phosphor-mid)}
+.tk-proofbar i{position:absolute;top:0;bottom:0;width:30%;background:var(--phosphor);animation:tk-proofbar 1.6s ease-in-out infinite}
+@keyframes tk-proofbar{0%{left:-30%}100%{left:100%}}
+@media (prefers-reduced-motion:reduce){.tk-proofbar i{animation:none;left:0;width:100%;opacity:.4}}

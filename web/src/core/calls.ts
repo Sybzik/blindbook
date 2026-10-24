@@ -97,20 +97,27 @@ export async function checkCall(api: Api, tag: string, height: number, onProgres
   return height > 0 ? { missing: true, head, blocks: blocks.length } : { pending: true, head };
 }
 
-/** One of our own calls, looked up in the log from a height at or below the one it was published
- *  in (the bet's time, less a margin): its block, for a CALLED IT proof made after the fact. Null
+/** One of our own calls, looked up in the public log by its tag: its block, for a CALLED IT proof
+ *  made after the fact. The search starts at `notBefore` (a height a little below the bet's) and,
+ *  if the call isn't there, reaches back further each time, down to the start of the log. Null
  *  while it is newer than the published log. */
 export async function findCall(api: Api, tag: string, notBefore: number): Promise<CallHit | null> {
   const head = await api.head();
-  const from = await firstAtOrAbove(api, Math.max(1, notBefore), head);
-  const blocks = (await deltaTexts(api, from, head.seq, head.seq)).map((t) => JSON.parse(t) as CallBlock);
-  for (const b of blocks)
-    for (const batch of b.batches) {
-      const i = batch.orders.findIndex((o) => o.tag === tag);
-      if (i < 0) continue;
-      const o = batch.orders[i]!;
-      const f = batch.fills[i]!;
-      return { seq: b.seq, height: b.height, market: batch.market, side: o.side, outcome: o.outcome, shares: o.side === 'buy' ? f.out : f.kept, avgPriceBp: f.avg_price_bp };
-    }
-  return null;
+  let to = head.seq;
+  let back = Math.max(1, notBefore);
+  for (;;) {
+    const from = await firstAtOrAbove(api, back, head);
+    const blocks = from <= to ? (await deltaTexts(api, from, to, head.seq)).map((t) => JSON.parse(t) as CallBlock) : [];
+    for (const b of blocks)
+      for (const batch of b.batches) {
+        const i = batch.orders.findIndex((o) => o.tag === tag);
+        if (i < 0) continue;
+        const o = batch.orders[i]!;
+        const f = batch.fills[i]!;
+        return { seq: b.seq, height: b.height, market: batch.market, side: o.side, outcome: o.outcome, shares: o.side === 'buy' ? f.out : f.kept, avgPriceBp: f.avg_price_bp };
+      }
+    if (from <= 1 || back <= 1) return null;
+    to = from - 1;
+    back = Math.max(1, back - Math.max(500, (head.height - back) * 2));
+  }
 }

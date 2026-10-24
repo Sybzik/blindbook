@@ -73,13 +73,20 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
     setFinding(h.called!.tag);
     let block: number | null = null;
     try {
+      // From a little below the bet's height (blocks are 25 s apart on testnet, at least 20 s on
+      // any network); findCall reaches back further if it has to.
       const at = head?.height ?? 0;
-      const found = await findCall(getApi(), h.called!.tag, at - Math.ceil((Date.now() - h.at_ms) / 75_000) - 40);
+      const found = await findCall(getApi(), h.called!.tag, at - Math.ceil((Date.now() - h.at_ms) / 20_000) - 60);
       block = found?.height ?? null;
     } catch {
-      /* the card still opens; its block reads NEXT until the log is reachable */
+      /* unreadable just now: said below */
     } finally {
       setFinding(null);
+    }
+    // A proof needs the call's block: until the log shows it, there is no link to give yet.
+    if (block === null) {
+      setMsg('This bet is not in the published log yet (or the log could not be read just now). Try again in a minute.');
+      return;
     }
     openCalled({
       serial: String(batch).padStart(4, '0') + '-' + f.tag.slice(0, 3).toUpperCase(),

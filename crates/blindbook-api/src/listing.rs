@@ -431,10 +431,32 @@ async fn auto_pick(f: &Follow) -> Vec<Listing> {
             .count();
         (tradeable, open.len())
     };
+    // Picks still waiting to be listed (the signer away, say) count as open, so a pass while they
+    // wait picks no more; one the rules keep out stops counting once its event has started.
+    let pending = {
+        let markets = f.shared.markets.read().unwrap_or_else(|e| e.into_inner());
+        let catalog = f.shared.catalog.read().unwrap_or_else(|e| e.into_inner());
+        let by_slug: HashMap<&str, (&H32, &MarketInfo)> = catalog
+            .iter()
+            .map(|(id, i)| (i.slug.as_str(), (id, i)))
+            .collect();
+        std::fs::read(&f.auto_file)
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Vec<Listing>>(&b).ok())
+            .unwrap_or_default()
+            .iter()
+            .filter(|l| match by_slug.get(l.slug.as_str()) {
+                Some((id, info)) => {
+                    !markets.contains_key(*id) && info.event_start_ms.is_none_or(|t| t > now)
+                }
+                None => true,
+            })
+            .count()
+    };
     let need = f
         .auto_target
-        .saturating_sub(tradeable)
-        .min((2 * f.auto_target).saturating_sub(unresolved));
+        .saturating_sub(tradeable + pending)
+        .min((2 * f.auto_target).saturating_sub(unresolved + pending));
     if need == 0 {
         return Vec::new();
     }

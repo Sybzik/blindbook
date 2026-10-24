@@ -21,6 +21,8 @@ export type LinkState = 'linking' | 'linked' | 'relinking' | 'down';
 const DB_PREFIX = 'wasm-client-storage-';
 export const BOOT_DEADLINE_MS = 20_000;
 export const SETUP_DEADLINE_MS = 25_000;
+/** A tunnel that is already up answers /v1/head well within this, even over a VPN. */
+export const WARM_DEADLINE_MS = 8_000;
 /** Failed rounds of racing tunnels after which the network is probably what blocks the link. */
 export const UNREACHABLE_AFTER = 3;
 
@@ -236,6 +238,45 @@ export class MixnetTransport implements Transport {
     }
   }
 
+  /** The page is visible again after `hiddenMs` in the background. A phone suspends a hidden page
+   *  and its network connections go with it, so the live tunnel is checked with a short deadline
+   *  at once, not when a request runs out of time: on a phone a fresh tunnel is built alongside
+   *  and whichever answers first carries on; elsewhere a fresh one is built only if the check fails. */
+  wake(hiddenMs: number, phone: boolean): Promise<void> {
+    if (this.linking || !this.live || hiddenMs < 8_000) return this.linking ?? Promise.resolve();
+    const live = this.live;
+    return this.link(async () => {
+      const head = async (t: Tunnel, ms: number) => {
+        await t.ready;
+        const r = await t.fetch('GET', this.api + '/v1/head', undefined, false, ms);
+        if (r.status !== 200) throw new Error(`head ${r.status}`);
+        return t;
+      };
+      // The spare slept as long as the live tunnel did: dropped, not checked.
+      this.spare?.destroy();
+      this.spare = undefined;
+      const fresh = phone ? this.other(live) : undefined;
+      if (phone) this.set('relinking');
+      try {
+        const winner = await Promise.any([head(live, WARM_DEADLINE_MS), ...(fresh ? [head(fresh, this.setupMs() + BOOT_DEADLINE_MS)] : [])]);
+        if (winner === live) this.spare = fresh ?? this.other(live);
+        else {
+          live.destroy();
+          this.live = winner;
+          this.spare = this.other(winner);
+        }
+        this.set('linked');
+        return;
+      } catch {
+        fresh?.destroy();
+      }
+      this.set('relinking');
+      live.destroy();
+      this.live = undefined;
+      await this.race();
+    });
+  }
+
   /** A spare of the other kind than the live tunnel: random behind a pinned one, pinned behind a random one. */
   private other(live: Tunnel): Tunnel {
     return new Tunnel(live.ipr ? undefined : this.ipr);
@@ -254,7 +295,8 @@ export class MixnetTransport implements Transport {
       if (spare) {
         try {
           await Promise.race([spare.ready, new Promise((_, rej) => setTimeout(() => rej(new Error('spare not ready')), 3_000))]);
-          const r = await spare.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
+          // A warm tunnel answers in a few seconds; one that doesn't is as dead as the live one was.
+          const r = await spare.fetch('GET', this.api + '/v1/head', undefined, false, WARM_DEADLINE_MS);
           if (r.status === 200) {
             this.live = spare;
             this.spare = this.other(spare);

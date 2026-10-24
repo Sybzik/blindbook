@@ -106,7 +106,12 @@ function TopUp() {
   // The record lives in the vault and is polled in the background (services), so closing this
   // window never stalls a top-up; the newest unfinished one reopens here.
   const topups = useStore(app, (s) => s.topups);
-  const [recId, setRecId] = useState<string | null>(() => [...topups].reverse().find((t) => t.status === 'awaiting' || t.status === 'seen')?.id ?? null);
+  const unfinished = [...topups].reverse().find((t) => t.status === 'awaiting' || t.status === 'seen')?.id ?? null;
+  const [recId, setRecId] = useState<string | null>(unfinished);
+  // The vault's records can arrive just after this window opens (right after unlocking).
+  useEffect(() => {
+    if (!recId && unfinished) setRecId(unfinished);
+  }, [unfinished]);
   const rec: TopupRecord | null = topups.find((t) => t.id === recId) ?? null;
   useEffect(() => {
     if (rec && step !== 'receipt') setStep('receipt');

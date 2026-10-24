@@ -365,6 +365,22 @@ export async function start() {
     });
     transport = mt;
     mixnet = mt;
+    // Back from the background (from the wallet app, say): check the link at once.
+    let hiddenAt = 0;
+    const phone = matchMedia('(pointer: coarse)').matches;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) hiddenAt = Date.now();
+      else if (hiddenAt) {
+        const away = Date.now() - hiddenAt;
+        hiddenAt = 0;
+        void mt.wake(away, phone);
+        // A top-up's own route slept too: the next poll opens a fresh one instead of waiting it out.
+        if (away >= 8_000 && phone) {
+          cages.forEach((c) => c.close());
+          cages.clear();
+        }
+      }
+    });
     api = new Api(transport, powInWorkers);
     if (mixnetSupported()) void mt.boot();
     else app.set({ link: 'down', linkTrouble: 'browser' });

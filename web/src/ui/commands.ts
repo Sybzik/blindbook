@@ -2,7 +2,7 @@
 // Trades go through the same actions (and the same checks) as the bet panel.
 
 import { CONSOLE_RESPONSES } from '../ds';
-import { app, actions } from '../app/services';
+import { app, actions, linkInfo } from '../app/services';
 import { BET_UNITS, COIN, config } from '../app/config';
 import { coin, coinLabel, height, zat } from '../app/format';
 import { runAudit } from './pages/Verify';
@@ -10,6 +10,13 @@ import { quoteBuy } from '../app/pricing';
 import { ui, type Theme } from './uistate';
 import { setSound } from './sound';
 import type { Out } from './Console';
+
+/** While the mixnet isn't linked: for how long it has been tried, and why the last try failed. */
+function linkLine(): string {
+  const i = linkInfo();
+  if (!i || app.get().link === 'linked') return '';
+  return ` · trying ${i.seconds} s${i.rounds ? ` · ${i.rounds} round${i.rounds > 1 ? 's' : ''} failed` : ''}${i.lastError ? ` · last: ${i.lastError}` : ''}`;
+}
 
 export interface DeskApi {
   open(id: string): void;
@@ -171,7 +178,7 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
     case 'status': {
       const batch = s.live?.recent.at(-1)?.batch_id;
       return out([
-        config.mixnet ? `mixnet ● ${s.link}` : config.onion ? 'network ● Tor (.onion mirror): requests go through Tor to the onion service' : `mixnet ○ off in this development build (requests go straight to the server)`,
+        config.mixnet ? `mixnet ● ${s.link}${linkLine()}` : config.onion ? 'network ● Tor (.onion mirror): requests go through Tor to the onion service' : `mixnet ○ off in this development build (requests go straight to the server)`,
         `blk ${s.head ? height(s.head.height) : '—'} · log seq ${s.head?.seq ?? '—'}${batch ? ` · last batch ${batch}` : ''}${s.head?.halted ? ' · HALTED' : ''}`,
         `vault ${s.vault} · network ${config.network}`,
       ]);

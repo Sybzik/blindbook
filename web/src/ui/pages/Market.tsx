@@ -117,7 +117,7 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
                 ? 'Loading the catalog over the mixnet…'
                 : unreachable
                   ? "The mixnet can't be reached from this network yet, so the catalog can't load. A VPN or a filtered network often blocks it: try without the VPN, or on mobile data."
-                  : 'Linking to the mixnet first (three hops, about 15 seconds); the catalog follows.'}
+                  : 'Linking to the mixnet first: three hops, usually 15–30 seconds, longer over a VPN. The catalog follows.'}
           </p>
         )}
         {all.length > 0 && markets.length === 0 && <p className="bb-text bb-dim">No market matches “{q}”.</p>}

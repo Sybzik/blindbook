@@ -335,6 +335,13 @@ async function mixWait() {
   }
 }
 
+let mixnet: MixnetTransport | undefined;
+const startedAt = Date.now();
+/** For the console's status: how long the link has been tried, failed rounds, the last reason. */
+export function linkInfo(): { seconds: number; rounds: number; lastError: string | null } | null {
+  return mixnet ? { seconds: Math.round((Date.now() - startedAt) / 1000), rounds: mixnet.rounds, lastError: mixnet.lastError } : null;
+}
+
 /** Connect and begin the polls every visitor makes; safe to call more than once. */
 export async function start() {
   if (started) return;
@@ -354,6 +361,7 @@ export async function start() {
       else if (s === 'relinking' && was === 'linked') cue('link.relinking');
     });
     transport = mt;
+    mixnet = mt;
     api = new Api(transport, powInWorkers);
     if (mixnetSupported()) void mt.boot();
     else app.set({ link: 'down', linkTrouble: 'browser' });

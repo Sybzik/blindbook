@@ -50,7 +50,7 @@ class Tunnel {
   private port: MessagePort;
 
   /** The exit this tunnel was pinned to (VITE_BB_IPR), or undefined: one picked at random. */
-  constructor(readonly ipr?: string) {
+  constructor(readonly ipr?: string, setupMs = SETUP_DEADLINE_MS) {
     this.frame = document.createElement('iframe');
     this.frame.hidden = true;
     this.frame.setAttribute('aria-hidden', 'true');
@@ -67,7 +67,7 @@ class Tunnel {
     });
     // A spare is only awaited when it is needed: one that never came up is replaced then, quietly.
     this.ready.catch(() => undefined);
-    const t = setTimeout(() => readyRej(new Error('tunnel setup timed out')), SETUP_DEADLINE_MS);
+    const t = setTimeout(() => readyRej(new Error('tunnel setup timed out')), setupMs);
     const channel = new MessageChannel();
     this.port = channel.port1;
     this.port.onmessage = (e: MessageEvent) => {
@@ -149,6 +149,16 @@ export class MixnetTransport implements Transport {
   private failedRounds = 0;
   private listeners = new Set<(s: LinkState) => void>();
   state: LinkState = 'linking';
+  /** For the console's status: rounds that failed in a row, and why the last tunnel didn't come up. */
+  lastError: string | null = null;
+  get rounds() {
+    return this.failedRounds;
+  }
+  /** A slow network (a phone behind a VPN on another continent) can need longer than the first
+   *  deadline to load the client and register: each failed round doubles it, up to 100 s. */
+  private setupMs() {
+    return Math.min(100_000, SETUP_DEADLINE_MS * 2 ** Math.min(this.failedRounds, 2));
+  }
 
   constructor(
     private api: string,
@@ -187,13 +197,18 @@ export class MixnetTransport implements Transport {
   private async race(): Promise<void> {
     this.set(this.live ? 'relinking' : 'linking');
     for (;;) {
-      const a = new Tunnel(this.ipr);
-      const b = new Tunnel();
+      const a = new Tunnel(this.ipr, this.setupMs());
+      const b = new Tunnel(undefined, this.setupMs());
       const probe = async (t: Tunnel) => {
-        await t.ready;
-        const r = await t.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS);
-        if (r.status !== 200) throw new Error(`head ${r.status}`);
-        return t;
+        try {
+          await t.ready;
+          const r = await t.fetch('GET', this.api + '/v1/head', undefined, false, BOOT_DEADLINE_MS * (this.failedRounds ? 2 : 1));
+          if (r.status !== 200) throw new Error(`head ${r.status}`);
+          return t;
+        } catch (e) {
+          this.lastError = e instanceof DeadlineError ? 'no answer in time' : String((e as Error)?.message ?? e);
+          throw e;
+        }
       };
       try {
         const winner = await Promise.any([probe(a), probe(b)]);
@@ -205,6 +220,7 @@ export class MixnetTransport implements Transport {
         this.spare = this.other(winner);
         if (this.failedRounds >= UNREACHABLE_AFTER) this.onUnreachable?.(false);
         this.failedRounds = 0;
+        this.lastError = null;
         this.set('linked');
         return;
       } catch {

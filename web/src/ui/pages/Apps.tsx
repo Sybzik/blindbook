@@ -351,7 +351,7 @@ const midi = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 class Radio {
   private out: GainNode;
   private an: AnalyserNode;
-  private drone: OscillatorNode[] = [];
+  private loop = 0;
   constructor(private c: AudioContext) {
     this.out = c.createGain();
     this.out.gain.value = 0.5;
@@ -368,22 +368,24 @@ class Radio {
   get analyser() {
     return this.an;
   }
-  startDrone(root: number) {
-    this.stopDrone();
-    for (const [n, g] of [[root - 24, 0.05], [root - 17, 0.03]] as const) {
-      const o = this.c.createOscillator();
-      o.type = 'triangle';
-      o.frequency.value = midi(n);
-      const gg = this.c.createGain();
-      gg.gain.value = g;
-      o.connect(gg).connect(this.out);
-      o.start();
-      this.drone.push(o);
-    }
+  /** Until the next block (about 75 s): the block's chord, one soft note every 1.6 s in an order
+   *  its root's bytes pick, a low one every eighth step; the echo carries it between notes. */
+  startLoop(root: number, b: Uint8Array) {
+    this.stopLoop();
+    let step = 0;
+    const tick = () => {
+      const at = this.c.currentTime + 0.05;
+      const k = [0, 7, 10, 12, 15, 19][b[(step * 3 + 5) % 32]! % 6]!;
+      this.note(root + k, at, 2.4, 0.045);
+      if (step % 8 === 0) this.note(root - 12, at, 4, 0.05, 'triangle');
+      if (b[(step + 11) % 32]! % 4 === 0) this.note(root + 24 + SCALE[b[step % 32]! % SCALE.length]!, at + 0.8, 1.2, 0.02);
+      step++;
+    };
+    this.loop = window.setInterval(tick, 1600);
   }
-  stopDrone() {
-    this.drone.forEach((o) => o.stop());
-    this.drone = [];
+  stopLoop() {
+    clearInterval(this.loop);
+    this.loop = 0;
   }
   note(n: number, at: number, dur: number, gain: number, type: OscillatorType = 'sine') {
     const o = this.c.createOscillator();
@@ -405,13 +407,16 @@ class Radio {
     for (const k of [0, 7, 10, 15]) this.note(root + k, t, 4.5, 0.06, 'triangle');
     const notes = Math.min(16, 1 + actions);
     for (let i = 0; i < notes; i++) this.note(root + 12 + SCALE[b[(i + 1) % 32]! % SCALE.length]!, t + 0.6 + i * 0.28, 0.9, 0.08);
-    this.startDrone(root);
+    // The loop starts once the block's own phrase has played.
+    this.stopLoop();
+    const start = window.setTimeout(() => this.startLoop(root, b), (0.6 + notes * 0.28 + 1.5) * 1000);
+    this.loop = start;
   }
   blip() {
     this.note(86 + Math.floor(Math.random() * 5) * 2, this.c.currentTime + 0.01, 0.25, 0.04, 'square');
   }
   close() {
-    this.stopDrone();
+    this.stopLoop();
     this.out.disconnect();
   }
 }

@@ -549,7 +549,9 @@ async function act<T>(label: string, f: (w: Wallet) => Promise<T>): Promise<T> {
     const msg = pruned
       ? `Slips in this vault had been spent already: by this vault open on another device, or by a request whose answer never came. They are set aside and your balance is updated (the next block confirms it). Nothing was taken; try again.`
       : e instanceof ApiError
-        ? plainError(e)
+        ? label === 'WITHDRAWING' && e.code === 'invalid_slip'
+          ? "The signer refused this withdrawal: it pays only a shielded unified address of this network (an Orchard-protocol receiver). Check the address. Nothing was taken."
+          : plainError(e)
         : String((e as Error)?.message ?? e);
     if (pruned) refreshWallet();
     app.set({ error: msg });

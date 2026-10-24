@@ -4,6 +4,7 @@
 
 import { useEffect, useState } from 'react';
 import { AmountChips, KeyButton, LeaderRow, PreflightChecklist, TeletextHeader, TextInput, ThermalReceipt } from '../../ds';
+import { isUnifiedAddress } from '../../core/address';
 import { Win, OpenVault, InstallHint, DoubtLine } from '../win';
 import { Qr } from '../Qr';
 import { app, actions, setLocal, walletWords } from '../../app/services';
@@ -263,12 +264,13 @@ function Withdraw() {
       })
       .catch(() => undefined);
   const prefix = config.network === 'mainnet' ? 'u1' : 'utest1';
-  const st = !addr ? undefined : addr.startsWith('t') || addr.startsWith('tm') ? 'invalid' : (addr.startsWith(prefix) || addr.startsWith('z' + prefix)) && addr.length > 60 ? 'valid' : addr.length > 4 ? 'invalid' : undefined;
+  // The checksum too: an address cut short or changed by one letter is caught here, not by the signer.
+  const st = !addr ? undefined : addr.startsWith('t') || addr.startsWith('tm') ? 'invalid' : isUnifiedAddress(addr, config.network) ? 'valid' : addr.length > 4 ? 'invalid' : undefined;
   const msg =
     st === 'invalid'
       ? addr.startsWith('t')
         ? `That's a transparent address. Paste a fresh ${prefix}… address from your wallet.`
-        : `Paste a fresh unified address (${prefix}…) with a shielded receiver.`
+        : `Paste a fresh unified address (${prefix}…) with a shielded receiver, the whole of it: this one is cut short or changed.`
       : st === 'valid'
         ? '✓ Looks right. The signer checks it again before anything is spent.'
         : 'Use a fresh address. Only the signer can read it; we keep a commitment, never the address.';

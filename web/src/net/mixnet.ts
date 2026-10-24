@@ -21,6 +21,8 @@ export type LinkState = 'linking' | 'linked' | 'relinking' | 'down';
 const DB_PREFIX = 'wasm-client-storage-';
 export const BOOT_DEADLINE_MS = 20_000;
 export const SETUP_DEADLINE_MS = 25_000;
+/** Requests one tunnel has on the wire at once (more wait their turn). */
+const MAX_IN_FLIGHT = 4;
 /** A tunnel that is already up answers /v1/head well within this, even over a VPN. */
 export const WARM_DEADLINE_MS = 8_000;
 /** Failed rounds of racing tunnels after which the network is probably what blocks the link. */
@@ -50,6 +52,14 @@ class Tunnel {
   private waiting = new Map<number, Waiting>();
   readonly ready: Promise<void>;
   private port: MessagePort;
+  /** Requests on the wire, and those waiting for one of the MAX_IN_FLIGHT places: a burst (the
+   *  verifier reads four files at a time while the polls go on) queues here, where its deadlines
+   *  haven't started, instead of inside the mixnet client, where they would run out. */
+  private inFlight = 0;
+  private queue: (() => void)[] = [];
+  /** Reads in a row that got no answer in time: one is a lost reply, two a dead route. */
+  misses = 0;
+  private closed = false;
 
   /** The exit this tunnel was pinned to (VITE_BB_IPR), or undefined: one picked at random. */
   constructor(readonly ipr?: string, setupMs = SETUP_DEADLINE_MS) {
@@ -99,7 +109,19 @@ class Tunnel {
     document.body.appendChild(this.frame);
   }
 
-  fetch(method: 'GET' | 'POST', url: string, body: string | undefined, bytes: boolean, deadline: number) {
+  async fetch(method: 'GET' | 'POST', url: string, body: string | undefined, bytes: boolean, deadline: number) {
+    if (this.inFlight >= MAX_IN_FLIGHT) await new Promise<void>((go) => this.queue.push(go));
+    if (this.closed) throw new Error('tunnel closed');
+    this.inFlight++;
+    try {
+      return await this.send(method, url, body, bytes, deadline);
+    } finally {
+      this.inFlight--;
+      this.queue.shift()?.();
+    }
+  }
+
+  private send(method: 'GET' | 'POST', url: string, body: string | undefined, bytes: boolean, deadline: number) {
     const id = this.next++;
     return new Promise<{ status: number; text?: string; bytes?: Uint8Array }>((resolve, reject) => {
       const t = setTimeout(() => {
@@ -121,10 +143,12 @@ class Tunnel {
   }
 
   destroy() {
+    this.closed = true;
     this.port.postMessage({ type: 'close' });
     this.port.close();
     for (const w of this.waiting.values()) w.reject(new Error('tunnel closed'));
     this.waiting.clear();
+    for (const go of this.queue.splice(0)) go();
     this.frame.remove();
   }
 }
@@ -317,12 +341,16 @@ export class MixnetTransport implements Transport {
       if (!this.live) await this.boot();
       const tunnel = this.live!;
       try {
-        return await tunnel.fetch(method, this.api + path, body, bytes, deadline);
+        const r = await tunnel.fetch(method, this.api + path, body, bytes, deadline);
+        tunnel.misses = 0;
+        return r;
       } catch (e) {
-        // A write that missed its deadline may still have been processed: never resend it here;
-        // the caller decides (the wallet recovers by restore). Reads are retried on a new tunnel.
+        // A read whose reply was lost is asked again on the same route; a second miss in a row
+        // means the route is gone. A write that missed its deadline may still have been
+        // processed: never resent here; the caller decides (the wallet recovers from the log).
+        if (method === 'GET' && e instanceof DeadlineError && ++tunnel.misses < 2 && this.live === tunnel) continue;
         await this.relink(tunnel);
-        if (method === 'POST' || attempt >= 1) throw e;
+        if (method === 'POST' || attempt >= 2) throw e;
       }
     }
   }

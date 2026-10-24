@@ -15,6 +15,10 @@ use flate2::write::GzEncoder;
 /// a client reads a long log in a few hundred requests instead of one per block. 384 blocks are
 /// about 2 h 40 min at NU7's 25-second blocks (8 h at the 75 s before it).
 pub const SEGMENT: u64 = 384;
+/// Deltas per short segment (`mini/{j}.jsonl.gz`: deltas `j·MINI + 1 ..= (j + 1)·MINI`, same form):
+/// the part of the log a full segment doesn't cover yet comes in a few requests too, not one per
+/// block (over the mixnet a request takes a second or two).
+pub const MINI: u64 = 64;
 
 pub struct Files {
     root: PathBuf,
@@ -38,6 +42,7 @@ impl Files {
         let root = data_dir.join("public").join("v1");
         std::fs::create_dir_all(root.join("delta"))?;
         std::fs::create_dir_all(root.join("segment"))?;
+        std::fs::create_dir_all(root.join("mini"))?;
         Ok(Files { root })
     }
 
@@ -70,18 +75,20 @@ impl Files {
     /// Write every complete segment up to `head_seq` that doesn't exist yet (newest first; after
     /// a restart with an older log, all of them).
     pub fn write_segments(&self, head_seq: u64) -> std::io::Result<()> {
-        for k in (0..head_seq / SEGMENT).rev() {
-            let path = self.root.join("segment").join(format!("{k}.jsonl.gz"));
-            if path.exists() {
-                break;
+        for (dir, size) in [("segment", SEGMENT), ("mini", MINI)] {
+            for k in (0..head_seq / size).rev() {
+                let path = self.root.join(dir).join(format!("{k}.jsonl.gz"));
+                if path.exists() {
+                    break;
+                }
+                let mut lines = Vec::new();
+                for seq in k * size + 1..=(k + 1) * size {
+                    let packed = std::fs::read(self.root.join("delta").join(format!("{seq}.json.gz")))?;
+                    flate2::read::GzDecoder::new(&packed[..]).read_to_end(&mut lines)?;
+                    lines.push(b'\n');
+                }
+                write_atomic(&path, &gz(&lines)?)?;
             }
-            let mut lines = Vec::new();
-            for seq in k * SEGMENT + 1..=(k + 1) * SEGMENT {
-                let packed = std::fs::read(self.root.join("delta").join(format!("{seq}.json.gz")))?;
-                flate2::read::GzDecoder::new(&packed[..]).read_to_end(&mut lines)?;
-                lines.push(b'\n');
-            }
-            write_atomic(&path, &gz(&lines)?)?;
         }
         Ok(())
     }
@@ -126,6 +133,14 @@ mod tests {
         let seg = f.root().join("segment");
         assert!(seg.join("0.jsonl.gz").exists());
         assert!(!seg.join("1.jsonl.gz").exists(), "incomplete: not written");
+        // The short segments: every complete one, the same lines as the delta files.
+        let mini = f.root().join("mini");
+        assert!(mini.join(format!("{}.jsonl.gz", SEGMENT / MINI - 1)).exists());
+        assert!(!mini.join(format!("{}.jsonl.gz", SEGMENT / MINI)).exists());
+        let m1 = unzip(mini.join("1.jsonl.gz"));
+        let m1: Vec<&[u8]> = m1.split(|&b| b == b'\n').filter(|l| !l.is_empty()).collect();
+        assert_eq!(m1.len() as u64, MINI);
+        assert_eq!(m1[0], &unzip(f.root().join("delta").join(format!("{}.json.gz", MINI + 1)))[..]);
         let text = unzip(seg.join("0.jsonl.gz"));
         let lines: Vec<&[u8]> = text
             .split(|&b| b == b'\n')

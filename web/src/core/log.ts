@@ -18,14 +18,15 @@ export async function readFile(api: Api, path: string, tries = 4): Promise<strin
   }
 }
 
-/** Deltas per segment, as the server writes them (crates/blindbook-api/src/files.rs). */
+/** Deltas per segment and per short segment, as the server writes them (crates/blindbook-api/src/files.rs). */
 export const SEGMENT = 384;
+export const MINI = 64;
 
 interface Job {
   start: number;
   end: number;
-  /** The segment holding `start..=end`, if it is complete. */
-  seg: number | null;
+  /** The complete file holding `start..=end`: a segment, or a short one past the last segment. */
+  file: { dir: 'segment' | 'mini'; k: number; size: number } | null;
 }
 
 /** The raw texts of deltas `from..=to`. `headSeq` (the published head) says which segments are
@@ -42,23 +43,25 @@ export async function deltaTexts(
   const jobs: Job[] = [];
   for (let seq = from; seq <= to; ) {
     const k = Math.floor((seq - 1) / SEGMENT);
-    const segEnd = (k + 1) * SEGMENT;
-    if (segEnd <= headSeq) {
-      const end = Math.min(segEnd, to);
-      jobs.push({ start: seq, end, seg: k });
+    const j = Math.floor((seq - 1) / MINI);
+    const file = (k + 1) * SEGMENT <= headSeq ? { dir: 'segment' as const, k, size: SEGMENT } : (j + 1) * MINI <= headSeq ? { dir: 'mini' as const, k: j, size: MINI } : null;
+    if (file) {
+      const end = Math.min((file.k + 1) * file.size, to);
+      jobs.push({ start: seq, end, file });
       seq = end + 1;
     } else {
-      jobs.push({ start: seq, end: seq, seg: null });
+      jobs.push({ start: seq, end: seq, file: null });
       seq++;
     }
   }
   const one = (seq: number) => readFile(api, `/v1/delta/${seq}.json.gz`);
   async function run(j: Job): Promise<string[]> {
-    if (j.seg !== null) {
+    if (j.file) {
+      const { dir, k, size } = j.file;
       try {
-        const lines = (await readFile(api, `/v1/segment/${j.seg}.jsonl.gz`, 2)).split('\n').filter((l) => l.length > 0);
-        const first = j.seg * SEGMENT + 1;
-        if (lines.length === SEGMENT) return lines.slice(j.start - first, j.end - first + 1);
+        const lines = (await readFile(api, `/v1/${dir}/${k}.jsonl.gz`, 2)).split('\n').filter((l) => l.length > 0);
+        const first = k * size + 1;
+        if (lines.length === size) return lines.slice(j.start - first, j.end - first + 1);
       } catch {
         /* not there (an older server): one by one */
       }

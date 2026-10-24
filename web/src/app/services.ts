@@ -63,6 +63,8 @@ export interface AppState {
   /** When the poll that brought `live` was sent (this device's clock). */
   liveSent: number;
   markets: MarketMeta[];
+  /** The catalog has come at least once (an empty list then means no market is open). */
+  catalogLoaded: boolean;
   series: Record<string, Point[]>;
   /** Price history of every market, from the one file every visitor downloads. */
   prices: Record<string, PriceHistory>;
@@ -94,6 +96,7 @@ export const app = createStore<AppState>({
   linkTrouble: null,
   liveSent: 0,
   markets: [],
+  catalogLoaded: false,
   series: {},
   prices: {},
   doubts: 0,
@@ -268,7 +271,7 @@ async function pollCatalog() {
       minTrade: Math.max(1, Math.floor(m.params.max_trade / 200)),
     }));
     const before = new Map(app.get().markets.map((m) => [m.id, m.resolved]));
-    app.set({ markets });
+    app.set({ markets, catalogLoaded: true });
     refreshWallet();
     // A market the user holds shares of has just been settled: did their side win?
     let won = false;

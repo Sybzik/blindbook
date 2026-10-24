@@ -265,7 +265,10 @@ function Withdraw() {
       .catch(() => undefined);
   const prefix = config.network === 'mainnet' ? 'u1' : 'utest1';
   // The checksum too: an address cut short or changed by one letter is caught here, not by the signer.
-  const st = !addr ? undefined : addr.startsWith('t') || addr.startsWith('tm') ? 'invalid' : isUnifiedAddress(addr, config.network) ? 'valid' : addr.length > 4 ? 'invalid' : undefined;
+  // While it is still being typed (the right prefix, address letters only, shorter than any unified
+  // address) it is neither right nor wrong yet.
+  const typing = /^z?u(test)?1[02-9ac-hj-np-z]*$/.test(addr) && addr.length < 100 && (config.network === 'mainnet') === !addr.includes('test');
+  const st = !addr ? undefined : addr.startsWith('t') || addr.startsWith('tm') ? 'invalid' : isUnifiedAddress(addr, config.network) ? 'valid' : typing ? undefined : addr.length > 4 ? 'invalid' : undefined;
   const msg =
     st === 'invalid'
       ? addr.startsWith('t')

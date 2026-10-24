@@ -476,7 +476,7 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     ...(vault === 'none' || vault === 'locked' ? [{ id: 'vault', title: vault === 'none' ? 'VAULT · NEW' : 'VAULT · LOCKED' }] : []),
     ...open.map((id) => ({ id, title: id === 'market' && called ? 'CALLED IT' : titleOf(id) })),
   ];
-  const defHint = showVault ? HINTS.lock : called ? HINTS.called : HINTS[page.startsWith('tt:') ? 'how' : page];
+  const defHint = showVault ? HINTS.lock : called ? HINTS.called : HINTS[page.startsWith('tt:') ? 'tt' : page];
 
   if (phone) {
     const channels = ['markets', ...(mid ? ['market'] : []), 'slips', 'cage', 'verify', 'how'];

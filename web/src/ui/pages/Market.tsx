@@ -119,7 +119,8 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
             <button key={m.id} type="button" role="listitem" className="tk-row" onClick={() => onOpen(m.id)} data-hint={`Opens ${m.page}: ${m.question}`}>
               <span className="pg">{m.page.slice(1)}</span>
               <span className="q">
-                <span className="bb-label">{m.group ?? 'MARKET'}</span>
+                {/* named outcomes (OVER vs UNDER, two fighters) take the line below; the question above says which game */}
+                <span className="bb-label">{named ? m.question : m.group ?? 'MARKET'}</span>
                 <b>{named ? <><span className="bb-a">{m.outcomes[0].toUpperCase()}</span> <span className="bb-dim">vs</span> <span className="bb-b">{m.outcomes[1].toUpperCase()}</span></> : m.question}</b>
               </span>
               <span className="pills">

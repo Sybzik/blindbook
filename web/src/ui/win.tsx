@@ -45,6 +45,7 @@ export const HINTS: Record<string, string> = {
   called: 'Private by default. Sharing the link proves the call and nothing else.',
   lock: 'Your passphrase never leaves this computer.',
   record: 'Everything the server stored about you, from its own answers.',
+  tt: 'Teletext. Type another page number on the desk to open it.',
 };
 
 /** "Open it first" on pages that need the vault: one key back to it. */

@@ -275,9 +275,9 @@ function Withdraw() {
           action={<button type="button" className="bb-skey" onClick={async () => setAddr((await navigator.clipboard.readText()).trim())}>PASTE</button>} />
         <AmountChips value={amt} options={options} unit={COIN} onChange={setAmt} />
         <div style={{ maxWidth: 460 }}>
-          <LeaderRow label="PRIVACY DELAY" value="random, 0–60 s before sending" />
+          <LeaderRow label="PRIVACY DELAY" value="random, 0–60 s" />
           <LeaderRow label="FEE" value={coinLabel(WITHDRAWAL_FEE_UNITS)} />
-          <LeaderRow label="ARRIVES" value="in the next payout, about one block" />
+          <LeaderRow label="ARRIVES" value="next payout, about a block" />
         </div>
         <div>
           <KeyButton disabled={st !== 'valid' || !enough || !!busy} loading={busy === 'WITHDRAWING'} onClick={withdraw}>

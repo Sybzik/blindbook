@@ -44,7 +44,7 @@ export function RecordPage({ onClose }: { onClose: () => void }) {
       ) : !e ? (
         <p className="bb-text">Nothing yet. After your first request, the server's own record of it appears here, exactly as stored.</p>
       ) : (
-        <div className="tk-cage">
+        <div className="tk-cage tk-record">
           <div>
             <p className="bb-label bb-hi tk-sec">
               WHAT THE SERVER STORED · {KIND[e.kind] ?? e.kind.toUpperCase()} · {utc(e.at_ms)}
@@ -66,8 +66,8 @@ export function RecordPage({ onClose }: { onClose: () => void }) {
             <LeaderRow label="NAME · EMAIL" value={<Redacted text="xxxxxxxx" />} />
             <LeaderRow label="YOUR BALANCE" value="unknown" />
             <LeaderRow label="YOUR OTHER BETS" value="unlinkable" />
-            <LeaderRow label="WHERE YOU WITHDRAW" value="sealed to the signer, forgotten once paid" />
-            <LeaderRow label="REQUEST LOG" value="none: the server keeps no access log" />
+            <LeaderRow label="PAYOUT ADDRESS" value="sealed, forgotten once paid" />
+            <LeaderRow label="ACCESS LOG" value="none kept" />
           </div>
         </div>
       )}

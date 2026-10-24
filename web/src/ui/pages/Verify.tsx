@@ -383,7 +383,7 @@ export function VerifyPage({ onClose, proof }: { onClose: () => void; proof?: st
       <div style={{ maxWidth: 680, marginTop: 12 }}>
         <LeaderRow label="PUBLIC LOG" value={head ? `seq ${head.seq.toLocaleString('en-US')} · root ${head.root.slice(0, 8)}…${head.root.slice(-4)}` : '…'} />
         <LeaderRow label="CHAIN HEIGHT" value={head ? 'blk ' + height(head.height) : '…'} />
-        <LeaderRow label="KEYSETS" value="derived here from the master key pinned in this app" />
+        <LeaderRow label="KEYSETS" value="from the key pinned in this app" />
         {res && (
           <>
             <LeaderRow label="HASH CHAIN" value={res.chainOk ? `${res.deltas} deltas link up to the head ✓` : 'BROKEN ✗'} tone={res.chainOk ? 'hi' : 'alarm'} />

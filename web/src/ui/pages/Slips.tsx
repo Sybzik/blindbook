@@ -202,7 +202,8 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
             <div className="tk-slipcell" key={p.keyset}>
               <BettingSlip serial={serial} market={m.question} outcome={outcome} side={p.outcome === 0 ? 'a' : 'b'}
                 shares={coin(p.units)} price={status === 'open' ? price + '¢ now' : undefined}
-                pays={status === 'open' ? `${coin(p.units)} ${COIN} if it wins` : won && resolved ? `${coin(Math.floor((p.units * resolved.num[p.outcome]!) / resolved.den))} ${COIN}` : 'nothing'} status={status} />
+                paysLabel={status === 'open' ? 'IF IT WINS' : 'PAYS'}
+                pays={status === 'open' ? `${coin(p.units)} ${COIN}` : won && resolved ? `${coin(Math.floor((p.units * resolved.num[p.outcome]!) / resolved.den))} ${COIN}` : 'nothing'} status={status} />
               <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
                 {status === 'won' ? (
                   <KeyButton size="sm" disabled={!!busy} onClick={() => actions.redeem(p.market, p.outcome).then((n) => setMsg(`Cashed in: ${coinLabel(n)} added to your balance.`)).catch(() => undefined)} data-hint="Moves the winnings into your free balance.">CASH IN</KeyButton>

@@ -16,7 +16,7 @@ const SLIP_STATES = {
 
 /* Betting slip: serial, market, outcome, shares, stamp. */
 /* Rows the caller doesn't pass are left out (a position held across fills has no one price or block). */
-export function BettingSlip({ serial = '0041-18A', market = 'CS2 · LEGACY vs PARIVISION', outcome = 'LEGACY', side = 'a', shares = '0.0222', price, stake, pays, block, status = 'open', width, className = '' }) {
+export function BettingSlip({ serial = '0041-18A', market = 'CS2 · LEGACY vs PARIVISION', outcome = 'LEGACY', side = 'a', shares = '0.0222', price, stake, pays, paysLabel = 'PAYS', block, status = 'open', width, className = '' }) {
   const s = SLIP_STATES[status] || SLIP_STATES.open;
   return (
     <div className={['bb-slip', 'bb-paper', 'bb-grain', 'is-' + status, status === 'won' && 'bb-glow-box', className].filter(Boolean).join(' ')} style={{ width }}>
@@ -28,7 +28,7 @@ export function BettingSlip({ serial = '0041-18A', market = 'CS2 · LEGACY vs PA
         <LeaderRow label="SHARES" value={shares} medium="paper" />
         {price !== undefined && <LeaderRow label="PRICE" value={price} medium="paper" />}
         {stake !== undefined && <LeaderRow label="STAKE" value={stake} medium="paper" />}
-        {pays !== undefined && <LeaderRow label="PAYS" value={pays} medium="paper" />}
+        {pays !== undefined && <LeaderRow label={paysLabel} value={pays} medium="paper" />}
         {block !== undefined && <LeaderRow label="BLOCK" value={block} medium="paper" />}
         {s.note && <p className="bb-slip__note">{s.note}</p>}
       </div>

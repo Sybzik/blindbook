@@ -65,6 +65,8 @@ class Tunnel {
       readyRes = res;
       readyRej = rej;
     });
+    // A spare is only awaited when it is needed: one that never came up is replaced then, quietly.
+    this.ready.catch(() => undefined);
     const t = setTimeout(() => readyRej(new Error('tunnel setup timed out')), SETUP_DEADLINE_MS);
     const channel = new MessageChannel();
     this.port = channel.port1;

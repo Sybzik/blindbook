@@ -161,7 +161,7 @@ export function PassPage({ onClose }: { onClose: () => void }) {
     }
   };
   return (
-    <Win title="NOBODY PASS" onClose={onClose} maxWidth={620} style={{ alignSelf: 'center', width: '100%' }}>
+    <Win title="P601 · NOBODY PASS" onClose={onClose} maxWidth={620} style={{ alignSelf: 'center', width: '100%' }}>
       <TeletextHeader page="P601" title="NOBODY PASS" />
       <div ref={ref} style={{ display: 'flex', justifyContent: 'center', margin: '16px 0', overflowX: 'auto' }}>
         <NobodyPass faceSeed={seed} stamps={stamps} issued={issued} />

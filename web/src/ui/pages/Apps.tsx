@@ -163,19 +163,19 @@ export function OddsCalc({ initial = 0.45, onUse }: { initial?: number; onUse?: 
   return (
     <div className="tk-app-body">
       <p className="bb-ui bb-dim" style={{ margin: 0 }}>
-        A price is the chance the market gives an outcome: 45¢ means 45%. Here it is in bookmaker odds, and, if your own estimate is higher, how much of your balance a bet at that price is worth.
+        A price is the chance the market gives an outcome: 45¢ means 45%. Here it is in bookmaker odds, the payout after the 1% fee, and, if your own estimate is higher, how much of your balance a bet at that price is worth.
       </p>
       <AmountSlider value={p} min={0.01} max={0.99} step={0.01} decimals={2} unit="¢/100" label="PRICE" onChange={(x: string) => setP(Number(x))} />
       <div className="tk-calc">
         <LeaderRow label="CHANCE" value={Math.round(v * 100) + '%'} />
         <LeaderRow label="DECIMAL ODDS" value={(1 / v).toFixed(2)} />
-        <LeaderRow label={`PAYS PER 0.01 ${COIN}`} value={((0.01 / v) * 0.99).toFixed(4) + ' (fee 1%)'} />
+        <LeaderRow label={`PAYS PER 0.01 ${COIN}`} value={((0.01 / v) * 0.99).toFixed(4)} />
         <LeaderRow label="AMERICAN ODDS" value={american} />
       </div>
       <AmountSlider value={mine} min={0.01} max={0.99} step={0.01} decimals={2} unit="" label="YOUR OWN ESTIMATE" onChange={(x: string) => setMine(Number(x))} />
       <LeaderRow
-        label="KELLY HINT"
-        value={kelly > 0 ? `at most ${Math.round(kelly * 50)}% of your balance (half Kelly)` : 'no edge at this price: skip it'}
+        label="HALF-KELLY"
+        value={kelly > 0 ? `at most ${Math.round(kelly * 50)}% of your balance` : 'no edge at this price: skip it'}
         tone={kelly > 0 ? 'hi' : 'dim'}
       />
       <div className="row" style={{ gap: 8 }}>

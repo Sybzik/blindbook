@@ -28,6 +28,9 @@
 .tk-words li{font-size:16px;color:var(--phosphor-hi);letter-spacing:.04em}
 @media (max-width:480px){.tk-words{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* P600: what the server stored and what it doesn't have, side by side at equal width. */
+@container (min-width:681px){.tk-record{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+
 /* P100 between phone and full width: the Polymarket column goes first. */
 @container (min-width:681px) and (max-width:1040px){.tk-row{grid-template-columns:56px minmax(0,1fr) 250px 100px 90px;gap:12px}.tk-row>:nth-child(4){display:none}}
 

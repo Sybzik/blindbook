@@ -2,10 +2,9 @@
 // keyboard-reachable buttons). Easter eggs open small cards; none of them fetches anything.
 
 import { useEffect, useRef, useState } from 'react';
-import { Logo, MixnetLamp, Wordmark } from '../ds';
 import { createBooth, type BoothAction, type BoothData, type BoothHandle } from './scene';
 import { play } from '../ui/sound';
-import { SoundToggle } from '../ui/SoundToggle';
+import { BoothChrome } from './chrome';
 
 export interface EggFacts {
   block: number;
@@ -35,6 +34,8 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
   const handle = useRef<BoothHandle | null>(null);
   const [hover, setHover] = useState<{ label: string; x: number; y: number } | null>(null);
   const [egg, setEgg] = useState<{ title: string; body: string; x: number; y: number; mug: boolean } | null>(null);
+  // The scene fades in from the page's own dark once its first frame is ready.
+  const [ready, setReady] = useState(false);
   const eggEl = useRef<HTMLDivElement>(null);
   const close = () => {
     handle.current?.release();
@@ -47,6 +48,24 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
     if (handle.current && !to) await handle.current.enter();
     onEnter(to);
   };
+  // On a phone or a short window the page's text stands over the scene: tell the scene the band
+  // left between the text above and the keys below, measured from the page itself.
+  const root = useRef<HTMLDivElement>(null);
+  const fit = () => {
+    const el = root.current;
+    if (!el || !handle.current) return;
+    const H = el.clientHeight;
+    if (el.clientWidth >= H && H >= 520) return handle.current.inset(null);
+    const r0 = el.getBoundingClientRect().top;
+    const top = (el.querySelector('.ld-tl')?.getBoundingClientRect().bottom ?? r0) - r0;
+    const lows = [...el.querySelectorAll('.bd-keys, .ld-tr')].map((x) => x.getBoundingClientRect().top - r0).filter((y) => y > H / 2);
+    handle.current.inset({ top: top / H, bottom: (H - Math.min(H, ...lows)) / H });
+  };
+  useEffect(() => {
+    const ro = new ResizeObserver(fit);
+    if (root.current) ro.observe(root.current);
+    return () => ro.disconnect();
+  }, []);
   useEffect(() => {
     let dead = false;
     createBooth(canvas.current!, data, {
@@ -74,7 +93,11 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
     })
       .then((h) => {
         if (dead) h.dispose();
-        else handle.current = h;
+        else {
+          handle.current = h;
+          fit();
+          setReady(true);
+        }
       })
       .catch(() => onFail());
     const k = (e: KeyboardEvent) => {
@@ -92,27 +115,9 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
     handle.current?.update(data);
   }, [data.block, data.markets, data.prices?.a, data.prices?.y, data.prices?.la]);
   return (
-    <div className="ld bd" onClick={(e) => e.target === e.currentTarget && close()}>
-      <canvas ref={canvas} className="bd-canvas" aria-hidden="true" />
-      <header className="ld-tl">
-        <div className="ld-brand">
-          <Logo size={28} />
-          <Wordmark height={14} />
-        </div>
-        <p className="bb-label bb-hi">THE PRICE IS PUBLIC. YOU ARE NOT.</p>
-        <p className="bb-label">A PRIVATE PREDICTION MARKET ON ZCASH</p>
-      </header>
-      <div className="ld-tr">
-        <MixnetLamp state={link as 'linked'} />
-        <span>· BLK {data.block.toLocaleString('en-US')}</span>
-        <SoundToggle />
-      </div>
-      <nav className="bd-keys" aria-label="Booth">
-        <button type="button" onClick={() => void enter()}>STEP INSIDE · ENTER</button>
-        <button type="button" onClick={() => onEnter('how')}>HOW IT WORKS</button>
-        <button type="button" onClick={() => onEnter('verify')}>VERIFY</button>
-      </nav>
-      <p className="bd-hint bb-label" aria-hidden="true">DRAG TO LOOK AROUND · CLICK THE CURTAIN</p>
+    <div ref={root} className="ld bd" onClick={(e) => e.target === e.currentTarget && close()}>
+      <canvas ref={canvas} className={'bd-canvas' + (ready ? ' is-on' : '')} aria-hidden="true" />
+      <BoothChrome block={data.block} link={link} onEnter={(to) => (to ? onEnter(to) : void enter())} hint={ready} />
       {hover && !egg && (
         <span className="bd-tip bb-label" style={{ left: hover.x + 14, top: hover.y + 14 }} aria-hidden="true">
           {hover.label}

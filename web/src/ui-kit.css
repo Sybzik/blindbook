@@ -59,7 +59,7 @@ textarea.tk-note:focus{outline:0;border-color:var(--phosphor-hi);box-shadow:inse
 .tk-snake__over p{margin:0}
 .tk-snake__bar{display:flex;flex-wrap:wrap;align-items:center;gap:12px 24px}
 
-.ld{position:relative;height:100vh;min-height:560px;overflow:hidden;background:#010201;color:var(--phosphor);font-family:var(--font-ui)}
+.ld{position:relative;height:100vh;height:100dvh;min-height:340px;overflow:hidden;background:#010201;color:var(--phosphor);font-family:var(--font-ui)}
 .ld-stage{position:absolute;left:50%;top:50%;width:1440px;height:900px;transform-origin:50% 50%;animation:ld-in 1.8s ease-out both}
 .ld-svg{position:absolute;inset:0;display:block}
 .ld-beam{animation:ld-lamp 2.2s ease-out both}

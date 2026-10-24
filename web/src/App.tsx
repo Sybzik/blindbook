@@ -4,6 +4,7 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
 import { BootSequence } from './ds';
 import { Landing } from './ui/Landing.jsx';
+import { BoothChrome } from './booth/chrome';
 import { Desk } from './ui/Desk';
 import { app, start } from './app/services';
 import { useStore } from './app/store';
@@ -12,8 +13,8 @@ import { ui } from './ui/uistate';
 import { listenToCues, play, primeAudio, setSound } from './ui/sound';
 
 // The 3D booth is its own lazy chunk; the 2D booth is the fallback (no WebGL, CLEAN SIGNAL,
-// data saver, low memory, or if the 3D scene fails).
-const Booth3D = lazy(() => import('./booth/Booth3D'));
+// data saver, low memory, or if the 3D scene fails). While the chunk loads, the booth page's own
+// chrome stands on the scene's dark, so no other scene flashes up first.
 function want3d(): boolean {
   const nav = navigator as Navigator & { connection?: { saveData?: boolean }; deviceMemory?: number };
   if (nav.connection?.saveData || (nav.deviceMemory !== undefined && nav.deviceMemory < 3)) return false;
@@ -25,6 +26,9 @@ function want3d(): boolean {
   }
 }
 const CAN_3D = want3d();
+// Fetched from the start, not when the landing first renders.
+const booth3d = CAN_3D ? import('./booth/Booth3D') : null;
+const Booth3D = lazy(() => booth3d ?? import('./booth/Booth3D'));
 
 const initialProof = location.hash.startsWith('#p=') ? location.hash : undefined;
 const initialDuel = /^#d=[0-9a-f]{64}$/.test(location.hash) ? location.hash.slice(3) : undefined;
@@ -100,21 +104,16 @@ export function App() {
     play('boot');
     setPhase('boot');
   };
-  const flat = (
-    <Landing
-      key={intro}
-      block={head?.height ?? 0}
-      markets={markets.length}
-      link={config.onion ? 'tor' : config.mixnet ? link : 'off'}
-      coin={COIN}
-      prices={prices}
-      onEnter={enterFromLanding}
-    />
-  );
   const resolvedMarket = markets.find((m) => m.resolved);
   if (phase === 'landing' && CAN_3D && !clean && !failed3d)
     return (
-      <Suspense fallback={flat}>
+      <Suspense
+        fallback={
+          <div className="ld bd">
+            <BoothChrome block={head?.height ?? 0} link={config.onion ? 'tor' : config.mixnet ? (link === 'linking' ? 'relinking' : link) : 'off'} onEnter={enterFromLanding} hint={false} />
+          </div>
+        }
+      >
         <Booth3D
           key={intro}
           data={{ block: head?.height ?? 0, markets: markets.length, coin: COIN, prices }}

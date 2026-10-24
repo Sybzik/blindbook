@@ -134,11 +134,11 @@ function LandingScene({ px, rim }) {
       <rect x="206" y="598" width="228" height="92" fill="url(#ld-cab)" />
       <rect x="206" y="598" width="228" height="1.5" fill="#5CFF9D" opacity=".18" />
       <ellipse cx="320" cy="694" rx="130" ry="10" fill="#000" opacity=".7" filter="url(#ld-b6)" />
-      <LdCrt x={212} y={494} w={110} h={104} top={px.la || 'LEGACY'} price={px.a + '¢'} color="#5CFF9D" />
-      <LdCrt x={330} y={522} w={102} h={76} top={px.lb || 'PARIVISION'} price={px.b + '¢'} color="#FFB547" />
+      <LdCrt x={212} y={494} w={110} h={104} top={px?.la || 'P100'} price={px ? px.a + '¢' : '—'} color="#5CFF9D" />
+      <LdCrt x={330} y={522} w={102} h={76} top={px?.lb || 'LIVE'} price={px ? px.b + '¢' : '—'} color="#FFB547" />
       <rect x="1044" y="612" width="124" height="80" fill="url(#ld-cab)" />
       <ellipse cx="1106" cy="696" rx="80" ry="8" fill="#000" opacity=".7" filter="url(#ld-b6)" />
-      <LdCrt x={1046} y={508} w={120} h={104} top={px.ly || 'P202 · YES'} price={px.y + '¢'} color="#5CFF9D" />
+      <LdCrt x={1046} y={508} w={120} h={104} top={px?.ly || 'P2XX'} price={px ? px.y + '¢' : '—'} color="#5CFF9D" />
 
       <rect width={LD_W} height={LD_H} fill="url(#ld-vig)" />
     </svg>
@@ -161,18 +161,16 @@ export function Landing({ onEnter, block, markets, link, coin, prices }) {
   const root = React.useRef(null);
   const s = useCoverScale(root);
   const [rim, setRim] = React.useState(false);
-  const [px, setPx] = React.useState({ a: 45, b: 56, y: 62 });
   React.useEffect(() => {
-    const t = setInterval(() => setPx((p) => { const a = Math.max(30, Math.min(70, p.a + (Math.random() < 0.5 ? -1 : 1))); return { a, b: 101 - a, y: Math.max(40, Math.min(80, p.y + (Math.random() < 0.5 ? -1 : 1))) }; }), 2600);
     const k = (e) => { if (e.key === 'Enter' && e.target === document.body) onEnter(); };
     window.addEventListener('keydown', k);
-    return () => { clearInterval(t); window.removeEventListener('keydown', k); };
+    return () => window.removeEventListener('keydown', k);
   }, []);
   const curtain = { onMouseEnter: () => setRim(true), onMouseLeave: () => setRim(false), onFocus: () => setRim(true), onBlur: () => setRim(false) };
   return (
     <div className="ld" ref={root}>
       <div className="ld-stage" style={{ transform: `translate(-50%, -50%) scale(${s})` }}>
-        <LandingScene px={prices || px} rim={rim} />
+        <LandingScene px={prices} rim={rim} />
         <div className="ld-tally" role="img" aria-label={`${markets} markets live, block ${block}, number of traders redacted`}>
           <div className="ld-tally__cell"><SplitFlap value={String(markets)} size="md" /><span>MARKETS LIVE</span></div>
           <div className="ld-tally__cell"><SplitFlap value={String(block % 100000).padStart(5, '0')} size="md" /><span>{coin} BLOCK</span></div>

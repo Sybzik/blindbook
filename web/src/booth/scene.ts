@@ -19,6 +19,9 @@ export interface BoothHandle {
   enter(): Promise<void>;
   /** Stop following the object a card was opened on. */
   release(): void;
+  /** The page's text above and keys below, as fractions of the height, where they cover the
+   *  middle of the scene (a phone, a short window); null where they stand beside it. */
+  inset(v: { top: number; bottom: number } | null): void;
   dispose(): void;
 }
 
@@ -126,8 +129,10 @@ export async function createBooth(
 ): Promise<BoothHandle> {
   await Promise.all(['48px "VT323"', '24px "Departure Mono"', '20px "IBM Plex Mono"'].map((f) => document.fonts.load(f)));
   const phone = matchMedia('(pointer: coarse)').matches;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !phone, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 1.25 : 1.75));
+  // Phones get a sharp picture too: the scene is light, and a 1.25× buffer without antialiasing
+  // looked stepped on a 3× screen. Weak devices take the 2D booth before this point.
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, phone ? 2 : 1.75));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.05;
@@ -286,7 +291,7 @@ export async function createBooth(
       g.fillText('P100 · LIVE', 34, 64);
       g.font = '84px "VT323", monospace';
       g.fillStyle = GREEN;
-      g.fillText(p ? `${(p.la ?? 'YES').slice(0, 7)} ${p.a}¢` : 'LINKING…', 34, 170);
+      g.fillText(p ? `${(p.la ?? 'YES').slice(0, 7)} ${p.a}¢` : !d.block ? 'LINKING…' : d.markets ? 'LOADING…' : 'BOOK CLOSED', 34, 170);
       g.fillStyle = AMBER;
       if (p) g.fillText(`${(p.lb ?? 'NO').slice(0, 7)} ${p.b}¢`, 34, 260);
       g.font = '26px "Departure Mono", monospace';
@@ -457,6 +462,9 @@ export async function createBooth(
   let wantYaw = 0;
   let wantPitch = 0;
   let dist = 6.4;
+  // How far the camera looks below the booth's middle, so the scene sits where the band is.
+  let lift = 0;
+  let insets: { top: number; bottom: number } | null = null;
   const frame = () => {
     const w = canvas.clientWidth || innerWidth;
     const h = canvas.clientHeight || innerHeight;
@@ -466,8 +474,17 @@ export async function createBooth(
     // screens, the side table in view at any aspect.
     camera.fov = camera.aspect < 1 ? 50 : 38;
     const half = Math.tan((camera.fov * Math.PI) / 360);
-    const needW = camera.aspect < 1 ? 2.7 : 5.0;
-    dist = Math.max(5.3 / 2 / half, needW / 2 / (half * camera.aspect));
+    // Where the page's text covers the middle (a phone, a short window), the scene, lamp to floor,
+    // fits the band between the text above and the keys below, centred on it, and the booth front
+    // (on a wide screen also the side table) fits across. Elsewhere the default framing.
+    if (insets) {
+      const band = Math.max(0.3, 1 - insets.top - insets.bottom - 0.04);
+      dist = Math.max(4.55 / band / 2 / half, (camera.aspect < 1 ? 3.4 : 5.0) / 2 / (half * camera.aspect));
+      lift = (0.515 - (insets.top + 1 - insets.bottom) / 2) * 2 * dist * half;
+    } else {
+      dist = Math.max(5.3 / 2 / half, 5.0 / 2 / (half * camera.aspect));
+      lift = 0;
+    }
     camera.updateProjectionMatrix();
   };
   frame();
@@ -552,13 +569,13 @@ export async function createBooth(
     yaw += (wantYaw + Math.sin(t * 0.13) * 0.03 - yaw) * 0.06;
     pitch += (wantPitch - pitch) * 0.06;
     let r = dist;
-    let ty = target.y;
+    let ty = target.y - lift;
     if (enterT >= 0) {
       const k = Math.min(1, (t - enterT) / 1.3);
       const e = k * k * (3 - 2 * k);
       curtainMat.uniforms.uOpen!.value = Math.min(1, k * 1.6);
       r = THREE.MathUtils.lerp(dist, 1.1, e);
-      ty = THREE.MathUtils.lerp(target.y, 1.3, e);
+      ty = THREE.MathUtils.lerp(target.y - lift, 1.3, e);
       yaw *= 1 - e;
       if (k >= 1 && enterDone) {
         enterDone();
@@ -585,6 +602,11 @@ export async function createBooth(
     },
     release() {
       anchor = null;
+    },
+    inset(v) {
+      if (v?.top === insets?.top && v?.bottom === insets?.bottom) return;
+      insets = v;
+      frame();
     },
     enter() {
       entering = true;

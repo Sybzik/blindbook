@@ -36,7 +36,7 @@
 
 No wallet needed. On a phone, every page below is under **MENU**.
 
-1. Open **[blindbook.tech](https://blindbook.tech)** → **STEP INSIDE**. The lamp in the status bar turns **LINKED** within seconds.
+1. Open **[blindbook.tech](https://blindbook.tech)** → **STEP INSIDE**. The lamp in the status bar turns **LINKED** once the mixnet route is up, usually within 15–30 seconds.
 2. **NEW VAULT** → **I WROTE THEM DOWN** → **later** → a passphrase, or Face ID on a phone.
 3. **CAGE** → **JUDGE CODE** → paste the code from the submission → **REDEEM**. +1 TAZ (testnet ZEC) arrives.
 4. **MARKETS** → any market → **BUY**. The slip prints in a few seconds.

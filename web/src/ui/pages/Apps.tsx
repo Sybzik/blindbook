@@ -1,7 +1,7 @@
 // The back room (P701–P705). Every app runs locally and makes no network request; BLOCK RADIO
 // only plays the public data the desk already polls. Scores and notes live in the vault.
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
 import { APP_ICONS, AmountSlider, KeyButton, LeaderRow, PixelIcon } from '../../ds';
 import { Win, OpenVault } from '../win';
 import { app, setLocal } from '../../app/services';
@@ -68,6 +68,24 @@ function NullifierSnake({ active }: { active: boolean }) {
       return { ...s, next: m, running: true };
     });
   const restart = () => setG({ ...snInit(), running: true });
+  // On a touch screen: swipe on the board (each 20px of a drag turns once), or the cross below it.
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onDown = (e: RPointerEvent) => {
+    if (e.pointerType === 'mouse') return;
+    swipe.current = { x: e.clientX, y: e.clientY };
+  };
+  const onMove = (e: RPointerEvent) => {
+    const s0 = swipe.current;
+    if (!s0) return;
+    const dx = e.clientX - s0.x, dy = e.clientY - s0.y;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+    turn(Math.abs(dx) > Math.abs(dy) ? [Math.sign(dx), 0] : [0, Math.sign(dy)]);
+    swipe.current = { x: e.clientX, y: e.clientY };
+  };
+  const press = (m: Cell) => (e: RPointerEvent) => {
+    e.preventDefault();
+    turn(m);
+  };
   useEffect(() => {
     if (!active) return;
     // By the key's place, not its letter: WASD works on any layout, with Caps Lock or Shift.
@@ -101,7 +119,7 @@ function NullifierSnake({ active }: { active: boolean }) {
   }, [g.score]);
   return (
     <div className="tk-snake">
-      <div className="tk-snake__board">
+      <div className={'tk-snake__board' + (g.running ? ' is-running' : '')} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={() => (swipe.current = null)} onPointerCancel={() => (swipe.current = null)}>
         <svg viewBox={`0 0 ${SN_W} ${SN_H}`} shapeRendering="crispEdges" role="img" aria-label={`Snake, ${g.snake.length} long, ${g.score} notes`}>
           <rect x={g.food[0] + 0.2} y={g.food[1] + 0.2} width="0.6" height="0.6" fill="var(--phosphor-hi)" />
           {g.snake.map(([x, y], i) => (
@@ -136,12 +154,12 @@ function NullifierSnake({ active }: { active: boolean }) {
         <span>NOTES <span className="bb-hi">{g.score}</span></span>
         <span>BEST <span className="bb-hi">{best}</span></span>
         <span>LENGTH <span className="bb-hi">{g.snake.length}</span></span>
-        <span className="tk-pad" aria-label="Direction pad">
-          <button type="button" aria-label="Up" onClick={() => turn([0, -1])}>▲</button>
-          <button type="button" aria-label="Left" onClick={() => turn([-1, 0])}>◀</button>
-          <button type="button" aria-label="Down" onClick={() => turn([0, 1])}>▼</button>
-          <button type="button" aria-label="Right" onClick={() => turn([1, 0])}>▶</button>
-        </span>
+      </div>
+      <div className="tk-pad" role="group" aria-label="Direction pad">
+        <button type="button" aria-label="Up" onPointerDown={press([0, -1])} onClick={() => turn([0, -1])}><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 1 9.5 9h-9z" /></svg></button>
+        <button type="button" aria-label="Left" onPointerDown={press([-1, 0])} onClick={() => turn([-1, 0])}><svg viewBox="0 0 10 10" aria-hidden="true" style={{ transform: 'rotate(270deg)' }}><path d="M5 1 9.5 9h-9z" /></svg></button>
+        <button type="button" aria-label="Down" onPointerDown={press([0, 1])} onClick={() => turn([0, 1])}><svg viewBox="0 0 10 10" aria-hidden="true" style={{ transform: 'rotate(180deg)' }}><path d="M5 1 9.5 9h-9z" /></svg></button>
+        <button type="button" aria-label="Right" onPointerDown={press([1, 0])} onClick={() => turn([1, 0])}><svg viewBox="0 0 10 10" aria-hidden="true" style={{ transform: 'rotate(90deg)' }}><path d="M5 1 9.5 9h-9z" /></svg></button>
       </div>
     </div>
   );

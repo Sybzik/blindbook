@@ -37,7 +37,11 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
   // The scene fades in from the page's own dark once its first frame is ready.
   const [ready, setReady] = useState(false);
   const eggEl = useRef<HTMLDivElement>(null);
+  // A card can open under the finger that opened it: the click a phone sends after that tap must
+  // not close it again.
+  const openedAt = useRef(0);
   const close = () => {
+    if (performance.now() - openedAt.current < 500) return;
     handle.current?.release();
     setEgg(null);
   };
@@ -76,6 +80,7 @@ export default function Booth3D({ data, facts, link, onEnter, onFail }: { data: 
           const e = EGG(a, factsRef.current);
           if (e) {
             play(a === 'phone' ? 'boot' : 'click');
+            openedAt.current = performance.now();
             setEgg({ ...e, x, y, mug: a === 'mug' });
           }
         }

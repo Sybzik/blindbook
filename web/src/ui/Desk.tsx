@@ -83,7 +83,7 @@ function LinkBanner({ short = false }: { short?: boolean }) {
   if (trouble === 'unreachable')
     return (
       <AlarmBanner title="THE MIXNET CAN'T BE REACHED FROM HERE" action="" onAction={undefined}>
-        Still trying, and your balance is safe. Some networks (offices, hotels, some countries) block its connections: another network or mobile data usually works.{tor}
+        Still trying, and your balance is safe. Some networks and VPNs (offices, hotels, some countries) block its connections: without the VPN, another network or mobile data usually works.{tor}
       </AlarmBanner>
     );
   return (

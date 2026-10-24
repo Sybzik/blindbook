@@ -77,6 +77,8 @@ function outcomesOf(meta: MarketMeta, live: LiveMarket | undefined, series: Poin
 export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void; onClose: () => void }) {
   const all = useStore(app, (s) => s.markets);
   const live = useStore(app, (s) => s.live);
+  const link = useStore(app, (s) => s.link);
+  const unreachable = useStore(app, (s) => s.linkTrouble === 'unreachable');
   const now = Date.now();
   // Search and sort happen here, on the catalog every visitor has: nothing is asked for.
   const [q, setQ] = useState('');
@@ -107,7 +109,17 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
           <span>CLOSES IN</span>
           <span className="hide-sm">STATUS</span>
         </div>
-        {all.length === 0 && <p className="bb-text bb-dim">{config.mixnet ? 'Loading the catalog over the mixnet…' : 'Loading the catalog…'}</p>}
+        {all.length === 0 && (
+          <p className="bb-text bb-dim">
+            {!config.mixnet
+              ? 'Loading the catalog…'
+              : link === 'linked'
+                ? 'Loading the catalog over the mixnet…'
+                : unreachable
+                  ? "The mixnet can't be reached from this network yet, so the catalog can't load. A VPN or a filtered network often blocks it: try without the VPN, or on mobile data."
+                  : 'Linking to the mixnet first (three hops, about 15 seconds); the catalog follows.'}
+          </p>
+        )}
         {all.length > 0 && markets.length === 0 && <p className="bb-text bb-dim">No market matches “{q}”.</p>}
         {markets.map((m) => {
           const lm = live?.markets.find((x) => x.id === m.id);

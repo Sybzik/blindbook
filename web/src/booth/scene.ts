@@ -502,6 +502,17 @@ export async function createBooth(
     const hit = ray.intersectObjects(hits, true)[0];
     lastHit = hit?.point ?? null;
     let o: THREE.Object3D | null = hit?.object ?? null;
+    // A fingertip is wider than the table's little objects: on a touch screen, a tap within 32px
+    // of one's middle picks it.
+    if (!o && e.pointerType === 'touch') {
+      let best = 32;
+      for (const t of [zebra, bonsai, phoneG, mug, note]) {
+        const c = t.getWorldPosition(new THREE.Vector3());
+        const s2 = c.clone().project(camera);
+        const d = Math.hypot(((s2.x + 1) / 2) * r.width + r.left - e.clientX, ((1 - s2.y) / 2) * r.height + r.top - e.clientY);
+        if (d < best) { best = d; o = t; lastHit = c; }
+      }
+    }
     while (o && !o.userData.action) o = o.parent;
     return o;
   };
@@ -556,6 +567,8 @@ export async function createBooth(
     curtainMat.uniforms.uTime!.value = t;
     beamMat.uniforms.uTime!.value = t;
     curtainMat.uniforms.uHover!.value += (hoverCurtain - curtainMat.uniforms.uHover!.value) * 0.08;
+    // The green rim rides the cloth's leading edge (the shader's width), opening or hovered.
+    rim.position.x = -0.91 + THREE.MathUtils.lerp(0.98, 0.26, curtainMat.uniforms.uOpen!.value) + curtainMat.uniforms.uHover!.value * 0.04;
     const p = dustGeo.attributes.position as THREE.BufferAttribute;
     for (let i = 0; i < N; i++) {
       let y = p.getY(i) + 0.0012;

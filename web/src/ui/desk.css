@@ -101,9 +101,16 @@
 .tk-file input{position:absolute;inset:0;opacity:0;cursor:pointer}
 
 /* Back room */
-.tk-pad{display:inline-flex;gap:4px;margin-left:auto}
-.tk-pad button{width:44px;height:44px;background:var(--glass);border:1px solid var(--phosphor-mid);color:var(--phosphor);font:inherit;cursor:pointer}
+/* Snake on a touch screen: a thumb-sized cross under the board; the board itself takes swipes while the game runs. */
+.tk-pad{display:grid;grid-template-columns:repeat(3,60px);grid-template-rows:repeat(3,60px);gap:6px;justify-content:center;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.tk-pad button{display:grid;place-items:center;background:var(--glass);border:1px solid var(--phosphor-mid);color:var(--phosphor);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.tk-pad svg{width:20px;height:20px;fill:currentColor}
+.tk-pad button:nth-child(1){grid-area:1/2}
+.tk-pad button:nth-child(2){grid-area:2/1}
+.tk-pad button:nth-child(3){grid-area:3/2}
+.tk-pad button:nth-child(4){grid-area:2/3}
 .tk-pad button:active{background:var(--phosphor);color:var(--void)}
+.tk-snake__board.is-running{touch-action:none}
 @media (hover:hover) and (pointer:fine){.tk-pad{display:none}}
 
 .tk-tracker{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:10px;border:1px solid var(--phosphor-mid);background:var(--glass)}
@@ -200,6 +207,8 @@
 .bd-egg p{margin:0 0 6px}
 .bd-steam{animation:bd-steam 2.4s ease-out both}
 @keyframes bd-steam{from{opacity:0;transform:translateY(16px);filter:blur(4px)}to{opacity:1;transform:none;filter:none}}
+/* On a phone a card opens as a strip across the screen just above the keys, not on the object under the finger. */
+@media (max-width:760px){.bd-egg{left:16px!important;right:16px;top:auto!important;bottom:calc(172px + env(safe-area-inset-bottom));width:auto;visibility:visible!important}.bd-egg .bd-steam{font-size:28px}}
 @media (max-width:760px){.bd-hint{display:none}.bd-keys{left:16px;right:16px;flex-direction:row;flex-wrap:wrap;justify-content:center;bottom:calc(20px + env(safe-area-inset-bottom))}}
 @media (max-width:760px){.bd .ld-tr{bottom:calc(116px + env(safe-area-inset-bottom))}}
 /* A phone held sideways: the keys in one row, no hint over the scene. A narrow phone: the lamp line on one row. */
@@ -229,3 +238,6 @@
 .pg-status .tk-sound{min-width:36px;min-height:36px}
 /* The narrowest phones (320 px): the block height steps aside so the sound key stays on screen. */
 @media (max-width:359px){.pg-status{gap:4px;padding:10px 8px 8px}.pg-status .bb-flap{display:none}}
+
+/* A phone zooms into any field set under 16px when it gets focus, and stays zoomed: never let it. */
+@media (pointer:coarse){input:not([type=range]):not([type=checkbox]):not([type=radio]),textarea,select{font-size:16px!important}}

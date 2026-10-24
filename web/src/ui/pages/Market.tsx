@@ -86,9 +86,11 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
   const [sort, setSort] = useState<'closing' | 'volume' | 'page'>('closing');
   const closes = (m: MarketMeta) => m.eventStartMs ?? m.endMs;
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  // Open markets first, then those waiting for their result, then the settled ones.
+  const rank = (m: MarketMeta) => ({ OPEN: 0, HALTED: 1, RESOLVING: 1, RESOLVED: 2 })[statusOf(m, live?.markets.find((x) => x.id === m.id))];
   const markets = all
     .filter((m) => words.every((w) => `${m.page} ${m.question} ${m.outcomes.join(' ')} ${m.group ?? ''}`.toLowerCase().includes(w)))
-    .sort((a, b) => (sort === 'closing' ? closes(a) - closes(b) : sort === 'volume' ? (b.volume ?? 0) - (a.volume ?? 0) : a.page.localeCompare(b.page)));
+    .sort((a, b) => rank(a) - rank(b) || (sort === 'closing' ? closes(a) - closes(b) : sort === 'volume' ? (b.volume ?? 0) - (a.volume ?? 0) : a.page.localeCompare(b.page)));
   return (
     <Win title="P100 · MARKETS" onClose={onClose}>
       <TeletextHeader page="P100" title="MARKETS · MIRRORED FROM POLYMARKET" />
@@ -126,16 +128,21 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
         {all.length > 0 && markets.length === 0 && <p className="bb-text bb-dim">No market matches “{q}”.</p>}
         {markets.map((m) => {
           const lm = live?.markets.find((x) => x.id === m.id);
-          const a = Math.round(priceA(lm));
-          const ref = lm ? Math.round(lm.reference.mid_ppm / 10_000) : 0;
           const st = statusOf(m, lm);
+          // A settled market shows what each share pays (100¢ for the winner), not a stale price.
+          const res = m.resolved ?? (lm?.resolved ? { den: lm.resolved[0], num: [lm.resolved[1], lm.resolved[2]] as [number, number] } : null);
+          const a = res ? Math.round((res.num[0] / res.den) * 100) : Math.round(priceA(lm));
+          const ref = lm ? Math.round(lm.reference.mid_ppm / 10_000) : 0;
           const named = !(m.outcomes[0] === 'Yes' && m.outcomes[1] === 'No');
           return (
-            <button key={m.id} type="button" role="listitem" className="tk-row" onClick={() => onOpen(m.id)} data-hint={`Opens ${m.page}: ${m.question}`}>
+            <button key={m.id} type="button" role="listitem" className={'tk-row' + (st === 'OPEN' ? '' : ' is-closed')} onClick={() => onOpen(m.id)} data-hint={`Opens ${m.page}: ${m.question}`}>
               <span className="pg">{m.page.slice(1)}</span>
               <span className="q">
                 {/* named outcomes (OVER vs UNDER, two fighters) take the line below; the question above says which game */}
-                <span className="bb-label">{named ? m.question : m.group ?? 'MARKET'}</span>
+                <span className="bb-label">
+                  {st !== 'OPEN' && <span className={'tk-st tk-st--' + st + ' tk-st--inline'}>{st}</span>}
+                  {named ? m.question : m.group ?? 'MARKET'}
+                </span>
                 <b>{named ? <><span className="bb-a">{m.outcomes[0].toUpperCase()}</span> <span className="bb-dim">vs</span> <span className="bb-b">{m.outcomes[1].toUpperCase()}</span></> : m.question}</b>
               </span>
               <span className="pills">

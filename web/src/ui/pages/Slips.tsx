@@ -11,7 +11,10 @@ import { estimateSell } from '../../app/pricing';
 import { isSlipCode } from '../../core/codes';
 import { config, COIN } from '../../app/config';
 import { Win, OpenVault, DoubtLine } from '../win';
-import { app, actions, type Position } from '../../app/services';
+import { app, actions, getApi, type Position } from '../../app/services';
+import { findCall } from '../../core/calls';
+import { openCalled } from '../uistate';
+import type { HistoryEntry } from '../../core/wallet';
 import { useStore } from '../../app/store';
 import { coin, coinLabel, utc } from '../../app/format';
 import { play } from '../sound';
@@ -53,10 +56,47 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
   const error = useStore(app, (s) => s.error);
   const vault = useStore(app, (s) => s.vault);
   const outbox = useStore(app, (s) => s.outbox);
+  const history = useStore(app, (s) => s.history);
+  const head = useStore(app, (s) => s.head);
+  const [finding, setFinding] = useState<string | null>(null);
   const [handed, setHanded] = useState<Handed | null>(null);
   const [incoming, setIncoming] = useState('');
   const [msg, setMsg] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  // The latest filled buy of a position, from the vault's history: its CALLED IT card, after the
+  // fact (a call proves most once it has come true). Its block is looked up in the public log.
+  const lastBuy = (market: string, outcome: 0 | 1): HistoryEntry | undefined =>
+    [...history].reverse().find((h) => h.kind === 'buy' && h.called?.market === market && h.called.outcome === outcome && (h.fill?.out ?? 0) > 0);
+  const calledIt = async (h: HistoryEntry, question: string, label: string, side: 'a' | 'b') => {
+    const f = h.fill!;
+    const batch = Number(h.stored.batch_id ?? 0);
+    setFinding(h.called!.tag);
+    let block: number | null = null;
+    try {
+      const at = head?.height ?? 0;
+      const found = await findCall(getApi(), h.called!.tag, at - Math.ceil((Date.now() - h.at_ms) / 75_000) - 40);
+      block = found?.height ?? null;
+    } catch {
+      /* the card still opens; its block reads NEXT until the log is reachable */
+    } finally {
+      setFinding(null);
+    }
+    openCalled({
+      serial: String(batch).padStart(4, '0') + '-' + f.tag.slice(0, 3).toUpperCase(),
+      market: question,
+      outcome: label,
+      side,
+      shares: coin(f.out),
+      price: f.avg_price_bp ? Math.round(f.avg_price_bp / 100) + '¢' : '—',
+      stake: coin(f.kept + f.fee) + ' ' + COIN,
+      block,
+      batchId: batch,
+      status: 'open',
+      tag: f.tag,
+      calledIndex: h.called!.index,
+      at_ms: h.at_ms,
+    });
+  };
   // A slip that leaves the vault (sold, handed over, cashed in) burns into phosphor pixels.
   const [burning, setBurning] = useState<Position[]>([]);
   const prev = useRef<Position[]>(positions);
@@ -214,6 +254,14 @@ export function SlipsPage({ onClose }: { onClose: () => void }) {
                     <KeyButton variant="secondary" size="sm" disabled={status !== 'open' || !!busy} onClick={() => actions.sell(p.market, p.outcome, p.units, bid).then((r) => setMsg(`Sold: ${coinLabel(r.fill.out)} back in your balance.`)).catch(() => undefined)} data-hint={`Sells the whole slip at the price of the next batch: about ${coin(sellNow)} ${COIN} now, never below ${bid / 100}¢ a share.`}>SELL · ≈{coin(sellNow, 3)}</KeyButton>
                   )
                 )}
+                {(() => {
+                  const h = lastBuy(p.market, p.outcome);
+                  return h ? (
+                    <KeyButton variant={status === 'won' ? 'primary' : 'secondary'} size="sm" disabled={!!finding} loading={finding === h.called!.tag} onClick={() => void calledIt(h, m.question, outcome, p.outcome === 0 ? 'a' : 'b')} data-hint="Prints the CALLED IT card of your bet: a link that proves the call, its price and block, and nothing about you.">
+                      CALLED IT
+                    </KeyButton>
+                  ) : null;
+                })()}
                 <KeyButton variant="secondary" size="sm" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`)} data-hint="Hands the slip to someone as a code. No chain transaction, no record of who held it.">HAND OVER</KeyButton>
                 <KeyButton variant="secondary" size="sm" icon="qr" disabled={!!busy} onClick={() => handOver(p.keyset, p.units, `${coin(p.units)} SHARES · ${outcome}`, { market: m.question, outcome, shares: coin(p.units), serial })} data-hint="Prints bearer paper. Whoever scans it owns it.">PRINT</KeyButton>
               </div>

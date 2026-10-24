@@ -219,6 +219,10 @@ export function Desk({ initial, proof, duel, onIntro }: { initial?: string; proo
     if (request.duel) setDuelDraft(request.duel);
     setVaultWin(false);
     go(request.id);
+    if (request.called) {
+      cue('calledit');
+      setCalled(request.called);
+    }
   }, [request?.n]);
   const go = (id: string) => {
     setCalled(null);

@@ -2,6 +2,7 @@
 // say nothing about bets or balances, THREAT_MODEL D8) and hand-offs between windows (the odds
 // calculator filling the bet panel, console verbose mode).
 
+import type { FilledSlip } from './pages/Market';
 import { createStore } from '../app/store';
 
 export type Theme = 'green' | 'amber' | 'paper';
@@ -16,8 +17,9 @@ export interface UiState {
   verbose: boolean;
   /** BLOCK RADIO playing (its window must be open). */
   radio: boolean;
-  /** A window another window asks the desk to open (with a duel draft for P150). */
-  request: { id: string; n: number; duel?: { market?: string; side?: 'a' | 'b' } } | null;
+  /** A window another window asks the desk to open (with a duel draft for P150, or the slip of a
+   *  CALLED IT card asked for from SLIPS). */
+  request: { id: string; n: number; duel?: { market?: string; side?: 'a' | 'b' }; called?: FilledSlip } | null;
   /** Set by ODDS CALC "USE IN BET" or the console's buy command; the bet panel takes it once. */
   prefill: { market?: string; side?: 'a' | 'b'; units?: number; maxCents?: number } | null;
 }
@@ -64,4 +66,9 @@ let asks = 0;
 /** Ask the desk to open a window (from inside another window). */
 export function openWindow(id: string, duel?: { market?: string; side?: 'a' | 'b' }) {
   ui.set({ request: { id, n: ++asks, duel } });
+}
+
+/** The CALLED IT card of an earlier bet. */
+export function openCalled(slip: FilledSlip) {
+  ui.set({ request: { id: 'market', n: ++asks, called: slip } });
 }

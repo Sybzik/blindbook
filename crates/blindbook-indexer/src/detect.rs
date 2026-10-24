@@ -16,9 +16,9 @@ use crate::keys::DepositKeys;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Privacy {
-    /// Ironwood only.
+    /// Within the pool the payment arrived in.
     Shielded,
-    /// Sapling spends or Orchard-pool actions: the amount crossing pools is visible on-chain.
+    /// Value crossed into that pool from another shielded pool: the amount is visible on-chain.
     AmountVisible,
     /// Transparent inputs: the sender's address and amount are public.
     Exposed,
@@ -35,10 +35,15 @@ pub struct TxShape {
 }
 
 impl TxShape {
-    pub fn privacy(&self) -> Privacy {
+    /// How private a payment received in `pool` ("ironwood" or "orchard") was. The amount shows
+    /// when value crosses into that pool from another one: Sapling spends, or the other of the
+    /// two action pools. Where Ironwood isn't active (mainnet before NU7) a payment arrives in
+    /// Orchard, and Orchard to Orchard stays shielded.
+    pub fn privacy(&self, pool: &str) -> Privacy {
+        let other = if pool == "ironwood" { self.orchard_actions } else { self.ironwood_actions };
         if self.transparent_inputs > 0 {
             Privacy::Exposed
-        } else if self.sapling_spends > 0 || self.orchard_actions > 0 {
+        } else if self.sapling_spends > 0 || other > 0 {
             Privacy::AmountVisible
         } else {
             Privacy::Shielded
@@ -109,7 +114,7 @@ fn payment(
         value_zat: note.value().inner(),
         index,
         shape,
-        privacy: shape.privacy(),
+        privacy: shape.privacy(pool),
     }
 }
 
@@ -187,4 +192,25 @@ pub fn txid_string(bytes: &[u8]) -> String {
     let mut b = bytes.to_vec();
     b.reverse();
     hex::encode(b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn privacy_follows_the_receiving_pool() {
+        let orchard_only = TxShape { orchard_actions: 2, ..Default::default() };
+        let ironwood_only = TxShape { ironwood_actions: 2, ..Default::default() };
+        let crossing = TxShape { orchard_actions: 1, ironwood_actions: 2, ..Default::default() };
+        let from_sapling = TxShape { sapling_spends: 1, orchard_actions: 2, ..Default::default() };
+        let transparent = TxShape { transparent_inputs: 1, orchard_actions: 2, ..Default::default() };
+        // Mainnet before NU7: Orchard to Orchard is shielded.
+        assert_eq!(orchard_only.privacy("orchard"), Privacy::Shielded);
+        assert_eq!(ironwood_only.privacy("ironwood"), Privacy::Shielded);
+        assert_eq!(crossing.privacy("ironwood"), Privacy::AmountVisible);
+        assert_eq!(crossing.privacy("orchard"), Privacy::AmountVisible);
+        assert_eq!(from_sapling.privacy("orchard"), Privacy::AmountVisible);
+        assert_eq!(transparent.privacy("orchard"), Privacy::Exposed);
+    }
 }

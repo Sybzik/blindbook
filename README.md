@@ -170,7 +170,7 @@ Nobody has to trust the internet-facing server with results either: the signer r
 
 ## Run it
 
-Everything runs locally without a Zcash node: a development server with the real API and the signer in one process, three synthetic markets, judge codes `DEV-0001`…`DEV-0099` (one use each) and `DEV-JUDGE` (shared, like the judges’ code), and a block every 15 seconds. You need Rust 1.95 with the `wasm32-unknown-unknown` target (the app's verifier runs the engine as WebAssembly), Node 22 and pnpm 10.
+A local copy on your own computer, no Zcash node needed: a development server with the real API and the signer in one process, three synthetic markets, a block every 15 seconds and a local judge code, `DEV-JUDGE`. You need Rust 1.95 with the `wasm32-unknown-unknown` target (the app's verifier runs the engine as WebAssembly), Node 22 and pnpm 10.
 
 ```bash
 cargo run -p blindbook-api --features embedded-signer --example devserver
@@ -180,7 +180,7 @@ cargo run -p blindbook-api --features embedded-signer --example devserver
 pnpm --dir web install && pnpm --dir web dev
 ```
 
-Open http://127.0.0.1:5173, make a vault, redeem `DEV-0001` in F3 CAGE → JUDGE CODE, and bet. Tests:
+Open http://127.0.0.1:5173 (your local copy, not the live site), make a vault, redeem `DEV-JUDGE` in F3 CAGE → JUDGE CODE, and bet. Tests:
 
 ```bash
 cargo test --workspace && cargo test -p blindbook-api --features embedded-signer

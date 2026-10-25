@@ -46,6 +46,9 @@ services:
 
   tor:
     build: ./tor
+    # In Caddy's network namespace: the onion reaches the mirror at 127.0.0.1:8081, with no name
+    # resolved once at start that a recreated Caddy (a new address) would leave pointing nowhere.
+    network_mode: "service:caddy"
     volumes:
       # The onion's keys live here: back this volume up, or the .onion address changes.
       - tor-data:/var/lib/tor

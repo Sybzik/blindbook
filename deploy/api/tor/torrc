@@ -3,7 +3,8 @@ SocksPort 0
 DataDirectory /var/lib/tor
 HiddenServiceDir /var/lib/tor/blindbook
 HiddenServiceVersion 3
-# The onion's port 80 is Caddy's plain-HTTP site for the mirror (static app + /v1).
-HiddenServicePort 80 caddy:8081
+# The onion's port 80 is Caddy's plain-HTTP site for the mirror (static app + /v1). Tor runs in
+# Caddy's network namespace (compose.yml), so the site is on loopback.
+HiddenServicePort 80 127.0.0.1:8081
 # Tor logs nothing about connections at this level.
 Log notice stderr

@@ -49,6 +49,8 @@ No wallet needed. On a phone, every page below is under **MENU**.
 
 Then, if you have a minute more: **VERIFY** re-checks the whole public log in your browser, and **P600** shows everything the server stored about each of your requests.
 
+**Nothing is mocked.** The playground runs on Zcash testnet, live through judging: real shielded transactions, Polymarket's live prices, results read from Polygon, every request over the public Nym mixnet. The same build ran on mainnet with real ZEC for the video.
+
 ## Why
 
 On a public prediction market, every bet is a dossier: wallet, size, timing, history. Big traders get tracked, copied and doxxed, and people who actually know something stay out.

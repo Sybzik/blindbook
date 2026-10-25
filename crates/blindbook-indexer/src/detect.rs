@@ -40,7 +40,11 @@ impl TxShape {
     /// two action pools. Where Ironwood isn't active (mainnet before NU7) a payment arrives in
     /// Orchard, and Orchard to Orchard stays shielded.
     pub fn privacy(&self, pool: &str) -> Privacy {
-        let other = if pool == "ironwood" { self.orchard_actions } else { self.ironwood_actions };
+        let other = if pool == "ironwood" {
+            self.orchard_actions
+        } else {
+            self.ironwood_actions
+        };
         if self.transparent_inputs > 0 {
             Privacy::Exposed
         } else if self.sapling_spends > 0 || other > 0 {
@@ -200,11 +204,29 @@ mod tests {
 
     #[test]
     fn privacy_follows_the_receiving_pool() {
-        let orchard_only = TxShape { orchard_actions: 2, ..Default::default() };
-        let ironwood_only = TxShape { ironwood_actions: 2, ..Default::default() };
-        let crossing = TxShape { orchard_actions: 1, ironwood_actions: 2, ..Default::default() };
-        let from_sapling = TxShape { sapling_spends: 1, orchard_actions: 2, ..Default::default() };
-        let transparent = TxShape { transparent_inputs: 1, orchard_actions: 2, ..Default::default() };
+        let orchard_only = TxShape {
+            orchard_actions: 2,
+            ..Default::default()
+        };
+        let ironwood_only = TxShape {
+            ironwood_actions: 2,
+            ..Default::default()
+        };
+        let crossing = TxShape {
+            orchard_actions: 1,
+            ironwood_actions: 2,
+            ..Default::default()
+        };
+        let from_sapling = TxShape {
+            sapling_spends: 1,
+            orchard_actions: 2,
+            ..Default::default()
+        };
+        let transparent = TxShape {
+            transparent_inputs: 1,
+            orchard_actions: 2,
+            ..Default::default()
+        };
         // Mainnet before NU7: Orchard to Orchard is shielded.
         assert_eq!(orchard_only.privacy("orchard"), Privacy::Shielded);
         assert_eq!(ironwood_only.privacy("ironwood"), Privacy::Shielded);

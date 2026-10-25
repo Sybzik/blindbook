@@ -83,7 +83,8 @@ impl Files {
                 }
                 let mut lines = Vec::new();
                 for seq in k * size + 1..=(k + 1) * size {
-                    let packed = std::fs::read(self.root.join("delta").join(format!("{seq}.json.gz")))?;
+                    let packed =
+                        std::fs::read(self.root.join("delta").join(format!("{seq}.json.gz")))?;
                     flate2::read::GzDecoder::new(&packed[..]).read_to_end(&mut lines)?;
                     lines.push(b'\n');
                 }
@@ -135,12 +136,21 @@ mod tests {
         assert!(!seg.join("1.jsonl.gz").exists(), "incomplete: not written");
         // The short segments: every complete one, the same lines as the delta files.
         let mini = f.root().join("mini");
-        assert!(mini.join(format!("{}.jsonl.gz", SEGMENT / MINI - 1)).exists());
+        assert!(
+            mini.join(format!("{}.jsonl.gz", SEGMENT / MINI - 1))
+                .exists()
+        );
         assert!(!mini.join(format!("{}.jsonl.gz", SEGMENT / MINI)).exists());
         let m1 = unzip(mini.join("1.jsonl.gz"));
-        let m1: Vec<&[u8]> = m1.split(|&b| b == b'\n').filter(|l| !l.is_empty()).collect();
+        let m1: Vec<&[u8]> = m1
+            .split(|&b| b == b'\n')
+            .filter(|l| !l.is_empty())
+            .collect();
         assert_eq!(m1.len() as u64, MINI);
-        assert_eq!(m1[0], &unzip(f.root().join("delta").join(format!("{}.json.gz", MINI + 1)))[..]);
+        assert_eq!(
+            m1[0],
+            &unzip(f.root().join("delta").join(format!("{}.json.gz", MINI + 1)))[..]
+        );
         let text = unzip(seg.join("0.jsonl.gz"));
         let lines: Vec<&[u8]> = text
             .split(|&b| b == b'\n')

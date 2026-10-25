@@ -47,7 +47,8 @@ fn client() -> Result<&'static reqwest::Client, String> {
 /// a long log is many requests, and one dropped connection shouldn't end the audit.
 async fn fetch(source: &str, path: &str) -> Result<Vec<u8>, String> {
     if !(source.starts_with("http://") || source.starts_with("https://")) {
-        return std::fs::read(std::path::Path::new(source).join(path)).map_err(|e| format!("{path}: {e}"));
+        return std::fs::read(std::path::Path::new(source).join(path))
+            .map_err(|e| format!("{path}: {e}"));
     }
     let url = format!("{}/v1/{path}", source.trim_end_matches('/'));
     let mut last = String::new();
@@ -60,7 +61,9 @@ async fn fetch(source: &str, path: &str) -> Result<Vec<u8>, String> {
                 Ok(b) => return Ok(b.to_vec()),
                 Err(e) => last = e.to_string(),
             },
-            Ok(r) if r.status().is_client_error() => return Err(format!("{path}: HTTP {}", r.status())),
+            Ok(r) if r.status().is_client_error() => {
+                return Err(format!("{path}: HTTP {}", r.status()));
+            }
             Ok(r) => last = format!("HTTP {}", r.status()),
             Err(e) => last = e.to_string(),
         }
@@ -84,7 +87,10 @@ async fn read_log(source: &str, head_seq: u64) -> Result<Vec<Delta>, String> {
             if (seq - 1) % size != 0 || (k + 1) * size > head_seq {
                 continue;
             }
-            let Ok(text) = fetch(source, &format!("{dir}/{k}.jsonl.gz")).await.and_then(|b| gunzip(&b)) else {
+            let Ok(text) = fetch(source, &format!("{dir}/{k}.jsonl.gz"))
+                .await
+                .and_then(|b| gunzip(&b))
+            else {
                 continue;
             };
             let lines: Vec<&[u8]> = text

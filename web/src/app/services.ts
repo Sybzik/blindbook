@@ -537,8 +537,15 @@ export async function restoreFromWords(words: string, passphrase: string | null,
   return r;
 }
 
+/** Refused at once: another action is still running (a second tap that came before the screen
+ *  could disable the key). Nothing is sent and nothing is shown. */
+export class StillBusy extends Error {}
+
 async function act<T>(label: string, f: (w: Wallet) => Promise<T>): Promise<T> {
   if (!wallet) throw new Error('unlock the vault first');
+  // One action at a time, decided here and not by the key's disabled state, which a burst of taps
+  // can beat: ten quick REDEEMs spend the code once.
+  if (app.get().busy) throw new StillBusy('another action is still running');
   app.set({ busy: label, error: null });
   try {
     const out = await f(wallet);

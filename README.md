@@ -19,6 +19,11 @@
 </p>
 
 <p align="center">
+  <a href="https://youtu.be/UUzibWSakho"><b>▶ The 2-minute video</b></a> ·
+  <a href="https://blindbook.tech"><b>Try it: blindbook.tech</b></a>
+</p>
+
+<p align="center">
   <a href="#judges-the-first-minute">Judges</a> ·
   <a href="#why">Why</a> ·
   <a href="#how-it-works">How it works</a> ·

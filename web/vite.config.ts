@@ -97,8 +97,8 @@ function bbOpaqueWorkerFactory(path) {
       const m = code.match(/createBase64WorkerFactory\('([A-Za-z0-9+/=]+)', null, false\)/);
       if (!m) throw new Error('@nymproject/mix-tunnel changed its worker loader: the opaque-origin worker can no longer be set up');
       // The text its own loader would run (base64 to a binary string, first line dropped), as the
-      // UTF-8 bytes its blob would have held.
-      const raw = Buffer.from(m[1]!, 'base64').toString('latin1');
+      // UTF-8 bytes its blob would have held, without the pointer to a source map that isn't shipped.
+      const raw = Buffer.from(m[1]!, 'base64').toString('latin1').replace(/\n\/\/# sourceMappingURL=\S+\s*$/, '\n');
       const source = Buffer.from((await (memIdb ??= bundleMemIdb())) + ';\n' + raw.substring(raw.indexOf('\n', 10) + 1), 'utf8');
       // Build: an asset named by its hash. Dev: served by the middleware below.
       let path = '/@bb/nym-worker.js';

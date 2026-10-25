@@ -72,13 +72,13 @@ export function HowPage({ onClose, onOpen }: { onClose: () => void; onOpen?: (id
             </ul>
           </div>
           <div>
-            <p className="bb-label bb-hi">NEVER PUBLIC, NOT EVEN TO US</p>
+            <p className="bb-label bb-hi">NEVER PUBLIC, NOT IN OUR RECORDS</p>
             <ul className="tk-list bb-text">
               <li>who you are</li>
               <li>which bets are yours</li>
               <li>your balance</li>
-              <li>your top-up and payout addresses</li>
               <li>your IP</li>
+              <li>your wallet, and where your winnings go (sealed to the signer, forgotten once paid)</li>
             </ul>
           </div>
         </div>

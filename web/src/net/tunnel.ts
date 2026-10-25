@@ -14,6 +14,10 @@
 
 import { disconnectMixTunnel, mixFetch, setupMixTunnel } from '@nymproject/mix-fetch';
 
+// The mixnet client narrates its setup (gateways, keys, routes): none of it goes to the console of
+// this frame either. Errors still do.
+for (const k of ['log', 'info', 'debug', 'warn'] as const) console[k] = () => undefined;
+
 interface Req {
   id: number;
   method: 'GET' | 'POST';

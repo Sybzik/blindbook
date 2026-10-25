@@ -28,54 +28,77 @@ fn gunzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-async fn fetch(source: &str, path: &str) -> Result<Vec<u8>, String> {
-    if source.starts_with("http://") || source.starts_with("https://") {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        let c = reqwest::Client::builder()
-            .user_agent("blindbook-verify")
-            .build()
-            .map_err(|e| e.to_string())?;
-        let r = c
-            .get(format!("{}/v1/{path}", source.trim_end_matches('/')))
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        if !r.status().is_success() {
-            return Err(format!("{path}: HTTP {}", r.status()));
-        }
-        Ok(r.bytes().await.map_err(|e| e.to_string())?.to_vec())
-    } else {
-        std::fs::read(std::path::Path::new(source).join(path)).map_err(|e| format!("{path}: {e}"))
+/// One client for every request (one TLS session, not one per file).
+fn client() -> Result<&'static reqwest::Client, String> {
+    static C: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(c) = C.get() {
+        return Ok(c);
     }
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let c = reqwest::Client::builder()
+        .user_agent("blindbook-verify")
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| e.to_string())?;
+    Ok(C.get_or_init(|| c))
 }
 
-/// Deltas per segment (`segment/{k}.jsonl.gz`: deltas `k·384 + 1 ..= (k + 1)·384`, one per line;
-/// the API's `files::SEGMENT`).
-const SEGMENT: u64 = 384;
+/// A public file. A request that fails on the way (not a 404) is tried again, four times in all:
+/// a long log is many requests, and one dropped connection shouldn't end the audit.
+async fn fetch(source: &str, path: &str) -> Result<Vec<u8>, String> {
+    if !(source.starts_with("http://") || source.starts_with("https://")) {
+        return std::fs::read(std::path::Path::new(source).join(path)).map_err(|e| format!("{path}: {e}"));
+    }
+    let url = format!("{}/v1/{path}", source.trim_end_matches('/'));
+    let mut last = String::new();
+    for attempt in 0..4u32 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_millis(500 << attempt)).await;
+        }
+        match client()?.get(&url).send().await {
+            Ok(r) if r.status().is_success() => match r.bytes().await {
+                Ok(b) => return Ok(b.to_vec()),
+                Err(e) => last = e.to_string(),
+            },
+            Ok(r) if r.status().is_client_error() => return Err(format!("{path}: HTTP {}", r.status())),
+            Ok(r) => last = format!("HTTP {}", r.status()),
+            Err(e) => last = e.to_string(),
+        }
+    }
+    Err(format!("{path}: {last}"))
+}
 
-/// Deltas 1..=`head_seq`: whole segments where they exist, single deltas for the rest.
+/// Deltas per segment (`segment/{k}.jsonl.gz`: deltas `k·384 + 1 ..= (k + 1)·384`, one per line)
+/// and per short segment (`mini/{j}.jsonl.gz`, 64 deltas), as the API's `files` writes them.
+const SEGMENT: u64 = 384;
+const MINI: u64 = 64;
+
+/// Deltas 1..=`head_seq`: whole segments where they exist, then short ones, single deltas for
+/// the rest.
 async fn read_log(source: &str, head_seq: u64) -> Result<Vec<Delta>, String> {
     let mut deltas = Vec::new();
     let mut seq = 1;
-    while seq <= head_seq {
-        let k = (seq - 1) / SEGMENT;
-        if (k + 1) * SEGMENT <= head_seq
-            && let Ok(text) = fetch(source, &format!("segment/{k}.jsonl.gz"))
-                .await
-                .and_then(|b| gunzip(&b))
-        {
+    'next: while seq <= head_seq {
+        for (dir, size) in [("segment", SEGMENT), ("mini", MINI)] {
+            let k = (seq - 1) / size;
+            if (seq - 1) % size != 0 || (k + 1) * size > head_seq {
+                continue;
+            }
+            let Ok(text) = fetch(source, &format!("{dir}/{k}.jsonl.gz")).await.and_then(|b| gunzip(&b)) else {
+                continue;
+            };
             let lines: Vec<&[u8]> = text
                 .split(|&b| b == b'\n')
                 .filter(|l| !l.is_empty())
                 .collect();
-            if lines.len() as u64 == SEGMENT {
+            if lines.len() as u64 == size {
                 for (i, line) in lines.iter().enumerate() {
                     let d = serde_json::from_slice(line)
-                        .map_err(|e| format!("segment {k}, line {}: {e}", i + 1))?;
+                        .map_err(|e| format!("{dir} {k}, line {}: {e}", i + 1))?;
                     deltas.push(d);
                 }
-                seq = (k + 1) * SEGMENT + 1;
-                continue;
+                seq = (k + 1) * size + 1;
+                continue 'next;
             }
         }
         let d = fetch(source, &format!("delta/{seq}.json.gz"))

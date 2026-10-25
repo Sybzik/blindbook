@@ -765,6 +765,10 @@ impl Sequencer {
                         }
                         continue;
                     }
+                    // A lightwalletd server lagging behind can report a tip below one already
+                    // published: the block closes at the published height instead, so heights
+                    // in the log never go back.
+                    let height = height.max(self.log.head.height);
                     match self.execute(Op::Close { height, chain }).await {
                         Err(e) => match &mut close_failed {
                             Some((since, n)) if since.elapsed() < Duration::from_secs(60) => *n += 1,

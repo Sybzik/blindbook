@@ -554,7 +554,7 @@ export async function createBooth(
   canvas.addEventListener('pointerup', up);
 
   // Animation loop (30 fps on phones).
-  const clock = new THREE.Clock();
+  const clock = new THREE.Timer();
   let raf = 0;
   let last = 0;
   let enterT = -1;
@@ -563,7 +563,8 @@ export async function createBooth(
     raf = requestAnimationFrame(tick);
     if (phone && now - last < 32) return;
     last = now;
-    const t = clock.getElapsedTime();
+    clock.update();
+    const t = clock.getElapsed();
     curtainMat.uniforms.uTime!.value = t;
     beamMat.uniforms.uTime!.value = t;
     curtainMat.uniforms.uHover!.value += (hoverCurtain - curtainMat.uniforms.uHover!.value) * 0.08;
@@ -623,7 +624,7 @@ export async function createBooth(
     },
     enter() {
       entering = true;
-      enterT = clock.getElapsedTime();
+      enterT = clock.getElapsed();
       return new Promise((res) => {
         enterDone = res;
         // A hidden tab gets no frames: never hang the entry.

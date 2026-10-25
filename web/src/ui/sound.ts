@@ -13,9 +13,12 @@ let noiseBuf: AudioBuffer | null = null;
 let enabled = false;
 /** When the last effect started (ms), so a toast's chime doesn't pile onto a cue's sound. */
 let lastAt = 0;
+/** A gesture has happened: only then may an AudioContext start (browsers warn otherwise). */
+let gestured = false;
 
 function context(): AudioContext | null {
   if (ctx) return ctx;
+  if (!gestured) return null;
   try {
     const nav = navigator as Navigator & { audioSession?: { type: string } };
     if (nav.audioSession) nav.audioSession.type = 'ambient';
@@ -51,6 +54,7 @@ export function soundOn(): boolean {
 /** Browsers allow audio only after a gesture: resume on the first touch or key. */
 export function primeAudio() {
   const go = () => {
+    gestured = true;
     if (enabled) setSound(true);
     removeEventListener('pointerdown', go);
     removeEventListener('keydown', go);

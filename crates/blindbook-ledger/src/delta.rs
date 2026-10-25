@@ -232,11 +232,14 @@ impl LogBuilder {
     }
 }
 
-/// Check that a run of deltas forms one chain from `start` and return the final head.
+/// Check that a run of deltas forms one chain from `start` and return the final head. The chain
+/// is the sequence numbers and the roots. A block's height is the chain tip the API saw when it
+/// closed it: a lightwalletd server lagging behind can make one a few blocks lower than the one
+/// before, so heights are not required to grow.
 pub fn verify_chain(start: Head, deltas: &[Delta]) -> Result<Head, Error> {
     let mut head = start;
     for d in deltas {
-        if d.seq != head.seq + 1 || d.prev_root != head.root || d.height < head.height {
+        if d.seq != head.seq + 1 || d.prev_root != head.root {
             return Err(Error::Chain(format!(
                 "delta {} doesn't follow head {} ({})",
                 d.seq, head.seq, head.root
@@ -311,6 +314,10 @@ mod tests {
         bad.events.push(LogEvent::TopupCredited { amount: 1 });
         assert!(verify_chain(start, &[bad, d2.clone()]).is_err());
         assert!(verify_chain(start, &[d2]).is_err());
+        // A block at a lower height than the one before still chains (the tip seen went back).
+        let mut back = LogBuilder::new(h2);
+        let (d3, h3) = back.close(99, ChainStats::default()).unwrap();
+        assert_eq!(verify_chain(h2, &[d3]).unwrap(), h3);
         // Root is SHA256(prev_root ‖ SHA256(canonical delta)).
         let digest = crate::canonical::sha256(&crate::canonical::to_canonical(&d1).unwrap());
         assert_eq!(h1.root.0, sha256_parts(&[&GENESIS_ROOT.0, &digest]));

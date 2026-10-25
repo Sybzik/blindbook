@@ -8,7 +8,7 @@
 <p align="center">
   <b>A private prediction market on Zcash.</b><br>
   Bet on real-world events with shielded ZEC. Prices, volumes and reserves are public.<br>
-  Who bet, on what, and where the winnings went is not, not even to us.
+  Who bet and on what is not, not even to us; where the winnings went is sealed to an isolated signer and forgotten once paid.
 </p>
 
 <p align="center">
@@ -90,7 +90,7 @@ flowchart LR
 | **Funding** | Who paid? | a shielded Ironwood top-up to a one-time address nobody can recognize as ours |
 | **Positions** | Who holds what? | Chaumian e-cash: blind-signed bearer slips, so even we can't link a top-up, a bet and a payout |
 | **Payout** | Where did the money go? | fixed-shape shielded payouts with a discarded outgoing viewing key; the address is sealed to an isolated signer and forgotten |
-| **Network** | Who is online? | every API call goes through the Nym mixnet, so no IP reaches our servers; money in and out uses a separate mixnet identity; everyone downloads the same public files; no CDN, analytics or Polymarket request from the browser. The app itself loads from a static host, which sees only that an IP opened a web app (or use the .onion mirror) |
+| **Network** | Who is online? | every API call goes through the Nym mixnet, so no IP reaches our servers; money in and out uses a separate mixnet identity; everyone downloads the same public files; no analytics, font or Polymarket request from the browser, nothing from any other site. The app itself loads from a static host, which sees only that an IP opened a web app (or use the .onion mirror) |
 | **Device** | What's on your phone? | an encrypted vault (Face ID on phones, a passphrase on computers), 12 words as the backup, and a restore that asks the server nothing |
 
 | Public | Never public |

@@ -77,7 +77,9 @@ function opaqueMixnetWorkerPlugin(): Plugin {
   const factory = `
 function bbOpaqueWorkerFactory(path) {
   return function WorkerFactory(options) {
-    var boot = 'importScripts(' + JSON.stringify(new URL(path, location.href).href) + ');';
+    // The mixnet client narrates its setup (gateways, keys, routes): none of it goes to the
+    // console. Errors still do.
+    var boot = 'self.console.log=self.console.info=self.console.debug=self.console.warn=function(){};importScripts(' + JSON.stringify(new URL(path, location.href).href) + ');';
     return new Worker('data:text/javascript,' + encodeURIComponent(boot), options);
   };
 }

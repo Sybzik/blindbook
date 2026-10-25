@@ -72,18 +72,9 @@ A prediction market needs **public prices**, not **public participants**. Zcash 
   </picture>
 </p>
 
-```mermaid
-flowchart LR
-    W["Your Zcash wallet"] -->|"shielded top-up, one-time address"| D[("Deposit account: viewing key private")]
-    B["Your browser: vault + slips"] <-->|"Nym mixnet, no IPs"| A["API: holds no secrets"]
-    A <-->|"2-second batches"| S["Signer: no inbound ports"]
-    P["Polymarket: catalog + live price"] --> A
-    C["Polygon: final result"] --> A
-    D -->|"hourly sweep"| R[("Reserve: viewing key public")]
-    R -->|"fixed-shape payout, discarded OVK"| F["Your fresh address"]
-    classDef bb fill:#0A1A11,stroke:#3FCB7E,color:#C6FFDD
-    class W,D,B,A,S,P,C,R,F bb
-```
+<p align="center">
+  <img src="docs/assets/flow.png" alt="How Blindbook fits together. Money, on shielded Zcash: your wallet pays a one-time address of the deposit account (viewing key private); an hourly sweep moves funds to the reserve (viewing key public); payouts leave the reserve in a fixed shape with the outgoing viewing key discarded, to a fresh address of yours. The signer holds every key and signs sweeps and payouts. Trading: your browser (vault and bearer slips) talks to the API, which holds no secrets, over the Nym mixnet, so no IP reaches it; the API and the signer, which has no inbound ports, work in 2-second batches. Public data: the API mirrors Polymarket's catalog and live price; the signer reads final results from Polygon itself." width="100%">
+</p>
 
 ## Privacy in five layers
 

@@ -28,7 +28,7 @@
 |---|---|---|---|---|---|
 | A1 chain | no | no | no | no | no |
 | A2 operator / hacked API | no | no | no | **no** | no (sealed to the signer) |
-| A2+ hacked signer | no | no | no | **no** (blind signatures) | only for withdrawals still pending |
+| A2+ hacked signer | no | no | no | **no** (blind signatures) | only a withdrawal still waiting for its payout (about a block): a fresh address it can't tie to a bet or a person; once paid, forgotten |
 | A3 network | no | that this IP opened the app (the host name in DNS and TLS, N7) and runs a Nym client; nothing about what it does | no | no | no |
 | A4 verifier | no | no | no | no | no |
 | A5 exchange or wallet | yes, they know you | **no** (one-time address) | no | no | no |

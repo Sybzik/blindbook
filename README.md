@@ -154,9 +154,13 @@ Everything that matters is in a hash-chained public log, anchored on-chain. Two 
   - that the reserve report covers every liability.
 - **On the command line, plus the chains:** `blindbook-verify` runs the same checks. With `--chain` it syncs a view-only wallet of the **public reserve viewing key**, checks the real reserve balance against the liabilities and opens every on-chain anchor to confirm that it names the log's root. With `--polygon` it reads every market's result again from Polymarket's contract on Polygon.
 
+For the live playground (its master key `M` is the one the app pins; P400 · VERIFY shows the same command):
+
 ```bash
-cargo run --release -p blindbook-verify -- <M> https://<api> --chain zecrocks --polygon public
+cargo run --release -p blindbook-verify -- 039c7ca84d7528abcdcb5cd6492446b431e4d4b35f2498185ab915bd292697ebe1 https://api.blindbook.tech --chain zecrocks --polygon public
 ```
+
+It ends with `OK: everything checks out` or names what does not. Put `ALL_PROXY=socks5h://127.0.0.1:9050` in front to fetch the log over Tor.
 
 Nobody has to trust the internet-facing server with results either: the signer reads each result from Polygon itself and refuses any other.
 

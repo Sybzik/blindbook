@@ -51,6 +51,8 @@ Then, if you have a minute more: **VERIFY** re-checks the whole public log in yo
 
 **Nothing is mocked.** The playground runs on Zcash testnet, live through judging: real shielded transactions, Polymarket's live prices, results read from Polygon, every request over the public Nym mixnet. The same app ran on mainnet with real ZEC for the video.
 
+**In Tor Browser,** the same app runs as an onion service, every request carried by Tor: `http://6twder6q3daxj3wolvbtdjfyctio7rk7nbznbaeoxefsrtryhsalm5qd.onion`
+
 ## Why
 
 On a public prediction market, every bet is a dossier: wallet, size, timing, history. Big traders get tracked, copied and doxxed, and people who actually know something stay out.

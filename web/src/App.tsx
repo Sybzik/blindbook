@@ -80,11 +80,13 @@ export function App() {
     else document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  const lm = (i: number) => live?.markets.find((m) => m.id === markets[i]?.id);
+  // The booth counts and shows the markets still in play; settled ones stay listed under MARKETS.
+  const inPlay = markets.filter((m) => !m.resolved);
+  const lm = (i: number) => live?.markets.find((m) => m.id === inPlay[i]?.id);
   const pa = (i: number) => (lm(i)?.price_a_ppm ? Math.round(lm(i)!.price_a_ppm! / 10_000) : null);
   // The booth's three CRTs show the first two markets, live.
   const label = (s: string | undefined) => (s ?? '').toUpperCase().slice(0, 12);
-  const named = markets.findIndex((m) => !(m.outcomes[0] === 'Yes' && m.outcomes[1] === 'No'));
+  const named = inPlay.findIndex((m) => !(m.outcomes[0] === 'Yes' && m.outcomes[1] === 'No'));
   const ia = named >= 0 ? named : 0;
   const iy = ia === 0 ? 1 : 0;
   const prices =
@@ -93,9 +95,9 @@ export function App() {
           a: pa(ia)!,
           b: 100 - pa(ia)!,
           y: pa(iy) ?? pa(ia)!,
-          la: label(markets[ia]?.outcomes[0]),
-          lb: label(markets[ia]?.outcomes[1]),
-          ly: markets[iy] ? `${markets[iy]!.page} · ${label(markets[iy]!.outcomes[0])}` : '',
+          la: label(inPlay[ia]?.outcomes[0]),
+          lb: label(inPlay[ia]?.outcomes[1]),
+          ly: inPlay[iy] ? `${inPlay[iy]!.page} · ${label(inPlay[iy]!.outcomes[0])}` : '',
         }
       : undefined;
 
@@ -104,7 +106,9 @@ export function App() {
     play('boot');
     setPhase('boot');
   };
-  const resolvedMarket = markets.find((m) => m.resolved);
+  // The settled market that closed last.
+  const closes = (m: (typeof markets)[number]) => m.eventStartMs ?? m.endMs;
+  const resolvedMarket = markets.filter((m) => m.resolved).reduce<(typeof markets)[number] | undefined>((last, m) => (!last || closes(m) > closes(last) ? m : last), undefined);
   if (phase === 'landing' && CAN_3D && !clean && !failed3d)
     return (
       <Suspense
@@ -116,7 +120,7 @@ export function App() {
       >
         <Booth3D
           key={intro}
-          data={{ block: head?.height ?? 0, markets: markets.length, coin: COIN, prices }}
+          data={{ block: head?.height ?? 0, markets: Math.min(99, inPlay.length), coin: COIN, prices }}
           facts={{
             block: head?.height ?? 0,
             shieldedActions: block?.shielded_actions ?? null,
@@ -134,7 +138,7 @@ export function App() {
         <Landing
           key={intro}
           block={head?.height ?? 0}
-          markets={markets.length}
+          markets={inPlay.length}
           link={config.onion ? 'tor' : config.mixnet ? link : 'off'}
           coin={COIN}
           prices={prices}

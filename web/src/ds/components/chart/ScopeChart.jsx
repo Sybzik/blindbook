@@ -97,10 +97,12 @@ export function ScopeChart({ outcomes = SCOPE_DEMO, ranges = ['1H', '1D', '1W', 
     return { y: Y(o.value), lines };
   }).sort((p, q) => p.y - q.y);
   for (let i = 1; i < groups.length; i++) { const end = groups[i - 1].y + (groups[i - 1].lines.length - 1) * LH + LH + GAP; if (groups[i].y < end) groups[i].y = end; }
-  const last = groups[groups.length - 1];
-  const over = last ? last.y + (last.lines.length - 1) * LH - (height - 6) : 0;
-  if (over > 0) groups.forEach((g) => (g.y -= over));
-  if (groups[0] && groups[0].y < padT + 4) { const d = padT + 4 - groups[0].y; groups.forEach((g) => (g.y += d)); }
+  // Inside the bottom edge, then the top one: a group moves only as far as it must, and a group next to it only if
+  // it would then crowd it, so a label at 0% and one at 100% both stay whole and next to their lines.
+  let limit = height - 14;
+  for (let i = groups.length - 1; i >= 0; i--) { const end = groups[i].y + (groups[i].lines.length - 1) * LH; if (end > limit) groups[i].y -= end - limit; limit = groups[i].y - LH - GAP; }
+  let top = padT + 4;
+  for (const g of groups) { if (g.y < top) g.y = top; top = g.y + (g.lines.length - 1) * LH + LH + GAP; }
 
   const setRange = (r) => { setR(r); onRange && onRange(r); };
   const toggleRef = (v) => { setRef(v); onToggleRef && onToggleRef(v); };

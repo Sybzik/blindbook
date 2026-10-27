@@ -39,6 +39,12 @@ export function utc(ms: number): string {
   return `${mon} ${d.getUTCDate()} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')} UTC`;
 }
 
+/** A settled market's result in words: who won, or a 50-50 split. */
+export function resultText(outcomes: [string, string], r: { den: number; num: [number, number] }): string {
+  if (r.num[0] === r.num[1]) return '50-50: each share paid half';
+  return `${outcomes[r.num[0] > r.num[1] ? 0 : 1].toUpperCase()} won`;
+}
+
 /** Engine halt reasons in plain words (MARKETS "Halts"). */
 export function haltText(h: string | null): string {
   switch (h) {

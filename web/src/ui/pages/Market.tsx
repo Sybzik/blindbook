@@ -22,7 +22,7 @@ import { Win, WinCtx } from '../win';
 import { app, actions, type MarketMeta, type Point } from '../../app/services';
 import { useStore } from '../../app/store';
 import { BET_UNITS, COIN, config } from '../../app/config';
-import { coin, countdown, haltText, height, utc } from '../../app/format';
+import { coin, countdown, haltText, height, resultText, utc } from '../../app/format';
 import type { FillRecord, LiveMarket, RecentFill, TradeAnswer } from '../../core/api';
 import { RANGES, pointsFor, type Range } from '../../app/prices';
 import { quoteBuy } from '../../app/pricing';
@@ -65,9 +65,19 @@ function priceA(live?: LiveMarket): number {
   return live?.price_a_ppm ? live.price_a_ppm / 10_000 : 50;
 }
 
+type Result = { den: number; num: [number, number] };
+
+/** A settled market's result (what one share of each outcome paid), or null while it's in play. */
+function resultOf(meta: MarketMeta, live?: LiveMarket): Result | null {
+  return meta.resolved ?? (live?.resolved ? { den: live.resolved[0], num: [live.resolved[1], live.resolved[2]] } : null);
+}
+
 function outcomesOf(meta: MarketMeta, live: LiveMarket | undefined, series: Point[]) {
-  const a = priceA(live);
-  const pts = series.length >= 2 ? series : [{ t: 0, ours: a, ref: (live?.reference.mid_ppm ?? 500_000) / 10_000 }, { t: 1, ours: a, ref: (live?.reference.mid_ppm ?? 500_000) / 10_000 }];
+  const res = resultOf(meta, live);
+  // A settled market ends at what each share paid, not at a price that no longer moves.
+  const a = res ? (res.num[0] / res.den) * 100 : priceA(live);
+  const ref = res ? a : (live?.reference.mid_ppm ?? 500_000) / 10_000;
+  const pts = series.length >= 2 ? series : [{ t: 0, ours: a, ref }, { t: 1, ours: a, ref }];
   return [
     { label: meta.outcomes[0].toUpperCase(), side: 'a' as const, value: Math.round(a), data: pts.map((p) => p.ours), refValue: Math.round(pts.at(-1)!.ref), refData: pts.map((p) => p.ref) },
     { label: meta.outcomes[1].toUpperCase(), side: 'b' as const, value: Math.round(100 - a), data: pts.map((p) => 100 - p.ours), refValue: Math.round(100 - pts.at(-1)!.ref), refData: pts.map((p) => 100 - p.ref) },
@@ -88,9 +98,11 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
   const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
   // Open markets first, then those waiting for their result, then the settled ones.
   const rank = (m: MarketMeta) => ({ OPEN: 0, HALTED: 1, RESOLVING: 1, RESOLVED: 2 })[statusOf(m, live?.markets.find((x) => x.id === m.id))];
+  // Closing soon: the soonest first while in play, the latest settled first after.
+  const byClose = (a: MarketMeta, b: MarketMeta) => (rank(a) === 2 ? closes(b) - closes(a) : closes(a) - closes(b));
   const markets = all
     .filter((m) => words.every((w) => `${m.page} ${m.question} ${m.outcomes.join(' ')} ${m.group ?? ''}`.toLowerCase().includes(w)))
-    .sort((a, b) => rank(a) - rank(b) || (sort === 'closing' ? closes(a) - closes(b) : sort === 'volume' ? (b.volume ?? 0) - (a.volume ?? 0) : a.page.localeCompare(b.page)));
+    .sort((a, b) => rank(a) - rank(b) || (sort === 'closing' ? byClose(a, b) : sort === 'volume' ? (b.volume ?? 0) - (a.volume ?? 0) : a.page.localeCompare(b.page)));
   return (
     <Win title="P100 · MARKETS" onClose={onClose}>
       <TeletextHeader page="P100" title="MARKETS · MIRRORED FROM POLYMARKET" />
@@ -130,9 +142,9 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
           const lm = live?.markets.find((x) => x.id === m.id);
           const st = statusOf(m, lm);
           // A settled market shows what each share pays (100¢ for the winner), not a stale price.
-          const res = m.resolved ?? (lm?.resolved ? { den: lm.resolved[0], num: [lm.resolved[1], lm.resolved[2]] as [number, number] } : null);
+          const res = resultOf(m, lm);
           const a = res ? Math.round((res.num[0] / res.den) * 100) : Math.round(priceA(lm));
-          const ref = lm ? Math.round(lm.reference.mid_ppm / 10_000) : 0;
+          const ref = lm && !res ? Math.round(lm.reference.mid_ppm / 10_000) : null;
           const named = !(m.outcomes[0] === 'Yes' && m.outcomes[1] === 'No');
           return (
             <button key={m.id} type="button" role="listitem" className={'tk-row' + (st === 'OPEN' ? '' : ' is-closed')} onClick={() => onOpen(m.id)} data-hint={`Opens ${m.page}: ${m.question}`}>
@@ -150,7 +162,7 @@ export function MarketsIndex({ onOpen, onClose }: { onOpen: (id: string) => void
                 <OutcomePill label={m.outcomes[1].toUpperCase()} price={100 - a} side="b" size="sm" />
               </span>
               <span className="num hide-sm" style={{ color: 'var(--ref)' }}>
-                {ref}¢ · {100 - ref}¢{m.volume ? <span className="bb-dim" style={{ fontSize: 14 }}>vol ${Math.round(m.volume / 1000)}k</span> : null}
+                {ref === null ? '—' : `${ref}¢ · ${100 - ref}¢`}{m.volume ? <span className="bb-dim" style={{ fontSize: 14 }}>vol ${Math.round(m.volume / 1000)}k</span> : null}
               </span>
               <span className="num">
                 <span>{countdown((m.eventStartMs ?? m.endMs) - now)}</span>
@@ -330,8 +342,9 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
   const outcomes = useMemo(() => (meta ? outcomesOf(meta, live, pointsFor(range, hist, series ?? [], Date.now())) : []), [meta, live, series, hist, range]);
   if (!meta) return <Win title="MARKET" onClose={onClose}><p className="bb-text">Loading…</p></Win>;
   const st = statusOf(meta, live);
+  const res = resultOf(meta, live);
   const lockReason =
-    link !== 'linked' ? 'Mixnet is not linked. Trading is locked; your balance is safe.' : !reachable ? "The server doesn't answer right now. Trading waits for it; your balance is safe." : st === 'HALTED' ? haltText(live?.halt ?? null) : st === 'RESOLVING' ? 'Trading has closed. Waiting for the result on Polygon.' : st === 'RESOLVED' ? 'Resolved: winning slips cash in under F2 SLIPS.' : null;
+    link !== 'linked' ? 'Mixnet is not linked. Trading is locked; your balance is safe.' : !reachable ? "The server doesn't answer right now. Trading waits for it; your balance is safe." : !live && !res ? "Waiting for this market's live price; trading opens with it." : st === 'HALTED' ? haltText(live?.halt ?? null) : st === 'RESOLVING' ? 'Trading has closed. Waiting for the result on Polygon.' : st === 'RESOLVED' ? 'Resolved: winning slips cash in under F2 SLIPS.' : null;
   const fills = (recent ?? []).filter((f) => f.market === id && f.fill.out > 0).slice(-3).reverse();
   const named = !(meta.outcomes[0] === 'Yes' && meta.outcomes[1] === 'No');
   const ref = live ? Math.round(live.reference.mid_ppm / 10_000) : 0;
@@ -352,10 +365,14 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
       {st === 'HALTED' && <div style={{ marginTop: 16 }}><AlarmBanner title="MARKET HALTED" action="">{haltText(live?.halt ?? null)}</AlarmBanner></div>}
       <div className="tk-market">
         {/* On the pager the bet comes first: one thumb, no scrolling to BUY. */}
-        {pager && <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />}
+        {pager && (res ? <ResultPanel meta={meta} res={res} /> : <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />)}
         <div className="col" style={{ gap: 4 }}>
           <LeaderRow label="CLOSES" value={closesText(meta)} />
-          <LeaderRow label="POLYMARKET" value={`${meta.outcomes[0].toUpperCase()} ${ref}¢ · ${meta.outcomes[1].toUpperCase()} ${100 - ref}¢`} tone="ref" />
+          {res ? (
+            <LeaderRow label="RESULT" value={resultText(meta.outcomes, res)} tone="hi" />
+          ) : (
+            <LeaderRow label="POLYMARKET" value={`${meta.outcomes[0].toUpperCase()} ${ref}¢ · ${meta.outcomes[1].toUpperCase()} ${100 - ref}¢`} tone="ref" />
+          )}
           <div style={{ marginTop: 10 }} data-hint="Both outcomes, live. REF adds Polymarket's price as dashed violet lines.">
             {rules ? <RulesPanel rules={meta.rules} rows={rows} url={`https://polymarket.com/market/${encodeURIComponent(meta.slug)}`} /> : <ScopeChart key={meta.id} outcomes={outcomes} ranges={RANGES} range={range} onRange={(r: string) => setRange(r as Range)} height={pager ? 120 : 168} />}
           </div>
@@ -372,9 +389,31 @@ export function MarketPage({ id, onClose, onCalledIt }: { id: string; onClose: (
             ))}
           </div>
         </div>
-        {!pager && <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />}
+        {!pager && (res ? <ResultPanel meta={meta} res={res} /> : <BetPanel key={meta.id} meta={meta} live={live} locked={!!lockReason} lockReason={lockReason} onCalledIt={onCalledIt} />)}
       </div>
     </Win>
+  );
+}
+
+/** In place of the bet panel once a market is settled: what each share paid, and where winning
+ *  slips cash in (any time: they never expire). */
+function ResultPanel({ meta, res }: { meta: MarketMeta; res: Result }) {
+  const positions = useStore(app, (s) => s.positions);
+  const held = positions.filter((p) => p.market === meta.id);
+  return (
+    <div className="tk-bet">
+      <p className="bb-label" style={{ margin: 0 }}>RESULT</p>
+      <p className="bb-text" style={{ margin: 0 }}>{resultText(meta.outcomes, res)}. Settled from Polymarket's result on Polygon.</p>
+      {([0, 1] as const).map((o) => (
+        <LeaderRow key={o} label={meta.outcomes[o].toUpperCase()} value={`${+(res.num[o] / res.den).toFixed(2)} ${COIN} a share`} tone={o === 0 ? 'a' : 'b'} />
+      ))}
+      <p className="bb-ui bb-dim" style={{ margin: 0 }}>Winning slips cash in under SLIPS, any time.</p>
+      {held.length > 0 && (
+        <KeyButton variant="primary" size="sm" onClick={() => openWindow('slips')}>
+          YOUR SLIPS ▸
+        </KeyButton>
+      )}
+    </div>
   );
 }
 

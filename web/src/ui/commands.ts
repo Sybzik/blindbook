@@ -4,7 +4,7 @@
 import { CONSOLE_RESPONSES } from '../ds';
 import { app, actions, linkInfo } from '../app/services';
 import { BET_UNITS, COIN, config } from '../app/config';
-import { coin, coinLabel, height, zat } from '../app/format';
+import { coin, coinLabel, height, resultText, zat } from '../app/format';
 import { runAudit } from './pages/Verify';
 import { quoteBuy } from '../app/pricing';
 import { ui, type Theme } from './uistate';
@@ -97,6 +97,7 @@ export async function runCommand(raw: string, out: Out, desk: DeskApi): Promise<
       if (!s.markets.length) return out('no markets listed yet');
       out(
         s.markets.map((m) => {
+          if (m.resolved) return `${m.page}  SETTLED · ${resultText(m.outcomes, m.resolved)}  ${m.question}`;
           const a = Math.round(priceOf(m.id, 0));
           return `${m.page}  ${m.outcomes[0].toUpperCase()} ${a}¢ · ${m.outcomes[1].toUpperCase()} ${100 - a}¢  ${m.question}`;
         }),

@@ -296,7 +296,7 @@ Compromising the public server, or even its hosting provider, gives an attacker 
 | Web | Vite 8, React 19, TypeScript, the design system's own CSS tokens and components (no Tailwind), three.js for the 3D booth (procedural, a lazy chunk; the 2D booth without WebGL), constant-URL navigation, an installable PWA (a service worker generated at build), strict CSP and SRI injected at build, `SHA256SUMS` of every built file (two builds of one commit match), a headless-browser leak check in CI |
 | Vault | `@scure/bip39`, WebAuthn PRF passkey unlock (Face ID on phones; optional on computers), Argon2id via `hash-wasm` for the passphrase (m = 64 MiB, t = 3, p = 1: ~0.13 s on a desktop; the default on computers), WebCrypto AES-GCM + HKDF, X25519 sealed boxes (`@noble/curves`) |
 | Addresses | the browser only checks the shape of a withdrawal address as a hint; the signer parses it with `zcash_address` and refuses anything without an Orchard-protocol receiver before any CREDIT is spent |
-| Infra | Docker Compose, Caddy (JSON config: no access log, TLS session tickets off, `Connection: close` on every POST, forwarding headers stripped), Tor onion service; static app hosted separately from the API; step by step in [deploy/README.md](../deploy/README.md) |
+| Infra | Docker Compose, Caddy (JSON config: no access log and no request in its own log, TLS session tickets off, `Connection: close` on every POST, forwarding headers stripped), Tor onion service; static app hosted separately from the API; step by step in [deploy/README.md](../deploy/README.md) |
 | Video | planned: scripted headless-browser capture of the real app, iPhone screen recording, edited in code |
 
 ## Decisions

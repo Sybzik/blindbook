@@ -2,6 +2,18 @@
   "admin": {
     "disabled": true
   },
+  "logging": {
+    "logs": {
+      "default": {
+        "exclude": [
+          "http.log",
+          "http.handlers",
+          "http.stdlib",
+          "tls.handshake"
+        ]
+      }
+    }
+  },
   "apps": {
     "tls": {
       "session_tickets": {

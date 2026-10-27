@@ -10,7 +10,7 @@ Two servers and a static host. The public server holds no secret; the private on
 
 What the configuration guarantees, and where:
 
-- **No request is logged.** The API switches its HTTP stack's logging off whatever `RUST_LOG` says, and a test fails if it ever reads a client address or a proxy header. Caddy runs without an access log (none is configured) and strips forwarding headers before the API.
+- **No request is logged.** The API switches its HTTP stack's logging off whatever `RUST_LOG` says, and a test fails if it ever reads a client address or a proxy header. Caddy runs without an access log (none is configured), leaves out of its own log every logger that could name a request (`logging.logs.default.exclude`: HTTP errors, handlers, the Go server's errors, TLS handshakes), so it records only its own startup and certificates, and strips forwarding headers before the API.
 - **Writes never share a TLS connection** (THREAT_MODEL N11): Caddy answers every POST with `Connection: close` and has TLS session tickets disabled (`apps.tls.session_tickets.disabled`), which turns off resumption for TLS 1.2 and 1.3.
 - **The signer has no inbound port.** It dials `wss://<api>/v1/signer` with a bearer token; the API admits it only with the pinned `M` and the same number of applied operations.
 - **The app pins the deployment's keys.** A mixnet or .onion build refuses to build without `M` and the seal key, and refuses to run with the development test keys.

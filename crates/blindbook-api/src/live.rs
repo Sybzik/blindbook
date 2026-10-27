@@ -1,7 +1,9 @@
 //! `GET /v1/live`: one small JSON every client polls (~3 s). Rebuilt once a second from the
 //! ledger's pools and the Polymarket reference, so it costs the same for one client or ten
-//! thousand, and no client ever asks about a single market.
+//! thousand, and no client ever asks about a single market. It carries the markets still in play
+//! and those settled in the last half hour; the catalog file carries every result.
 
+use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -49,10 +51,23 @@ pub struct Live {
     pub duel_fills: Vec<DuelFill>,
 }
 
+/// How long a settled market stays in the live JSON after its result was applied.
+pub const SETTLED_LIVE_MS: u64 = 1_800_000;
+
 pub fn build(shared: &Shared, refs: &RefFn, at_ms: u64) -> Live {
+    // Results replayed at start (at_ms 0) are older than any visitor's page.
+    let just_settled: HashSet<H32> = shared
+        .settled
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .filter(|s| s.at_ms > 0 && s.at_ms + SETTLED_LIVE_MS >= at_ms)
+        .map(|s| s.market)
+        .collect();
     let markets = shared.markets.read().unwrap_or_else(|e| e.into_inner());
     let out = markets
         .values()
+        .filter(|m| m.status == MarketStatus::Open || just_settled.contains(&m.id))
         .map(|m| {
             let inputs = refs(&m.id);
             let r = &inputs.reference;
@@ -149,5 +164,76 @@ pub async fn run(shared: Arc<Shared>, refs: RefFn, out: Arc<RwLock<Vec<u8>>>) {
         if let Ok(bytes) = serde_json::to_vec(&live) {
             *out.write().unwrap_or_else(|e| e.into_inner()) = bytes;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sequencer::{MarketView, Settled};
+    use blindbook_ledger::ledger::{MarketInputs, MarketParams, Pool};
+    use blindbook_ledger::reference::RefSnapshot;
+
+    #[test]
+    fn settled_markets_stay_half_an_hour() {
+        let shared = Shared::new("00cc".into());
+        let now = 10_000_000_000;
+        let won = MarketStatus::Resolved {
+            den: 1,
+            num: [1, 0],
+        };
+        let statuses = [(1, MarketStatus::Open), (2, won), (3, won), (4, won)];
+        *shared.markets.write().unwrap() = statuses
+            .into_iter()
+            .map(|(n, status)| {
+                let view = MarketView {
+                    id: H32([n; 32]),
+                    keysets: [String::new(), String::new()],
+                    params: MarketParams::testnet(),
+                    event_start_ms: None,
+                    end_ms: u64::MAX,
+                    pool: Pool::default(),
+                    status,
+                    info: None,
+                };
+                (view.id, view)
+            })
+            .collect();
+        *shared.settled.write().unwrap() = vec![
+            // Replayed from the journal at start.
+            Settled {
+                market: H32([2; 32]),
+                at_ms: 0,
+            },
+            Settled {
+                market: H32([3; 32]),
+                at_ms: now - SETTLED_LIVE_MS - 1,
+            },
+            Settled {
+                market: H32([4; 32]),
+                at_ms: now - 60_000,
+            },
+        ];
+        let refs: RefFn = Arc::new(|_m: &H32| MarketInputs {
+            reference: RefSnapshot {
+                at_ms: 0,
+                mid_samples: vec![400_000; 30],
+                mid_ppm: 400_000,
+                ask_ppm: [405_000, 605_000],
+                bid_ppm: [395_000, 595_000],
+                guard_micro: 500_000_000,
+                best_bid_ppm: [395_000, 595_000],
+                best_ask_ppm: [405_000, 605_000],
+                server_ts_ms: [0; 2],
+                unhealthy_ms: 0,
+            },
+            closed: false,
+            accepting_orders: true,
+        });
+        let live = build(&shared, &refs, now);
+        let ids: Vec<H32> = live.markets.iter().map(|m| m.id).collect();
+        assert_eq!(ids, [H32([1; 32]), H32([4; 32])]);
+        assert_eq!(live.markets[1].state, "resolved");
+        assert_eq!(live.markets[1].resolved, Some([1, 1, 0]));
     }
 }

@@ -178,6 +178,7 @@ async fn serve(
             voucher_units: 50_000,
             signer_token: None,
             topup: None,
+            settled_chunk: 2,
         },
         Some(SignerLink::Embedded(signer)),
         refs(),
@@ -712,5 +713,105 @@ async fn http_blind_duel() {
     assert!(audit.ok(), "{:?}", audit.failures);
     // CREDIT 46,000 + 44,000 outstanding, A and B 10,000 each (a complete set).
     assert_eq!(audit.liabilities_zat, (46_000 + 44_000 + 10_000) * 1_000);
+    let _ = std::fs::remove_dir_all(&data);
+}
+
+async fn apply(tx: &tokio::sync::mpsc::Sender<Cmd>, op: Op) {
+    let (rtx, rrx) = oneshot::channel();
+    tx.send(Cmd::Op(op, rtx)).await.unwrap();
+    rrx.await.unwrap().unwrap();
+}
+
+fn market_ids(file: &Value) -> Vec<String> {
+    file["markets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn http_catalog_files() {
+    let data = std::env::temp_dir().join(format!("bb-api-catalog-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    let signer = Signer::new(master()).unwrap();
+    let m = signer.public_key();
+    let signer = Arc::new(Mutex::new(signer));
+    let (base, tx) = serve(&data, signer.clone(), m).await;
+    blindbook_polymarket::net::install_crypto_provider();
+    let c = reqwest::Client::builder().no_proxy().build().unwrap();
+    let ids = [H32([0x11; 32]), H32([0x22; 32]), H32([0x33; 32])];
+    for id in ids {
+        let entry = MarketEntry {
+            id,
+            params: MarketParams::testnet(),
+            event_start_ms: None,
+            end_ms: u64::MAX,
+            pool: Pool::default(),
+            status: MarketStatus::Open,
+        };
+        let keysets = outcome_ids(&m, id);
+        apply(&tx, Op::ListMarket { entry, keysets }).await;
+    }
+    // Two settle, the third one first: with chunks of two they fill chunk 0 in that order.
+    for (id, num) in [(ids[2], [0, 1]), (ids[0], [1, 0])] {
+        let op = Op::Resolve {
+            market: id,
+            den: 1,
+            num,
+            polygon_block: 1,
+            polygon_tx: None,
+        };
+        apply(&tx, op).await;
+    }
+    tokio::time::sleep(std::time::Duration::from_millis(2_500)).await;
+    let get_json = |url: String| {
+        let c = c.clone();
+        async move { serde_json::from_slice::<Value>(&gunzip_get(&c, &url).await).unwrap() }
+    };
+    let catalog = get_json(format!("{base}/v1/catalog.json.gz")).await;
+    assert_eq!(catalog["settled_chunks"], 1);
+    assert_eq!(market_ids(&catalog), [ids[1].to_string()]);
+    let chunk0 = gunzip_get(&c, &format!("{base}/v1/settled/0.json.gz")).await;
+    let file: Value = serde_json::from_slice(&chunk0).unwrap();
+    assert_eq!(market_ids(&file), [ids[2].to_string(), ids[0].to_string()]);
+    assert_eq!(
+        file["markets"][0]["status"],
+        json!({ "state": "resolved", "den": 1, "num": [0, 1] })
+    );
+    for missing in ["1.json.gz", "x.json.gz", "0.json", "-1.json.gz", ".json.gz"] {
+        let r = c
+            .get(format!("{base}/v1/settled/{missing}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(r.status(), 404, "{missing}");
+    }
+    // The live JSON: the market in play, and the two just settled.
+    assert_eq!(
+        live(&c, &base).await["markets"].as_array().unwrap().len(),
+        3
+    );
+
+    // Restart: the order comes from the journal, so chunk 0 is the same, byte for byte; results
+    // from before the start are no longer in the live JSON.
+    drop(tx);
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let (base2, _tx2) = serve(&data, signer, m).await;
+    assert_eq!(
+        gunzip_get(&c, &format!("{base2}/v1/settled/0.json.gz")).await,
+        chunk0
+    );
+    let live2 = live(&c, &base2).await;
+    assert_eq!(
+        live2["markets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|m| m["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        [ids[1].to_string()]
+    );
     let _ = std::fs::remove_dir_all(&data);
 }

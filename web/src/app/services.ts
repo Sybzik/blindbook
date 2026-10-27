@@ -10,6 +10,7 @@ import { yOf } from '../core/blind';
 import { IdbStore, Vault, newMnemonic, seedFromMnemonic, type Wrap } from '../vault/vault';
 import { createPasskey, prfSupported, unlockPasskey } from '../vault/passkey';
 import { MixnetTransport, cleanupIdentities, mixnetSupported, openCage, type LinkState } from '../net/mixnet';
+import { type CatalogEntry, type CatalogFile, type ChunkFile, chunksOf, toMarkets } from './catalog';
 import { cue, type Cue } from './cues';
 import { powInWorkers } from '../net/powpool';
 import { config } from './config';
@@ -238,55 +239,60 @@ async function pollLive() {
   }
 }
 
-interface CatalogEntry {
-  id: string;
-  keysets: [string, string];
-  end_ms: number;
-  event_start_ms: number | null;
-  status: { state: 'open' } | { state: 'resolved'; den: number; num: [number, number] };
-  params: { b: number; fee_bp: number; max_trade: number };
-  info: { slug: string; question: string; outcomes: [string, string]; description: string; resolution_source: string; volume_24h_usd: number | null; group_item_title: string | null } | null;
+/** The catalog file's markets, and the archive chunks read so far (chunk k at index k). */
+let current: CatalogEntry[] = [];
+const archive: CatalogEntry[][] = [];
+let archiving = false;
+
+function setCatalog() {
+  const markets = toMarkets(current, archive);
+  const before = new Map(app.get().markets.map((m) => [m.id, m.resolved]));
+  app.set({ markets, catalogLoaded: true });
+  refreshWallet();
+  // A market the user holds shares of has just been settled: did their side win?
+  let won = false;
+  let lost = false;
+  for (const m of markets) {
+    if (!m.resolved || !before.has(m.id) || before.get(m.id)) continue;
+    for (const p of app.get().positions.filter((x) => x.market === m.id)) {
+      if (m.resolved.num[p.outcome] > 0) won = true;
+      else lost = true;
+    }
+  }
+  if (won) cue('resolved.win');
+  else if (lost) cue('resolved.loss');
 }
 
 async function pollCatalog() {
   try {
-    const r = await api.transport.request('GET', '/v1/markets');
-    const list = ((r.body as { markets?: CatalogEntry[] }).markets ?? []).filter((m) => m.info);
-    const markets: MarketMeta[] = list.map((m, i) => ({
-      id: m.id,
-      page: 'P' + (201 + i),
-      question: m.info!.question,
-      outcomes: m.info!.outcomes,
-      rules: m.info!.description,
-      source: m.info!.resolution_source,
-      slug: m.info!.slug,
-      eventStartMs: m.event_start_ms,
-      endMs: m.end_ms,
-      keysets: m.keysets,
-      resolved: m.status.state === 'resolved' ? { den: m.status.den, num: m.status.num } : null,
-      volume: m.info!.volume_24h_usd,
-      group: m.info!.group_item_title,
-      b: m.params.b,
-      feeBp: m.params.fee_bp,
-      minTrade: Math.max(1, Math.floor(m.params.max_trade / 200)),
-    }));
-    const before = new Map(app.get().markets.map((m) => [m.id, m.resolved]));
-    app.set({ markets, catalogLoaded: true });
-    refreshWallet();
-    // A market the user holds shares of has just been settled: did their side win?
-    let won = false;
-    let lost = false;
-    for (const m of markets) {
-      if (!m.resolved || !before.has(m.id) || before.get(m.id)) continue;
-      for (const p of app.get().positions.filter((x) => x.market === m.id)) {
-        if (m.resolved.num[p.outcome] > 0) won = true;
-        else lost = true;
-      }
-    }
-    if (won) cue('resolved.win');
-    else if (lost) cue('resolved.loss');
+    const file = await api.json<CatalogFile>('/v1/catalog.json.gz');
+    if (!Array.isArray(file?.markets)) return;
+    const chunks = chunksOf(file);
+    // A server whose archive is shorter than the one read here has started over: read it again.
+    if (chunks < archive.length) archive.length = 0;
+    current = file.markets;
+    setCatalog();
+    void readArchive(chunks);
   } catch {
     /* retried */
+  }
+}
+
+/** Read the archive chunks not read yet, one at a time and in order (a chunk never changes). */
+async function readArchive(chunks: number) {
+  if (archiving) return;
+  archiving = true;
+  try {
+    while (archive.length < chunks) {
+      const file = await api.json<ChunkFile>(`/v1/settled/${archive.length}.json.gz`);
+      if (!Array.isArray(file?.markets)) return;
+      archive.push(file.markets);
+      setCatalog();
+    }
+  } catch {
+    /* the next catalog poll goes on from here */
+  } finally {
+    archiving = false;
   }
 }
 

@@ -6,9 +6,11 @@
 //! - `POST /dev/payout`: pay every queued withdrawal with a fake txid.
 //!
 //! ```text
-//! cargo run -p blindbook-api --features embedded-signer --example devserver [-- --block-ms <ms>]
+//! cargo run -p blindbook-api --features embedded-signer --example devserver [-- --block-ms <ms>] [--settled-chunk <n>]
 //! ```
 //! `--block-ms` closes blocks faster, e.g. 250 to grow a long log (segments) in a minute.
+//! `--settled-chunk` puts settled markets into archive chunks of n (32 in production), e.g. 1 to
+//! see the archive after `POST /dev/resolve` on one market.
 //! Listens on 127.0.0.1:8090 (the Vite dev server proxies `/v1` there). Never for production:
 //! the master key is a public test key.
 
@@ -42,6 +44,14 @@ const DEV_RESERVE_ZAT: u64 = 5_000_000_000;
 /// The public TEST master key: m = SHA256("blindbook/devserver"). Never a real key.
 fn master() -> MasterKey {
     MasterKey::from_secret(SecretKey::from_slice(&sha256(b"blindbook/devserver")).unwrap())
+}
+
+/// The value after a command-line flag, e.g. `--block-ms 250`.
+fn arg<T: std::str::FromStr>(name: &str) -> Option<T> {
+    std::env::args()
+        .skip_while(|a| a != name)
+        .nth(1)
+        .and_then(|v| v.parse().ok())
 }
 
 /// The public TEST seal key: SHA256("blindbook/devserver/seal").
@@ -312,6 +322,7 @@ async fn main() {
             voucher_units: 50_000,
             signer_token: None,
             topup: Some(desk.clone()),
+            settled_chunk: arg("--settled-chunk").unwrap_or(blindbook_api::catalog::SETTLED_CHUNK),
         },
         Some(SignerLink::Embedded(signer.clone())),
         refs,
@@ -346,11 +357,7 @@ async fn main() {
     let shared = running.shared.clone();
     let reserve_signer = signer.clone();
     tokio::spawn(async move {
-        let block_ms = std::env::args()
-            .skip_while(|a| a != "--block-ms")
-            .nth(1)
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(15_000u64);
+        let block_ms = arg("--block-ms").unwrap_or(15_000u64);
         let mut tick = tokio::time::interval(Duration::from_millis(block_ms.max(50)));
         tick.tick().await;
         // The simulated chain's tip moves on every tick, published or not: an empty block is

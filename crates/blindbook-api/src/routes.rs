@@ -45,6 +45,7 @@ pub struct AppState {
     pub m_hex: String,
     pub live: Arc<std::sync::RwLock<Vec<u8>>>,
     pub topup: Option<crate::topup::Desk>,
+    pub catalog: Arc<std::sync::RwLock<crate::catalog::Published>>,
 }
 
 /// A JSON answer with `Connection: close`.
@@ -632,6 +633,48 @@ pub async fn markets(State(state): State<AppState>) -> Response {
         StatusCode::OK,
         json!({ "credit_keyset": state.shared.credit_id, "markets": markets }),
     )
+}
+
+/// A gzipped public file, served as it is (no `Content-Encoding`, like the log's files).
+fn gz_file(bytes: Vec<u8>) -> Response {
+    let mut r = (StatusCode::OK, bytes).into_response();
+    r.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/gzip"),
+    );
+    r
+}
+
+/// The catalog file (crate::catalog): the markets in play and the settled ones not archived yet.
+pub async fn catalog(State(state): State<AppState>) -> Response {
+    let bytes = state
+        .catalog
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .catalog
+        .clone();
+    gz_file(bytes)
+}
+
+/// An archive chunk of settled markets: `/v1/settled/{k}.json.gz`.
+pub async fn settled(State(state): State<AppState>, Path(file): Path<String>) -> Response {
+    let chunk = file
+        .strip_suffix(".json.gz")
+        .filter(|k| !k.is_empty() && k.bytes().all(|b| b.is_ascii_digit()))
+        .and_then(|k| k.parse::<usize>().ok())
+        .and_then(|k| {
+            state
+                .catalog
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .chunks
+                .get(k)
+                .cloned()
+        });
+    match chunk {
+        Some(bytes) => gz_file(bytes),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 pub async fn live(State(state): State<AppState>) -> Response {

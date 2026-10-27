@@ -72,6 +72,7 @@ async fn signer_over_websocket() {
             voucher_units: 4_096,
             signer_token: Some(TOKEN.into()),
             topup: None,
+            settled_chunk: blindbook_api::catalog::SETTLED_CHUNK,
         },
         None,
         refs,
@@ -172,6 +173,7 @@ async fn lost_answer_is_recovered_exactly_once() {
             voucher_units: 4_096,
             signer_token: Some(TOKEN.into()),
             topup: None,
+            settled_chunk: blindbook_api::catalog::SETTLED_CHUNK,
         },
         None,
         refs,
@@ -291,6 +293,7 @@ async fn api_restart_with_an_answer_lost_is_recovered() {
         voucher_units: 4_096,
         signer_token: Some(TOKEN.into()),
         topup: None,
+        settled_chunk: blindbook_api::catalog::SETTLED_CHUNK,
     };
     let c = reqwest::Client::builder().no_proxy().build().unwrap();
     let st = Arc::new(Mutex::new(station(&dir.join("signer"))));
@@ -424,6 +427,7 @@ async fn an_event_announced_many_times_is_recorded_once() {
             voucher_units: 4_096,
             signer_token: Some(TOKEN.into()),
             topup: None,
+            settled_chunk: blindbook_api::catalog::SETTLED_CHUNK,
         },
         None,
         refs,

@@ -2,9 +2,10 @@
 //! one file every visitor downloads (no client ever asks about one market). Sampled from the live
 //! state once a minute and kept at three resolutions, one per chart range: one-minute samples for
 //! the last two hours (1H), fifteen-minute samples for the last week (1D, 1W), two-hour samples
-//! since listing (ALL). Kept in `<data>/history.json` across restarts.
+//! since listing (ALL). Kept in `<data>/history.json` across restarts; the public file carries the
+//! markets of the catalog file (crate::catalog), not those already in its archive chunks.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
@@ -13,7 +14,7 @@ use blindbook_ledger::H32;
 use serde::{Deserialize, Serialize};
 
 use crate::files::{gz, write_atomic};
-use crate::sequencer::now_ms;
+use crate::sequencer::{Shared, now_ms};
 
 /// One sample: Unix minute, our price of outcome A and Polymarket's mid of A, in basis points.
 pub type Point = [u64; 3];
@@ -59,6 +60,18 @@ impl History {
             }
         }
     }
+
+    /// The history without the markets in `archived`.
+    pub fn without(&self, archived: &HashSet<H32>) -> History {
+        History {
+            markets: self
+                .markets
+                .iter()
+                .filter(|(id, _)| !archived.contains(id))
+                .map(|(id, s)| (*id, s.clone()))
+                .collect(),
+        }
+    }
 }
 
 /// Our price and the reference of every market with a price in the live JSON.
@@ -93,7 +106,12 @@ pub fn load(data_dir: &Path) -> History {
 }
 
 /// Sample the live state once a minute; write the state and the public file.
-pub async fn run(data_dir: PathBuf, live: Arc<RwLock<Vec<u8>>>) {
+pub async fn run(
+    data_dir: PathBuf,
+    live: Arc<RwLock<Vec<u8>>>,
+    shared: Arc<Shared>,
+    settled_chunk: usize,
+) {
     let mut h = load(&data_dir);
     let public = data_dir.join("public").join("v1").join("history.json.gz");
     let mut tick = tokio::time::interval(Duration::from_secs(60));
@@ -107,11 +125,18 @@ pub async fn run(data_dir: PathBuf, live: Arc<RwLock<Vec<u8>>>) {
             continue;
         }
         h.sample(now_ms() / 60_000, &p);
-        let Ok(json) = serde_json::to_vec(&h) else {
+        let archived = crate::catalog::archived(
+            &shared.settled.read().unwrap_or_else(|e| e.into_inner()),
+            settled_chunk,
+        );
+        let (Ok(json), Ok(shown)) = (
+            serde_json::to_vec(&h),
+            serde_json::to_vec(&h.without(&archived)),
+        ) else {
             continue;
         };
         let written = write_atomic(&state_path(&data_dir), &json)
-            .and_then(|()| gz(&json))
+            .and_then(|()| gz(&shown))
             .and_then(|z| write_atomic(&public, &z));
         if let Err(e) = written {
             tracing::warn!(error = %e, "price history not written");
@@ -150,6 +175,17 @@ mod tests {
         assert_eq!(*s.m1.back().unwrap(), [10 * 24 * 60, 7_000, 6_900]);
         assert_eq!(*s.m15.back().unwrap(), [10 * 24 * 60, 7_000, 6_900]);
         assert_eq!(*s.h2.last().unwrap(), [10 * 24 * 60, 7_000, 6_900]);
+    }
+
+    #[test]
+    fn archived_markets_leave_the_public_file() {
+        let (a, b) = (H32([1; 32]), H32([2; 32]));
+        let mut h = History::default();
+        h.sample(1, &[(a, 5_000, 5_000), (b, 6_000, 6_000)]);
+        let shown = h.without(&[a].into_iter().collect());
+        assert_eq!(shown.markets.keys().collect::<Vec<_>>(), [&b]);
+        assert_eq!(shown.markets[&b], h.markets[&b]);
+        assert_eq!(h.markets.len(), 2);
     }
 
     #[test]

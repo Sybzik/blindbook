@@ -276,6 +276,7 @@ async fn main() -> Result<(), String> {
                 .ok()
                 .filter(|t| t.len() >= 32),
             topup: desk.clone(),
+            settled_chunk: blindbook_api::catalog::SETTLED_CHUNK,
         },
         None,
         refs,

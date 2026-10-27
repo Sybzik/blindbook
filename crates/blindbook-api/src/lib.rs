@@ -2,6 +2,7 @@
 //! signer, keeps a ledger replica, writes the public log and serves live prices. It holds no key,
 //! and it never sees, stores or logs a client address.
 
+pub mod catalog;
 pub mod files;
 pub mod history;
 pub mod journal;
@@ -41,6 +42,8 @@ pub struct StartConfig {
     pub signer_token: Option<String>,
     /// The top-up desk (needs the deposit account's incoming viewing key).
     pub topup: Option<topup::Desk>,
+    /// Settled markets per archive chunk ([`catalog::SETTLED_CHUNK`]; smaller in tests).
+    pub settled_chunk: usize,
 }
 
 pub struct Running {
@@ -106,9 +109,18 @@ pub fn start(
             }
         }
     });
+    let chunk = cfg.settled_chunk.max(1);
+    let catalog_files = Arc::new(RwLock::new(catalog::Published::default()));
+    catalog::refresh_from(&shared, chunk, &catalog_files);
+    tokio::spawn(catalog::run(shared.clone(), chunk, catalog_files.clone()));
     let live_bytes = Arc::new(RwLock::new(b"{}".to_vec()));
     tokio::spawn(live::run(shared.clone(), refs, live_bytes.clone()));
-    tokio::spawn(history::run(cfg.data_dir.clone(), live_bytes.clone()));
+    tokio::spawn(history::run(
+        cfg.data_dir.clone(),
+        live_bytes.clone(),
+        shared.clone(),
+        chunk,
+    ));
     let public = cfg.data_dir.join("public").join("v1");
     let state = AppState {
         tx: tx.clone(),
@@ -120,11 +132,14 @@ pub fn start(
         m_hex: cfg.m.to_hex(),
         live: live_bytes,
         topup: cfg.topup,
+        catalog: catalog_files,
     };
     let router = Router::new()
         .route("/v1/head", get(routes::head))
         .route("/v1/live", get(routes::live))
         .route("/v1/markets", get(routes::markets))
+        .route("/v1/catalog.json.gz", get(routes::catalog))
+        .route("/v1/settled/{file}", get(routes::settled))
         .route("/v1/trade", post(routes::trade))
         .route("/v1/swap", post(routes::swap))
         .route("/v1/redeem", post(routes::redeem))

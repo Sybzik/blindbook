@@ -134,6 +134,14 @@ pub struct RecentPayout {
     pub commitments: Vec<H32>,
 }
 
+/// A market as it was settled: the order of these is the order the log resolved them in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Settled {
+    pub market: H32,
+    /// When the API applied the result; 0 for results replayed from the journal at start.
+    pub at_ms: u64,
+}
+
 /// State shared with the HTTP handlers and the live-price task.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct ChainBlock {
@@ -151,6 +159,9 @@ pub struct Shared {
     pub duels: RwLock<Vec<OpenDuel>>,
     pub duel_fills: RwLock<VecDeque<DuelFill>>,
     pub markets: RwLock<BTreeMap<H32, MarketView>>,
+    /// Every settled market, in the order its result was applied (the journal's order, so the
+    /// same after a restart): the catalog files are cut from this.
+    pub settled: RwLock<Vec<Settled>>,
     pub recent: RwLock<VecDeque<RecentFill>>,
     pub catalog: RwLock<BTreeMap<H32, MarketInfo>>,
     pub credit_id: String,
@@ -175,6 +186,7 @@ impl Shared {
             duels: RwLock::default(),
             duel_fills: RwLock::default(),
             markets: RwLock::default(),
+            settled: RwLock::default(),
             recent: RwLock::default(),
             catalog: RwLock::default(),
             credit_id,
@@ -405,6 +417,19 @@ impl Sequencer {
             }
             while p.front().is_some_and(|f| f.at_ms + PAYOUTS_MS < at_ms) || p.len() > MAX_PAYOUTS {
                 p.pop_front();
+            }
+        }
+        if let (Op::Resolve { market, .. }, Applied::Done) = (op, applied) {
+            let mut s = self
+                .shared
+                .settled
+                .write()
+                .unwrap_or_else(|e| e.into_inner());
+            if !s.iter().any(|x| x.market == *market) {
+                s.push(Settled {
+                    market: *market,
+                    at_ms,
+                });
             }
         }
         if let (Op::DuelTake { duel, .. }, Applied::Effects(e)) = (op, applied)
